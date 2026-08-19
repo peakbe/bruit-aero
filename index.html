@@ -1,0 +1,406 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dashboard Aéroports - EBCI & EBLG</title>
+  
+  <!-- CSS External Libraries -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <!-- Feather Icons -->
+  <script src="https://unpkg.com/feather-icons"></script>
+
+  <style>
+    :root {
+      --bg-main: #0f172a;
+      --card-bg: #1e293b;
+      --accent: #38bdf8;
+      --accent-hover: #0284c7;
+      --text-light: #f8fafc;
+      --text-muted: #94a3b8;
+      --border: #334155;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+    body { background-color: var(--bg-main); color: var(--text-light); padding: 20px; }
+
+    header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 25px; padding-bottom: 15px; border-bottom: 1px solid var(--border); }
+    h1 { font-size: 1.8rem; font-weight: 600; color: var(--accent); display: flex; align-items: center; gap: 10px; }
+
+    .grid-container { display: grid; grid-template-columns: repeat(auto-fit, minmax(500px, 1fr)); gap: 20px; margin-bottom: 25px; }
+    
+    .card { background-color: var(--card-bg); border-radius: 12px; border: 1px solid var(--border); padding: 20px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.3); }
+    .card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; border-bottom: 1px solid var(--border); padding-bottom: 10px; }
+    .card-title { font-size: 1.2rem; font-weight: 600; color: var(--text-light); }
+
+    /* Weather Section */
+    .weather-box { display: flex; gap: 20px; align-items: center; justify-content: space-between; }
+    .metar-info { flex: 1; }
+    .temp-large { font-size: 2.5rem; font-weight: bold; color: #f59e0b; }
+    .metar-code { font-family: monospace; background: #0f172a; padding: 8px; border-radius: 6px; border: 1px solid var(--border); font-size: 0.85rem; color: #10b981; margin-top: 10px; }
+    
+    .compass-container { text-align: center; }
+    canvas.compass { background: #0f172a; border-radius: 50%; border: 2px solid var(--border); }
+
+    /* Flight Tables */
+    .tab-container { display: flex; gap: 10px; margin-bottom: 15px; }
+    .tab-btn { background: #0f172a; border: 1px solid var(--border); color: var(--text-muted); padding: 8px 16px; border-radius: 6px; cursor: pointer; transition: 0.2s; }
+    .tab-btn.active { background: var(--accent); color: #000; font-weight: bold; border-color: var(--accent); }
+
+    table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 0.9rem; }
+    th, td { text-align: left; padding: 10px; border-bottom: 1px solid var(--border); }
+    th { color: var(--text-muted); font-weight: 500; }
+    .badge { padding: 4px 8px; border-radius: 4px; font-size: 0.75rem; font-weight: bold; }
+    .badge-dep { background: rgba(56, 189, 248, 0.2); color: var(--accent); }
+    .badge-arr { background: rgba(16, 185, 129, 0.2); color: #10b981; }
+
+    /* Map & Noise Meters */
+    #map { height: 320px; width: 100%; border-radius: 8px; border: 1px solid var(--border); }
+    .noise-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-top: 15px; }
+    .noise-card { background: #0f172a; padding: 10px; border-radius: 8px; border: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; }
+    .noise-val { font-size: 1.2rem; font-weight: bold; color: #ef4444; }
+
+    @media (max-width: 600px) {
+      .grid-container { grid-template-columns: 1fr; }
+      .weather-box { flex-direction: column; text-align: center; }
+    }
+  </style>
+</head>
+<body>
+
+  <header>
+    <h1><i data-feather="radio"></i> Station Météo & Surveillance - EBCI / EBLG</h1>
+    <div style="color: var(--text-muted);" id="clock">--:--:-- UTC</div>
+  </header>
+
+  <div class="grid-container">
+    <!-- EBCI WEATHER -->
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title">Charleroi (EBCI / CRL) - Météo</span>
+        <span class="badge badge-dep">METAR Direct</span>
+      </div>
+      <div class="weather-box">
+        <div class="metar-info">
+          <div class="temp-large" id="ebci-temp">19°C</div>
+          <div style="color: var(--text-muted);" id="ebci-wind-text">Vent: 230° @ 12 kt</div>
+          <div style="color: var(--text-muted);" id="ebci-vis">Visibilité: > 10 km</div>
+          <div class="metar-code" id="ebci-metar">EBCI 181420Z 23012KT 9999 FEW030 19/11 Q1018 NOSIG</div>
+        </div>
+        <div class="compass-container">
+          <canvas id="compass-ebci" class="compass" width="130" height="130"></canvas>
+          <div style="font-size: 0.8rem; margin-top: 4px; color: var(--text-muted);">Rose des vents</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- EBLG WEATHER -->
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title">Liège (EBLG / LGG) - Météo</span>
+        <span class="badge badge-arr">METAR Direct</span>
+      </div>
+      <div class="weather-box">
+        <div class="metar-info">
+          <div class="temp-large" id="eblg-temp">18°C</div>
+          <div style="color: var(--text-muted);" id="eblg-wind-text">Vent: 250° @ 08 kt</div>
+          <div style="color: var(--text-muted);" id="eblg-vis">Visibilité: 8000m</div>
+          <div class="metar-code" id="eblg-metar">EBLG 181420Z 25008KT 8000 SCT025 18/12 Q1017 NOSIG</div>
+        </div>
+        <div class="compass-container">
+          <canvas id="compass-eblg" class="compass" width="130" height="130"></canvas>
+          <div style="font-size: 0.8rem; margin-top: 4px; color: var(--text-muted);">Rose des vents</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- FLIGHTS TABLES SECTION -->
+  <div class="grid-container">
+    <!-- EBCI FLIGHTS -->
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title">Vols - Charleroi (EBCI)</span>
+        <div class="tab-container">
+          <button class="tab-btn active" onclick="switchFlightTab('ebci', 'dep', this)">Départs</button>
+          <button class="tab-btn" onclick="switchFlightTab('ebci', 'arr', this)">Arrivées</button>
+        </div>
+      </div>
+      <table>
+        <thead>
+          <tr><th>Vol</th><th>Destination / Origine</th><th>Heure</th><th>Statut</th></tr>
+        </thead>
+        <tbody id="ebci-flights-body">
+          <!-- Populated by JS -->
+        </tbody>
+      </table>
+    </div>
+
+    <!-- EBLG FLIGHTS -->
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title">Vols - Liège (EBLG)</span>
+        <div class="tab-container">
+          <button class="tab-btn active" onclick="switchFlightTab('eblg', 'dep', this)">Départs</button>
+          <button class="tab-btn" onclick="switchFlightTab('eblg', 'arr', this)">Arrivées</button>
+        </div>
+      </div>
+      <table>
+        <thead>
+          <tr><th>Vol</th><th>Destination / Origine</th><th>Heure</th><th>Statut</th></tr>
+        </thead>
+        <tbody id="eblg-flights-body">
+          <!-- Populated by JS -->
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- SONOMETERS & NOISE MAP -->
+  <div class="card">
+    <div class="card-header">
+      <span class="card-title"><i data-feather="volume-2"></i> Réseau de Sonomètres en Temps Réel (dB(A))</span>
+      <span style="color: var(--text-muted); font-size: 0.85rem;">Mise à jour toutes les 3s</span>
+    </div>
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+      <div>
+        <div id="map"></div>
+      </div>
+      <div>
+        <h4 style="margin-bottom: 10px; color: var(--accent);">Relevés Acoustiques Actifs</h4>
+        <div class="noise-grid" id="noise-cards">
+          <!-- Populated by JS -->
+        </div>
+        <div style="margin-top: 15px;">
+          <canvas id="noiseChart" height="130"></canvas>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    feather.replace();
+
+    // Clock
+    setInterval(() => {
+      document.getElementById('clock').innerText = new Date().toISOString().substring(11, 19) + ' UTC';
+    }, 1000);
+
+    // Dynamic Wind Rose Drawing
+    function drawCompass(canvasId, windDeg, windSpeed) {
+      const canvas = document.getElementById(canvasId);
+      const ctx = canvas.getContext('2d');
+      const radius = canvas.width / 2;
+
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      // Compass Ring
+      ctx.beginPath();
+      ctx.arc(radius, radius, radius - 10, 0, 2 * Math.PI);
+      ctx.strokeStyle = '#334155';
+      ctx.lineWidth = 3;
+      ctx.stroke();
+
+      // Cardinal Points
+      ctx.fillStyle = '#94a3b8';
+      ctx.font = '10px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText('N', radius, 18);
+      ctx.fillText('S', radius, canvas.height - 8);
+      ctx.fillText('E', canvas.width - 10, radius + 3);
+      ctx.fillText('O', 12, radius + 3);
+
+      // Draw Wind Arrow (pointing in the direction the wind blows to)
+      ctx.save();
+      ctx.translate(radius, radius);
+      ctx.rotate((windDeg * Math.PI) / 180);
+
+      // Arrow path
+      ctx.beginPath();
+      ctx.moveTo(0, -radius + 20); // Tip
+      ctx.lineTo(8, 15);
+      ctx.lineTo(0, 5);
+      ctx.lineTo(-8, 15);
+      ctx.closePath();
+      ctx.fillStyle = '#38bdf8';
+      ctx.fill();
+
+      ctx.restore();
+
+      // Center Wind Speed Text
+      ctx.fillStyle = '#f8fafc';
+      ctx.font = 'bold 12px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText(`${windSpeed} kt`, radius, radius + 4);
+    }
+
+    // Init Weather & Compasses
+    drawCompass('compass-ebci', 230, 12);
+    drawCompass('compass-eblg', 250, 8);
+
+    // Flight Data Mocking
+    const flightData = {
+      ebci: {
+        dep: [
+          { flight: "FR1002", dest: "Marseille (MRS)", time: "15:10", status: "Embarquement" },
+          { flight: "FR2104", dest: "Porto (OPO)", time: "15:45", status: "A l'heure" },
+          { flight: "W64301", dest: "Bucarest (OTP)", time: "16:00", status: "A l'heure" },
+          { flight: "FR6312", dest: "Alicante (ALC)", time: "16:25", status: "A l'heure" },
+          { flight: "FR8831", dest: "Tenerife (TFS)", time: "17:10", status: "A l'heure" },
+          { flight: "W63022", dest: "Varsovie (WAW)", time: "17:40", status: "Retardé 18:05" },
+          { flight: "FR1923", dest: "Milan (BGY)", time: "18:15", status: "A l'heure" },
+          { flight: "FR4410", dest: "Rome (CIA)", time: "18:50", status: "A l'heure" },
+          { flight: "FR9012", dest: "Lisbonne (LIS)", time: "19:20", status: "A l'heure" },
+          { flight: "FR3321", dest: "Palerme (PMO)", time: "20:00", status: "A l'heure" }
+        ],
+        arr: [
+          { flight: "FR1003", dest: "Marseille (MRS)", time: "14:50", status: "Atterri" },
+          { flight: "FR2105", dest: "Porto (OPO)", time: "15:20", status: "Approche" },
+          { flight: "FR8832", dest: "Tenerife (TFS)", time: "16:05", status: "A l'heure" },
+          { flight: "W64302", dest: "Bucarest (OTP)", time: "16:40", status: "A l'heure" },
+          { flight: "FR6313", dest: "Alicante (ALC)", time: "17:15", status: "A l'heure" },
+          { flight: "FR1924", dest: "Milan (BGY)", time: "18:00", status: "A l'heure" },
+          { flight: "FR4411", dest: "Rome (CIA)", time: "18:30", status: "A l'heure" },
+          { flight: "W63023", dest: "Varsovie (WAW)", time: "19:10", status: "A l'heure" },
+          { flight: "FR9013", dest: "Lisbonne (LIS)", time: "19:55", status: "A l'heure" },
+          { flight: "FR3322", dest: "Palerme (PMO)", time: "20:45", status: "A l'heure" }
+        ]
+      },
+      eblg: {
+        dep: [
+          { flight: "3V801", dest: "Chicago (ORD)", time: "15:00", status: "Parti" },
+          { flight: "TAY21B", dest: "East Midlands (EMA)", time: "15:30", status: "Embarquement" },
+          { flight: "ETH3701", dest: "Addis Abeba (ADD)", time: "16:15", status: "A l'heure" },
+          { flight: "QTR8102", dest: "Doha (DOH)", time: "17:00", status: "A l'heure" },
+          { flight: "ICL902", dest: "Tel Aviv (TLV)", time: "17:45", status: "A l'heure" },
+          { flight: "3V405", dest: "Madrid (MAD)", time: "18:30", status: "A l'heure" },
+          { flight: "UAE9921", dest: "Dubai (DWC)", time: "19:10", status: "A l'heure" },
+          { flight: "TAY901", dest: "Vienne (VIE)", time: "20:00", status: "A l'heure" },
+          { flight: "3V112", dest: "Shanghai (PVG)", time: "21:15", status: "A l'heure" },
+          { flight: "ETH3604", dest: "Hong Kong (HKG)", time: "22:30", status: "A l'heure" }
+        ],
+        arr: [
+          { flight: "3V802", dest: "New York (JFK)", time: "14:40", status: "Atterri" },
+          { flight: "QTR8101", dest: "Doha (DOH)", time: "15:15", status: "Approche" },
+          { flight: "ETH3700", dest: "Addis Abeba (ADD)", time: "15:50", status: "A l'heure" },
+          { flight: "3V406", dest: "Madrid (MAD)", time: "16:30", status: "A l'heure" },
+          { flight: "ICL901", dest: "Tel Aviv (TLV)", time: "17:20", status: "A l'heure" },
+          { flight: "TAY21A", dest: "East Midlands (EMA)", time: "18:05", status: "A l'heure" },
+          { flight: "UAE9920", dest: "Dubai (DWC)", time: "18:40", status: "A l'heure" },
+          { flight: "3V113", dest: "Shanghai (PVG)", time: "19:50", status: "A l'heure" },
+          { flight: "TAY902", dest: "Vienne (VIE)", time: "20:30", status: "A l'heure" },
+          { flight: "ETH3605", dest: "Hong Kong (HKG)", time: "21:40", status: "A l'heure" }
+        ]
+      }
+    };
+
+    function renderFlights(apt, type) {
+      const tbody = document.getElementById(`${apt}-flights-body`);
+      tbody.innerHTML = '';
+      flightData[apt][type].forEach(f => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td style="font-weight:bold; color:var(--text-light);">${f.flight}</td>
+          <td>${f.dest}</td>
+          <td>${f.time}</td>
+          <td><span style="color: ${f.status.includes('Retard') ? '#ef4444' : f.status === 'Atterri' || f.status === 'Parti' ? '#10b981' : '#38bdf8'}">${f.status}</span></td>
+        `;
+        tbody.appendChild(tr);
+      });
+    }
+
+    function switchFlightTab(apt, type, btn) {
+      btn.parentElement.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      renderFlights(apt, type);
+    }
+
+    renderFlights('ebci', 'dep');
+    renderFlights('eblg', 'dep');
+
+    // Sonometers & Map Integration (Leaflet)
+    const map = L.map('map').setView([50.55, 5.0], 9);
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+      maxZoom: 19,
+      attribution: '© OpenStreetMap'
+    }).addTo(map);
+
+    const sonometers = [
+      { id: 'S-EBCI-1', name: 'Gosselies Nord (EBCI)', lat: 50.468, lng: 4.452, val: 58 },
+      { id: 'S-EBCI-2', name: 'Ransart Sud (EBCI)', lat: 50.450, lng: 4.485, val: 62 },
+      { id: 'S-EBLG-1', name: 'Grâce-Hollogne (EBLG)', lat: 50.638, lng: 5.452, val: 65 },
+      { id: 'S-EBLG-2', name: 'Bierset Ouest (EBLG)', lat: 50.641, lng: 5.420, val: 54 }
+    ];
+
+    const markers = {};
+
+    sonometers.forEach(s => {
+      const marker = L.circleMarker([s.lat, s.lng], {
+        radius: 8,
+        fillColor: "#ef4444",
+        color: "#fff",
+        weight: 2,
+        opacity: 1,
+        fillOpacity: 0.8
+      }).addTo(map);
+      marker.bindPopup(`<b>${s.name}</b><br>Niveau: <span id="pop-${s.id}">${s.val}</span> dB(A)`);
+      markers[s.id] = marker;
+    });
+
+    // Chart.js Noise Realtime Graph
+    const ctxChart = document.getElementById('noiseChart').getContext('2d');
+    const noiseChart = new Chart(ctxChart, {
+      type: 'line',
+      data: {
+        labels: ['-15s', '-12s', '-9s', '-6s', '-3s', 'Maintenant'],
+        datasets: sonometers.map((s, idx) => ({
+          label: s.name.split(' ')[0],
+          data: [s.val - 2, s.val + 1, s.val - 1, s.val + 3, s.val - 2, s.val],
+          borderColor: ['#38bdf8', '#f59e0b', '#10b981', '#ec4899'][idx],
+          tension: 0.3,
+          borderWidth: 2
+        }))
+      },
+      options: {
+        responsive: true,
+        plugins: { legend: { labels: { color: '#94a3b8' } } },
+        scales: {
+          x: { ticks: { color: '#94a3b8' }, grid: { color: '#334155' } },
+          y: { ticks: { color: '#94a3b8' }, grid: { color: '#334155' }, min: 40, max: 90 }
+        }
+      }
+    });
+
+    // Simulate Live Noise Fluctuations
+    setInterval(() => {
+      const container = document.getElementById('noise-cards');
+      container.innerHTML = '';
+
+      sonometers.forEach((s, idx) => {
+        // Random fluctuation between -3 and +3 dB
+        s.val = Math.min(85, Math.max(45, s.val + Math.floor(Math.random() * 7) - 3));
+        
+        // Update Card
+        const card = document.createElement('div');
+        card.className = 'noise-card';
+        card.innerHTML = `
+          <div>
+            <div style="font-size:0.8rem; color:var(--text-muted);">${s.name}</div>
+            <div style="font-size:0.75rem; color:#10b981;">● En Ligne</div>
+          </div>
+          <div class="noise-val">${s.val} <span style="font-size:0.7rem;">dB</span></div>
+        `;
+        container.appendChild(card);
+
+        // Update Chart Data
+        noiseChart.data.datasets[idx].data.shift();
+        noiseChart.data.datasets[idx].data.push(s.val);
+      });
+
+      noiseChart.update();
+    }, 3000);
+  </script>
+</body>
+</html>
