@@ -186,50 +186,53 @@
     updateClock();
     setInterval(updateClock, 1000);
 
-    function drawCompass(canvasId, windDeg = 0, windSpeed = 0) {
-      const canvas = document.getElementById(canvasId);
-      if (!canvas) return;
-      const ctx = canvas.getContext('2d');
-      const radius = canvas.width / 2;
+    function drawCompass(canvasId, windDeg = 0, windSpeedKt = 0, windSpeedMs = 0) {
+  const canvas = document.getElementById(canvasId);
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  const radius = canvas.width / 2;
 
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-      ctx.beginPath();
-      ctx.arc(radius, radius, radius - 10, 0, 2 * Math.PI);
-      ctx.strokeStyle = '#334155';
-      ctx.lineWidth = 3;
-      ctx.stroke();
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.beginPath();
+  ctx.arc(radius, radius, radius - 10, 0, 2 * Math.PI);
+  ctx.strokeStyle = '#334155';
+  ctx.lineWidth = 3;
+  ctx.stroke();
 
-      ctx.fillStyle = '#94a3b8';
-      ctx.font = '10px sans-serif';
-      ctx.textAlign = 'center';
-      ctx.fillText('N', radius, 18);
-      ctx.fillText('S', radius, canvas.height - 8);
-      ctx.fillText('E', canvas.width - 10, radius + 3);
-      ctx.fillText('O', 12, radius + 3);
+  ctx.fillStyle = '#94a3b8';
+  ctx.font = '10px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText('N', radius, 18);
+  ctx.fillText('S', radius, canvas.height - 8);
+  ctx.fillText('E', canvas.width - 10, radius + 3);
+  ctx.fillText('O', 12, radius + 3);
 
-      ctx.save();
-      ctx.translate(radius, radius);
-      ctx.rotate((windDeg * Math.PI) / 180);
+  ctx.save();
+  ctx.translate(radius, radius);
+  ctx.rotate((windDeg * Math.PI) / 180);
 
-      ctx.beginPath();
-      ctx.moveTo(0, -radius + 20);
-      ctx.lineTo(8, 15);
-      ctx.lineTo(0, 5);
-      ctx.lineTo(-8, 15);
-      ctx.closePath();
-      ctx.fillStyle = '#38bdf8';
-      ctx.fill();
+  ctx.beginPath();
+  ctx.moveTo(0, -radius + 20);
+  ctx.lineTo(8, 15);
+  ctx.lineTo(0, 5);
+  ctx.lineTo(-8, 15);
+  ctx.closePath();
+  ctx.fillStyle = '#38bdf8';
+  ctx.fill();
 
-      ctx.restore();
+  ctx.restore();
 
-      ctx.fillStyle = '#f8fafc';
-      ctx.font = 'bold 12px sans-serif';
-      ctx.textAlign = 'center';
-      ctx.fillText(`${windSpeed} kt`, radius, radius + 4);
-    }
+  ctx.fillStyle = '#f8fafc';
+  ctx.font = 'bold 11px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText(`${windSpeedKt} kt`, radius, radius - 2);
+  ctx.font = '10px sans-serif';
+  ctx.fillStyle = '#94a3b8';
+  ctx.fillText(`${windSpeedMs} m/s`, radius, radius + 12);
+}
 
     // Chargement Météo & Déduction Piste METAR
- async function loadWeatherData(apt, lat, lon) {
+async function loadWeatherData(apt, lat, lon) {
   const aptLower = apt.toLowerCase();
 
   // 1. Chargement Météo & Tendances
@@ -239,11 +242,20 @@
     
     if (data.main) {
       document.getElementById(`${aptLower}-temp`).innerText = `${Math.round(data.main.temp)}°C`;
+      
       const windDeg = data.wind?.deg || 0;
-      const windSpeed = Math.round((data.wind?.speed || 0) * 1.94384);
-      document.getElementById(`${aptLower}-wind-text`).innerText = `Vent: ${windDeg}° @ ${windSpeed} kt`;
+      // data.wind.speed est reçu du worker en m/s
+      const windSpeedMs = (data.wind?.speed || 0).toFixed(1);
+      const windSpeedKmh = Math.round(windSpeedMs * 3.6);
+      const windSpeedKt = Math.round(windSpeedMs * 1.94384);
+
+      // Affichage complet des unités pour le vent actuel
+      document.getElementById(`${aptLower}-wind-text`).innerText = 
+        `Vent: ${windDeg}° @ ${windSpeedKt} kt (${windSpeedMs} m/s - ${windSpeedKmh} km/h)`;
+        
       document.getElementById(`${aptLower}-vis`).innerText = `Visibilité: ${(data.visibility / 1000).toFixed(1)} km`;
-      drawCompass(`compass-${aptLower}`, windDeg, windSpeed);
+      
+      drawCompass(`compass-${aptLower}`, windDeg, windSpeedKt, windSpeedMs);
 
       // Calcul auto des pistes
       if (aptLower === 'eblg') {
@@ -259,22 +271,28 @@
       if (data.hourly) {
         const forecastContainer = document.getElementById(`${aptLower}-forecast`);
         if (forecastContainer) {
-          forecastContainer.innerHTML = ''; // Nettoyage
+          forecastContainer.innerHTML = '';
           
           for (let i = 3; i <= 12; i += 3) {
             if (!data.hourly.time[i]) break;
             
             const time = new Date(data.hourly.time[i]).getHours() + 'h';
             const temp = Math.round(data.hourly.temperature_2m[i]);
-            const wind = Math.round(data.hourly.wind_speed_10m[i] * 0.539957); // km/h vers nœuds
+            
+            // Calculs d'unités pour la tendance (Open-Meteo donne wind_speed_10m en km/h)
+            const windKmh = Math.round(data.hourly.wind_speed_10m[i]);
+            const windMs = (windKmh / 3.6).toFixed(1);
+            const windKt = Math.round(windKmh * 0.539957);
             const dir = data.hourly.wind_direction_10m[i];
 
             const item = document.createElement('div');
-            item.style.cssText = "background:#0f172a; padding:6px 10px; border-radius:6px; text-align:center; min-width:65px; border:1px solid var(--border); font-size:0.75rem;";
+            item.style.cssText = "background:#0f172a; padding:6px 8px; border-radius:6px; text-align:center; min-width:85px; border:1px solid var(--border); font-size:0.75rem;";
             item.innerHTML = `
               <div style="color:var(--text-muted); font-weight:bold;">${time}</div>
-              <div style="color:#f59e0b; font-size:0.9rem; margin:2px 0;">${temp}°C</div>
-              <div style="color:var(--accent);">${dir}° / ${wind}kt</div>
+              <div style="color:#f59e0b; font-size:0.85rem; margin:2px 0;">${temp}°C</div>
+              <div style="color:var(--accent); font-weight:600;">${dir}°</div>
+              <div style="color:var(--text-light); font-size:0.7rem;">${windKt} kt</div>
+              <div style="color:var(--text-muted); font-size:0.65rem;">${windMs} m/s (${windKmh} km/h)</div>
             `;
             forecastContainer.appendChild(item);
           }
@@ -287,7 +305,7 @@
 
   // 2. Chargement du METAR
   try {
-    const icao = aptUpper = apt.toUpperCase();
+    const icao = apt.toUpperCase();
     const resMetar = await fetch(`${WORKER_URL}/api/metar?station=${icao}`);
     const metarData = await resMetar.json();
     document.getElementById(`${aptLower}-metar`).innerText = metarData.raw || `${icao} METAR non disponible`;
