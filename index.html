@@ -230,6 +230,7 @@
 
     // Chargement Météo & Déduction Piste METAR
   async function loadWeatherData(apt, lat, lon) {
+  // 1. Chargement de la météo et des tendances
   try {
     const res = await fetch(`${WORKER_URL}/api/weather?lat=${lat}&lon=${lon}`);
     const data = await res.json();
@@ -242,7 +243,7 @@
       document.getElementById(`${apt}-vis`).innerText = `Visibilité: ${(data.visibility / 1000).toFixed(1)} km`;
       drawCompass(`compass-${apt}`, windDeg, windSpeed);
 
-      // Calcul auto des pistes...
+      // Calcul des pistes
       if (apt === 'eblg') {
         currentRwyEBLG = (windDeg > 130 && windDeg <= 310) ? "22" : "04";
         document.getElementById('auto-rwy-eblg').innerText = `Piste ${currentRwyEBLG}`;
@@ -252,26 +253,26 @@
       }
       updateMarkers();
 
-      // --- AFFICHAGE DES TENDANCES METEO ---
+      // Tendances
       if (data.hourly) {
         const forecastContainer = document.getElementById(`${apt}-forecast`);
-        forecastContainer.innerHTML = ''; // Réinitialisation
+        if (forecastContainer) {
+          forecastContainer.innerHTML = '';
+          for (let i = 3; i <= 12; i += 3) {
+            const time = new Date(data.hourly.time[i]).getHours() + 'h';
+            const temp = Math.round(data.hourly.temperature_2m[i]);
+            const wind = Math.round(data.hourly.wind_speed_10m[i] * 0.539957);
+            const dir = data.hourly.wind_direction_10m[i];
 
-        // On prend un point toutes les 3h sur les 12 prochaines heures
-        for (let i = 3; i <= 12; i += 3) {
-          const time = new Date(data.hourly.time[i]).getHours() + 'h';
-          const temp = Math.round(data.hourly.temperature_2m[i]);
-          const wind = Math.round(data.hourly.wind_speed_10m[i] * 0.539957); // km/h -> kt
-          const dir = data.hourly.wind_direction_10m[i];
-
-          const item = document.createElement('div');
-          item.style.cssText = "background:#0f172a; padding:6px 10px; border-radius:6px; text-align:center; min-width:65px; border:1px solid var(--border); font-size:0.75rem;";
-          item.innerHTML = `
-            <div style="color:var(--text-muted); font-weight:bold;">${time}</div>
-            <div style="color:#f59e0b; font-size:0.9rem; margin:2px 0;">${temp}°C</div>
-            <div style="color:var(--accent);">${dir}° / ${wind}kt</div>
-          `;
-          forecastContainer.appendChild(item);
+            const item = document.createElement('div');
+            item.style.cssText = "background:#0f172a; padding:6px 10px; border-radius:6px; text-align:center; min-width:65px; border:1px solid var(--border); font-size:0.75rem;";
+            item.innerHTML = `
+              <div style="color:var(--text-muted); font-weight:bold;">${time}</div>
+              <div style="color:#f59e0b; font-size:0.9rem; margin:2px 0;">${temp}°C</div>
+              <div style="color:var(--accent);">${dir}° / ${wind}kt</div>
+            `;
+            forecastContainer.appendChild(item);
+          }
         }
       }
     }
@@ -279,18 +280,16 @@
     console.error("Erreur Météo:", e);
   }
 
-  // Suite du code pour le METAR...
-}
-
-      try {
-        const icao = apt === 'ebci' ? 'EBCI' : 'EBLG';
-        const resMetar = await fetch(`${WORKER_URL}/api/metar?station=${icao}`);
-        const metarData = await resMetar.json();
-        document.getElementById(`${apt}-metar`).innerText = metarData.raw || `${icao} METAR non disponible`;
-      } catch(e) {
-        document.getElementById(`${apt}-metar`).innerText = `${apt.toUpperCase()} METAR indisponible`;
-      }
-    }
+  // 2. Chargement du METAR (À l'intérieur de la fonction async)
+  try {
+    const icao = apt === 'ebci' ? 'EBCI' : 'EBLG';
+    const resMetar = await fetch(`${WORKER_URL}/api/metar?station=${icao}`);
+    const metarData = await resMetar.json();
+    document.getElementById(`${apt}-metar`).innerText = metarData.raw || `${icao} METAR non disponible`;
+  } catch(e) {
+    document.getElementById(`${apt}-metar`).innerText = `${apt.toUpperCase()} METAR indisponible`;
+  }
+} // <-- L'accolade de fermeture de la fonction doit être ICI à la toute fin !
 
     async function loadFlights(airport, type = 'departures', btn = null) {
       if (btn) {
