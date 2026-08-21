@@ -29,28 +29,33 @@ export default {
       }
 
       // 2. METAR
-     if (url.pathname === '/api/metar') {
-  const station = url.searchParams.get('station') || 'EBLG';
-  
-  // NWS / NOAA est gratuit et sans authentification
-  const response = await fetch(`https://tgftp.nws.noaa.gov/data/observations/metar/stations/${station.toUpperCase()}.TXT`);
-  
-  if (!response.ok) {
-    return new Response(JSON.stringify({ error: "METAR introuvable" }), {
-      status: response.status,
-      headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
-    });
-  }
+    if (url.pathname === '/api/metar') {
+      const station = url.searchParams.get('station') || 'EBLG';
+      
+      try {
+        const response = await fetch(`https://tgftp.nws.noaa.gov/data/observations/metar/stations/${station.toUpperCase()}.TXT`);
+        
+        if (!response.ok) {
+          return new Response(JSON.stringify({ error: "METAR introuvable" }), {
+            status: response.status,
+            headers: { "Content-Type": "application/json", ...corsHeaders }
+          });
+        }
 
-  const text = await response.text();
-  // Le METAR brut est généralement sur la 2ème ligne
-  const lines = text.trim().split('\n');
-  const rawMetar = lines.length > 1 ? lines[1].trim() : text.trim();
+        const text = await response.text();
+        const lines = text.trim().split('\n');
+        const rawMetar = lines.length > 1 ? lines[1].trim() : text.trim();
 
-  return new Response(JSON.stringify({ raw: rawMetar }), {
-    headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
-  });
-}
+        return new Response(JSON.stringify({ raw: rawMetar }), {
+          headers: { "Content-Type": "application/json", ...corsHeaders }
+        });
+      } catch (err) {
+        return new Response(JSON.stringify({ error: "Erreur serveur" }), {
+          status: 500,
+          headers: { "Content-Type": "application/json", ...corsHeaders }
+        });
+      }
+    }
 
       // 3. FIDS (EBLG & EBCI)
       if (path.includes("/api/fids")) {
