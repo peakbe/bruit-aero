@@ -15,18 +15,47 @@ export default {
 
     try {
       // 1. Météo OpenWeather
-      if (path.includes("/api/weather")) {
-        const lat = url.searchParams.get("lat") || "50.45";
-        const lon = url.searchParams.get("lon") || "4.45";
-        const targetUrl = `https://api.openweathermap.org/data/2.5/weather?lat=${lat}&lon=${lon}&appid=${env.OPENWEATHER_API_KEY}&units=metric&lang=fr`;
-        
-        const res = await fetch(targetUrl);
-        const data = await res.json();
-        return new Response(JSON.stringify(data), {
-          status: res.status,
-          headers: { ...corsHeaders, "Content-Type": "application/json", "Cache-Control": "public, max-age=300" }
-        });
-      }
+     if (url.pathname === '/api/weather') {
+  const lat = url.searchParams.get('lat') || '50.6374';
+  const lon = url.searchParams.get('lon') || '5.4432';
+
+  try {
+    // Interrogation d'Open-Meteo (Gratuit, sans clé d'API)
+    const response = await fetch(
+      `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,relative_humidity_2m,visibility,wind_speed_10m,wind_direction_10m`
+    );
+
+    if (!response.ok) {
+      return new Response(JSON.stringify({ error: "Météo indisponible" }), {
+        status: response.status,
+        headers: { "Content-Type": "application/json", ...corsHeaders }
+      });
+    }
+
+    const data = await response.json();
+
+    // On reformate la réponse pour garder la même structure (compatible avec votre index.html)
+    const formattedData = {
+      main: {
+        temp: data.current.temperature_2m
+      },
+      wind: {
+        speed: data.current.wind_speed_10m / 3.6, // Conversion km/h -> m/s pour correspondre au calcul knots du HTML
+        deg: data.current.wind_direction_10m
+      },
+      visibility: data.current.visibility // en mètres
+    };
+
+    return new Response(JSON.stringify(formattedData), {
+      headers: { "Content-Type": "application/json", ...corsHeaders }
+    });
+  } catch (err) {
+    return new Response(JSON.stringify({ error: "Erreur serveur météo" }), {
+      status: 500,
+      headers: { "Content-Type": "application/json", ...corsHeaders }
+    });
+  }
+}
 
       // 2. METAR
     if (url.pathname === '/api/metar') {
