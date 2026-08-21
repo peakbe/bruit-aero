@@ -11,11 +11,11 @@ export default {
     }
 
     const url = new URL(request.url);
-    const path = url.pathname;
+    const path = url.pathname.toLowerCase().replace(/\/+$/, ""); // Nettoie les slashes de fin
 
     try {
-      // Route Météo
-      if (path === "/api/weather") {
+      // 1. Route Météo OpenWeather
+      if (path.includes("/api/weather")) {
         const lat = url.searchParams.get("lat") || "50.45";
         const lon = url.searchParams.get("lon") || "4.45";
         const targetUrl = `https://api.openweathermap.org/data/2.5/weather?lat=${lat}&lon=${lon}&appid=${env.OPENWEATHER_API_KEY}&units=metric&lang=fr`;
@@ -28,8 +28,8 @@ export default {
         });
       }
 
-      // Route METAR
-      if (path === "/api/metar") {
+      // 2. Route METAR
+      if (path.includes("/api/metar")) {
         const station = url.searchParams.get("station") || "EBCI";
         const targetUrl = `https://avwx.rest/api/metar/${station}`;
 
@@ -45,8 +45,8 @@ export default {
         });
       }
 
-      // Route FIDS Liège (EBLG)
-      if (path === "/api/fids-eblg") {
+      // 3. Route FIDS Liège Airport (EBLG)
+      if (path.includes("/api/fids-eblg")) {
         const type = url.searchParams.get("type") || "departures";
         const fidsTargetUrl = `https://fids.liegeairport.com/api/flights?type=${type}`;
 
@@ -90,7 +90,11 @@ export default {
         });
       }
 
-      return new Response(JSON.stringify({ error: "Endpoint non trouvé", path }), { status: 404, headers: corsHeaders });
+      // Debug: Si aucune route ne matche, renvoie le chemin reçu
+      return new Response(JSON.stringify({ error: "Endpoint non trouvé", pathRecu: path }), { 
+        status: 404, 
+        headers: { ...corsHeaders, "Content-Type": "application/json" } 
+      });
 
     } catch (err) {
       return new Response(JSON.stringify({ error: "Erreur serveur Proxy", details: err.message }), {
@@ -100,5 +104,3 @@ export default {
     }
   }
 };
-
-
