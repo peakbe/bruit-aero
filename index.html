@@ -115,7 +115,6 @@
 
   <!-- FLIGHTS TABLES SECTION -->
   <div class="grid-container">
-    <!-- Carte Liège -->
     <div class="card">
       <div class="card-header">
         <span class="card-title">Vols Liège Airport (EBLG)</span>
@@ -130,7 +129,6 @@
       </table>
     </div>
 
-    <!-- Carte Charleroi -->
     <div class="card">
       <div class="card-header">
         <span class="card-title">Vols Charleroi Airport (EBCI)</span>
@@ -150,24 +148,9 @@
   <div class="card">
     <div class="card-header" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
       <span class="card-title"><i data-feather="map-pin"></i> Emplacement des Sonomètres EBCI & EBLG</span>
-      
-      <!-- Sélecteurs de pistes -->
-      <div style="display: flex; gap: 15px; align-items: center;">
-        <label style="font-size: 0.85rem; color: var(--text-muted);">
-          Piste EBLG : 
-          <select id="runway-eblg" onchange="updateMarkers()" style="background: #1e293b; color: #fff; border: 1px solid #334155; padding: 4px 8px; border-radius: 4px;">
-            <option value="22">Piste 22</option>
-            <option value="04">Piste 04</option>
-          </select>
-        </label>
-
-        <label style="font-size: 0.85rem; color: var(--text-muted);">
-          Piste EBCI : 
-          <select id="runway-ebci" onchange="updateMarkers()" style="background: #1e293b; color: #fff; border: 1px solid #334155; padding: 4px 8px; border-radius: 4px;">
-            <option value="24">Piste 24</option>
-            <option value="06">Piste 06</option>
-          </select>
-        </label>
+      <div style="display: flex; gap: 15px; font-size: 0.85rem; color: var(--text-muted);">
+        <span>Piste EBLG auto : <strong id="auto-rwy-eblg" style="color: var(--accent);">--</strong></span>
+        <span>Piste EBCI auto : <strong id="auto-rwy-ebci" style="color: var(--accent);">--</strong></span>
       </div>
     </div>
 
@@ -180,23 +163,19 @@
     feather.replace();
 
     const WORKER_URL = "https://bruit-aero-proxy.pnyr682w7f.workers.dev";
+    
+    // Variables globales pour mémoriser les pistes auto selon le METAR
+    let currentRwyEBLG = "22";
+    let currentRwyEBCI = "24";
 
-    // Horloge
     function updateClock() {
       const now = new Date();
-      const timeString = now.toLocaleTimeString('fr-FR', {
-        hour: '2-digit',
-        minute: '2-digit',
-        second: '2-digit',
-        hour12: false
-      });
+      const timeString = now.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
       document.getElementById('clock').innerText = `${timeString} (Local)`;
     }
-
     updateClock();
     setInterval(updateClock, 1000);
 
-    // Dessin de la rose des vents
     function drawCompass(canvasId, windDeg = 0, windSpeed = 0) {
       const canvas = document.getElementById(canvasId);
       if (!canvas) return;
@@ -204,7 +183,6 @@
       const radius = canvas.width / 2;
 
       ctx.clearRect(0, 0, canvas.width, canvas.height);
-
       ctx.beginPath();
       ctx.arc(radius, radius, radius - 10, 0, 2 * Math.PI);
       ctx.strokeStyle = '#334155';
@@ -240,7 +218,7 @@
       ctx.fillText(`${windSpeed} kt`, radius, radius + 4);
     }
 
-    // A. Chargement Météo & METAR
+    // Chargement Météo & Déduction Piste METAR
     async function loadWeatherData(apt, lat, lon) {
       try {
         const res = await fetch(`${WORKER_URL}/api/weather?lat=${lat}&lon=${lon}`);
@@ -253,6 +231,16 @@
           document.getElementById(`${apt}-wind-text`).innerText = `Vent: ${windDeg}° @ ${windSpeed} kt`;
           document.getElementById(`${apt}-vis`).innerText = `Visibilité: ${(data.visibility / 1000).toFixed(1)} km`;
           drawCompass(`compass-${apt}`, windDeg, windSpeed);
+
+          // Déduction automatique de la piste
+          if (apt === 'eblg') {
+            currentRwyEBLG = (windDeg > 130 && windDeg <= 310) ? "22" : "04";
+            document.getElementById('auto-rwy-eblg').innerText = `Piste ${currentRwyEBLG}`;
+          } else if (apt === 'ebci') {
+            currentRwyEBCI = (windDeg > 150 && windDeg <= 330) ? "24" : "06";
+            document.getElementById('auto-rwy-ebci').innerText = `Piste ${currentRwyEBCI}`;
+          }
+          updateMarkers();
         }
       } catch(e) {
         console.error("Erreur Météo:", e);
@@ -268,7 +256,6 @@
       }
     }
 
-    // B. Chargement FIDS
     async function loadFlights(airport, type = 'departures', btn = null) {
       if (btn) {
         btn.parentElement.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
@@ -313,24 +300,6 @@
       attribution: '© OpenStreetMap'
     }).addTo(map);
 
-    const greenIcon = new L.Icon({
-      iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-green.png',
-      shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
-      iconSize: [25, 41],
-      iconAnchor: [12, 41],
-      popupAnchor: [1, -34],
-      shadowSize: [41, 41]
-    });
-
-    const redIcon = new L.Icon({
-      iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-red.png',
-      shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
-      iconSize: [25, 41],
-      iconAnchor: [12, 41],
-      popupAnchor: [1, -34],
-      shadowSize: [41, 41]
-    });
-
     const sonometersData = [
       { id: 'F118', apt: 'EBCI', name: 'F118 - Sombreffe', lat: 50.505267, lon: 4.611181 },
       { id: 'F109', apt: 'EBCI', name: 'F109 - Sombreffe', lat: 50.490353, lon: 4.562389 },
@@ -371,18 +340,18 @@
 
     let activeMarkers = [];
 
-    function getSonometerColor(stationId, airport, rwyEBLG, rwyEBCI) {
+    function getSonometerColor(stationId, airport) {
       if (airport === "EBLG") {
-        if (rwyEBLG === "22") return "green";
-        if (rwyEBLG === "04") {
+        if (currentRwyEBLG === "22") return "green";
+        if (currentRwyEBLG === "04") {
           const redList = ["F004", "F005", "F006", "F010", "F012", "F016", "F017"];
           return redList.includes(stationId) ? "red" : "green";
         }
       }
 
       if (airport === "EBCI") {
-        if (rwyEBCI === "24") return "green";
-        if (rwyEBCI === "06") {
+        if (currentRwyEBCI === "24") return "green";
+        if (currentRwyEBCI === "06") {
           const redList = ["F114", "F116", "F117", "F118"];
           return redList.includes(stationId) ? "red" : "green";
         }
@@ -395,15 +364,19 @@
       activeMarkers.forEach(m => map.removeLayer(m));
       activeMarkers = [];
 
-      const rwyEBLG = document.getElementById("runway-eblg").value;
-      const rwyEBCI = document.getElementById("runway-ebci").value;
-
       sonometersData.forEach(s => {
-        const color = getSonometerColor(s.id, s.apt, rwyEBLG, rwyEBCI);
-        const icon = color === "green" ? greenIcon : redIcon;
+        const colorName = getSonometerColor(s.id, s.apt);
+        const hexColor = colorName === "green" ? "#22c55e" : "#ef4444";
 
-        const marker = L.marker([s.lat, s.lon], { icon: icon })
-          .bindPopup(`<b>Station ${s.id} (${s.apt})</b><br>${s.name}<br>Statut : ${color === "green" ? "Conforme / Vert" : "Inactif / Rouge"}`);
+        // Affichage sous forme de point (circleMarker)
+        const marker = L.circleMarker([s.lat, s.lon], {
+          radius: 7,
+          fillColor: hexColor,
+          color: "#ffffff",
+          weight: 2,
+          opacity: 1,
+          fillOpacity: 0.9
+        }).bindPopup(`<b>Station ${s.id} (${s.apt})</b><br>${s.name}<br>Statut : ${colorName === "green" ? "Conforme / Vert" : "Inactif / Rouge"}`);
 
         marker.addTo(map);
         activeMarkers.push(marker);
@@ -416,7 +389,6 @@
       loadWeatherData('eblg', 50.6374, 5.4432);
       loadFlights('EBLG', 'departures');
       loadFlights('EBCI', 'departures');
-      updateMarkers();
     });
   </script>
 </body>
