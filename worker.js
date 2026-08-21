@@ -49,6 +49,80 @@ export default {
         });
     }
 
+    export default {
+  async fetch(request, env, ctx) {
+    if (request.method === "OPTIONS") {
+      return new Response(null, {
+        headers: {
+          "Access-Control-Allow-Origin": "*",
+          "Access-Control-Allow-Methods": "GET, OPTIONS",
+          "Access-Control-Allow-Headers": "Content-Type",
+        },
+      });
+    }
+
+    const url = new URL(request.url);
+
+    // Endpoint pour récupérer les vols EBLG
+    if (url.pathname === "/api/fids-eblg") {
+      const type = url.searchParams.get("type") || "departures"; // 'departures' ou 'arrivals'
+
+      try {
+        // Interception directe de l'API REST interne du FIDS Liege Airport
+        const fidsTargetUrl = `https://fids.liegeairport.com/api/flights?type=${type}`;
+
+        const response = await fetch(fidsTargetUrl, {
+          headers: {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            "Accept": "application/json, text/plain, */*",
+            "Referer": "https://fids.liegeairport.com/"
+          }
+        });
+
+        if (!response.ok) {
+          throw new Error(`Erreur HTTP: ${response.status}`);
+        }
+
+        const rawData = await response.json();
+
+        // Transformation et nettoyage des données pour le front-end HTML
+        const cleanFlights = (rawData.flights || rawData || []).map(flight => ({
+          flight: flight.flightNumber || flight.code || "N/A",
+          airline: flight.airline || flight.company || "Cargo/Passenger",
+          destination: flight.destination || flight.origin || "Inconnu",
+          time: flight.scheduledTime || flight.time || "--:--",
+          status: flight.status || "Programmé",
+          gate: flight.gate || flight.stand || "-"
+        }));
+
+        return new Response(JSON.stringify({ type, flights: cleanFlights }), {
+          status: 200,
+          headers: {
+            "Content-Type": "application/json",
+            "Access-Control-Allow-Origin": "*",
+            "Cache-Control": "public, max-age=120" // Cache 2 minutes pour éviter de surcharger le FIDS
+          }
+        });
+
+      } catch (err) {
+        // Fallback en cas de blocage ou de changement de structure du FIDS
+        return new Response(JSON.stringify({
+          error: "Impossible de récupérer le FIDS EBLG",
+          details: err.message
+        }), {
+          status: 502,
+          headers: {
+            "Content-Type": "application/json",
+            "Access-Control-Allow-Origin": "*"
+          }
+        });
+      }
+    }
+
+    return new Response("Endpoint introuvable", { status: 404 });
+  }
+};
+    
     try {
       // 3. Appel de l'API tierce depuis les serveurs Cloudflare
       const apiResponse = await fetch(targetUrl, {
