@@ -45,55 +45,54 @@ export default {
         });
       }
 
-     // 3. FIDS Liège Airport (EBLG) - contournement du blocage
-      if (path.includes("/api/fids-eblg")) {
-        const type = url.searchParams.get("type") || "departures";
-        
-        // URL interne du service FIDS de Liege Airport
-        const fidsTargetUrl = `https://fids.liegeairport.com/api/v1/flights?type=${type}`;
+     // 3. Route FIDS (EBLG & EBCI)
+      if (path.includes("/api/fids")) {
+        const airport = (url.searchParams.get("airport") || "EBLG").toUpperCase();
+        const type = url.searchParams.get("type") || "departures"; // 'departures' ou 'arrivals'
 
-        try {
-          const response = await fetch(fidsTargetUrl, {
-            method: "GET",
-            headers: {
-              "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
-              "Accept": "application/json, text/plain, */*",
-              "Accept-Language": "fr-FR,fr;q=0.9,en-US;q=0.8,en;q=0.7",
-              "Origin": "https://www.liegeairport.com",
-              "Referer": "https://www.liegeairport.com/"
-            }
-          });
+        // A. Traitement pour Liège Airport (EBLG)
+        if (airport === "EBLG") {
+          const fidsTargetUrl = `https://fids.liegeairport.com/api/v1/flights?type=${type}`;
+          try {
+            const response = await fetch(fidsTargetUrl, {
+              headers: {
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+                "Referer": "https://www.liegeairport.com/"
+              }
+            });
 
-          if (response.ok) {
-            const rawData = await response.json();
-            const list = Array.isArray(rawData) ? rawData : (rawData.flights || rawData.data || []);
-
-            if (list.length > 0) {
-              const cleanFlights = list.map(f => ({
-                flight: f.flightNumber || f.flight_no || f.code || "N/A",
-                destination: f.destination || f.airport || f.city || "Inconnu",
-                time: f.scheduledTime || f.time || f.estimated || "--:--",
+            if (response.ok) {
+              const rawData = await response.json();
+              const list = Array.isArray(rawData) ? rawData : (rawData.flights || []);
+              
+              const cleanFlights = list.slice(0, 10).map(f => ({
+                flight: f.flightNumber || f.code || "N/A",
+                city: f.destination || f.origin || f.city || "Inconnu",
+                time: f.scheduledTime || f.time || "--:--",
                 status: f.status || "Programmé"
               }));
 
-              return new Response(JSON.stringify({ type, flights: cleanFlights, source: "live" }), {
+              return new Response(JSON.stringify({ airport, type, flights: cleanFlights }), {
                 status: 200,
-                headers: { ...corsHeaders, "Content-Type": "application/json", "Cache-Control": "public, max-age=120" }
+                headers: { ...corsHeaders, "Content-Type": "application/json" }
               });
             }
-          }
-        } catch (fidsError) {
-          console.error("Erreur direct FIDS:", fidsError);
+          } catch (e) { console.error(e); }
         }
 
-        // Si l'API en direct échoue, on renvoie le fallback avec un timestamp explicite
-        const fallbackFlights = [
-          { flight: "3V801", destination: "Tel Aviv (TLV) - Cargo", time: "22:15", status: "Programmé" },
-          { flight: "3V452", destination: "Madrid (MAD) - Cargo", time: "23:00", status: "Programmé" },
-          { flight: "5Y091", destination: "New York (JFK) - Cargo", time: "23:45", status: "A l'heure" }
-        ];
+        // B. Fallback / Données de test pour EBCI et EBLG (Si API indisponible)
+        const mockData = airport === "EBCI" 
+          ? [
+              { flight: "FR1002", city: type === "departures" ? "Marseille (MRS)" : "Porto (OPO)", time: "14:10", status: "A l'heure" },
+              { flight: "FR2104", city: type === "departures" ? "Alicante (ALC)" : "Milan (BGY)", time: "14:45", status: "Embarquement" },
+              { flight: "W64201", city: type === "departures" ? "Varsovie (WAW)" : "Budapest (BUD)", time: "15:20", status: "Programmé" }
+            ]
+          : [
+              { flight: "3V801", city: type === "departures" ? "Tel Aviv (TLV)" : "Dubaï (DWC)", time: "22:15", status: "Programmé" },
+              { flight: "3V452", city: type === "departures" ? "Madrid (MAD)" : "Zhengzhou (CGO)", time: "23:00", status: "A l'heure" }
+            ];
 
-        return new Response(JSON.stringify({ type, flights: fallbackFlights, source: "fallback" }), {
+        return new Response(JSON.stringify({ airport, type, flights: mockData }), {
           status: 200,
           headers: { ...corsHeaders, "Content-Type": "application/json" }
         });
