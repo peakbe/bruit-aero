@@ -64,24 +64,24 @@
     }
     
     .btn-reset {
-  background-color: #1e293b;
-  color: #f8fafc;
-  border: 1px solid var(--border, #334155);
-  padding: 6px 12px;
-  border-radius: 6px;
-  font-size: 0.85rem;
-  font-weight: 500;
-  cursor: pointer;
-  transition: background-color 0.2s ease, border-color 0.2s ease;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-}
+      background-color: #0f172a;
+      color: #f8fafc;
+      border: 1px solid var(--border);
+      padding: 6px 12px;
+      border-radius: 6px;
+      font-size: 0.85rem;
+      font-weight: 500;
+      cursor: pointer;
+      transition: background-color 0.2s ease, border-color 0.2s ease;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
 
-.btn-reset:hover {
-  background-color: #334155;
-  border-color: var(--accent, #38bdf8);
-}
+    .btn-reset:hover {
+      background-color: #334155;
+      border-color: var(--accent);
+    }
   </style>
 </head>
 <body>
@@ -92,56 +92,56 @@
   </header>
 
   <div class="grid-container">
-  <!-- EBCI WEATHER -->
-  <div class="card">
-    <div class="card-header">
-      <span class="card-title">Charleroi (EBCI / CRL) - Météo</span>
-      <span class="badge badge-dep">Direct Proxy</span>
-    </div>
-    <div class="weather-box">
-      <div class="metar-info">
-        <div class="temp-large" id="ebci-temp">--°C</div>
-        <div style="color: var(--text-muted);" id="ebci-wind-text">Vent: --° @ -- kt</div>
-        <div style="color: var(--text-muted);" id="ebci-vis">Visibilité: -- km</div>
-        <div class="metar-code" id="ebci-metar">Chargement du METAR...</div>
+    <!-- EBCI WEATHER -->
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title">Charleroi (EBCI / CRL) - Météo</span>
+        <span class="badge badge-dep">Direct Proxy</span>
       </div>
-      <div class="compass-container">
-        <canvas id="compass-ebci" class="compass" width="130" height="130"></canvas>
-        <div style="font-size: 0.8rem; margin-top: 4px; color: var(--text-muted);">Rose des vents</div>
+      <div class="weather-box">
+        <div class="metar-info">
+          <div class="temp-large" id="ebci-temp">--°C</div>
+          <div style="color: var(--text-muted);" id="ebci-wind-text">Vent: --° @ -- kt</div>
+          <div style="color: var(--text-muted);" id="ebci-vis">Visibilité: -- km</div>
+          <div class="metar-code" id="ebci-metar">Chargement du METAR...</div>
+        </div>
+        <div class="compass-container">
+          <canvas id="compass-ebci" class="compass" width="130" height="130"></canvas>
+          <div style="font-size: 0.8rem; margin-top: 4px; color: var(--text-muted);">Rose des vents</div>
+        </div>
+      </div>
+      <!-- CONTENEUR TENDANCE EBCI -->
+      <div style="margin-top: 15px; border-top: 1px dashed var(--border); padding-top: 10px;">
+        <div style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 8px;">Tendance (Prochaines heures) :</div>
+        <div id="ebci-forecast" style="display: flex; gap: 10px; overflow-x: auto; padding-bottom: 5px;"></div>
       </div>
     </div>
-    <!-- CONTENEUR TENDANCE EBCI -->
-    <div style="margin-top: 15px; border-top: 1px dashed var(--border); padding-top: 10px;">
-      <div style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 8px;">Tendance (Prochaines heures) :</div>
-      <div id="ebci-forecast" style="display: flex; gap: 10px; overflow-x: auto; padding-bottom: 5px;"></div>
-    </div>
-  </div>
 
-  <!-- EBLG WEATHER -->
-  <div class="card">
-    <div class="card-header">
-      <span class="card-title">Liège (EBLG / LGG) - Météo</span>
-      <span class="badge badge-arr">Direct Proxy</span>
-    </div>
-    <div class="weather-box">
-      <div class="metar-info">
-        <div class="temp-large" id="eblg-temp">--°C</div>
-        <div style="color: var(--text-muted);" id="eblg-wind-text">Vent: --° @ -- kt</div>
-        <div style="color: var(--text-muted);" id="eblg-vis">Visibilité: -- km</div>
-        <div class="metar-code" id="eblg-metar">Chargement du METAR...</div>
+    <!-- EBLG WEATHER -->
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title">Liège (EBLG / LGG) - Météo</span>
+        <span class="badge badge-arr">Direct Proxy</span>
       </div>
-      <div class="compass-container">
-        <canvas id="compass-eblg" class="compass" width="130" height="130"></canvas>
-        <div style="font-size: 0.8rem; margin-top: 4px; color: var(--text-muted);">Rose des vents</div>
+      <div class="weather-box">
+        <div class="metar-info">
+          <div class="temp-large" id="eblg-temp">--°C</div>
+          <div style="color: var(--text-muted);" id="eblg-wind-text">Vent: --° @ -- kt</div>
+          <div style="color: var(--text-muted);" id="eblg-vis">Visibilité: -- km</div>
+          <div class="metar-code" id="eblg-metar">Chargement du METAR...</div>
+        </div>
+        <div class="compass-container">
+          <canvas id="compass-eblg" class="compass" width="130" height="130"></canvas>
+          <div style="font-size: 0.8rem; margin-top: 4px; color: var(--text-muted);">Rose des vents</div>
+        </div>
       </div>
-    </div>
-    <!-- CONTENEUR TENDANCE EBLG -->
-    <div style="margin-top: 15px; border-top: 1px dashed var(--border); padding-top: 10px;">
-      <div style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 8px;">Tendance (Prochaines heures) :</div>
-      <div id="eblg-forecast" style="display: flex; gap: 10px; overflow-x: auto; padding-bottom: 5px;"></div>
+      <!-- CONTENEUR TENDANCE EBLG -->
+      <div style="margin-top: 15px; border-top: 1px dashed var(--border); padding-top: 10px;">
+        <div style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 8px;">Tendance (Prochaines heures) :</div>
+        <div id="eblg-forecast" style="display: flex; gap: 10px; overflow-x: auto; padding-bottom: 5px;"></div>
+      </div>
     </div>
   </div>
-</div>
 
   <!-- FLIGHTS TABLES SECTION -->
   <div class="grid-container">
@@ -178,9 +178,13 @@
   <div class="card">
     <div class="card-header" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
       <span class="card-title"><i data-feather="map-pin"></i> Emplacement des Sonomètres EBCI & EBLG</span>
-      <div style="display: flex; gap: 15px; font-size: 0.85rem; color: var(--text-muted);">
+      <div style="display: flex; align-items: center; gap: 15px; font-size: 0.85rem; color: var(--text-muted);">
         <span>Piste EBLG auto : <strong id="auto-rwy-eblg" style="color: var(--accent);">--</strong></span>
         <span>Piste EBCI auto : <strong id="auto-rwy-ebci" style="color: var(--accent);">--</strong></span>
+        <!-- AJOUT DU BOUTON RECENTRER ICI -->
+        <button id="btn-reset-map" class="btn-reset">
+          🎯 Recentrer la carte
+        </button>
       </div>
     </div>
 
@@ -193,8 +197,11 @@
     feather.replace();
 
     const WORKER_URL = "https://bruit-aero-proxy.pnyr682w7f.workers.dev";
+    const DEFAULT_CENTER = [50.55, 5.0];
+    const DEFAULT_ZOOM = 9;
     
-    // Variables globales pour mémoriser les pistes auto selon le METAR
+    let map;
+    let activeMarkers = [];
     let currentRwyEBLG = "22";
     let currentRwyEBCI = "24";
 
@@ -207,132 +214,123 @@
     setInterval(updateClock, 1000);
 
     function drawCompass(canvasId, windDeg = 0, windSpeedKt = 0, windSpeedMs = 0) {
-  const canvas = document.getElementById(canvasId);
-  if (!canvas) return;
-  const ctx = canvas.getContext('2d');
-  const radius = canvas.width / 2;
+      const canvas = document.getElementById(canvasId);
+      if (!canvas) return;
+      const ctx = canvas.getContext('2d');
+      const radius = canvas.width / 2;
 
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
-  ctx.beginPath();
-  ctx.arc(radius, radius, radius - 10, 0, 2 * Math.PI);
-  ctx.strokeStyle = '#334155';
-  ctx.lineWidth = 3;
-  ctx.stroke();
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.beginPath();
+      ctx.arc(radius, radius, radius - 10, 0, 2 * Math.PI);
+      ctx.strokeStyle = '#334155';
+      ctx.lineWidth = 3;
+      ctx.stroke();
 
-  ctx.fillStyle = '#94a3b8';
-  ctx.font = '10px sans-serif';
-  ctx.textAlign = 'center';
-  ctx.fillText('N', radius, 18);
-  ctx.fillText('S', radius, canvas.height - 8);
-  ctx.fillText('E', canvas.width - 10, radius + 3);
-  ctx.fillText('O', 12, radius + 3);
+      ctx.fillStyle = '#94a3b8';
+      ctx.font = '10px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText('N', radius, 18);
+      ctx.fillText('S', radius, canvas.height - 8);
+      ctx.fillText('E', canvas.width - 10, radius + 3);
+      ctx.fillText('O', 12, radius + 3);
 
-  ctx.save();
-  ctx.translate(radius, radius);
-  ctx.rotate((windDeg * Math.PI) / 180);
+      ctx.save();
+      ctx.translate(radius, radius);
+      ctx.rotate((windDeg * Math.PI) / 180);
 
-  ctx.beginPath();
-  ctx.moveTo(0, -radius + 20);
-  ctx.lineTo(8, 15);
-  ctx.lineTo(0, 5);
-  ctx.lineTo(-8, 15);
-  ctx.closePath();
-  ctx.fillStyle = '#38bdf8';
-  ctx.fill();
+      ctx.beginPath();
+      ctx.moveTo(0, -radius + 20);
+      ctx.lineTo(8, 15);
+      ctx.lineTo(0, 5);
+      ctx.lineTo(-8, 15);
+      ctx.closePath();
+      ctx.fillStyle = '#38bdf8';
+      ctx.fill();
 
-  ctx.restore();
+      ctx.restore();
 
-  ctx.fillStyle = '#f8fafc';
-  ctx.font = 'bold 11px sans-serif';
-  ctx.textAlign = 'center';
-  ctx.fillText(`${windSpeedKt} kt`, radius, radius - 2);
-  ctx.font = '10px sans-serif';
-  ctx.fillStyle = '#94a3b8';
-  ctx.fillText(`${windSpeedMs} m/s`, radius, radius + 12);
-}
+      ctx.fillStyle = '#f8fafc';
+      ctx.font = 'bold 11px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText(`${windSpeedKt} kt`, radius, radius - 2);
+      ctx.font = '10px sans-serif';
+      ctx.fillStyle = '#94a3b8';
+      ctx.fillText(`${windSpeedMs} m/s`, radius, radius + 12);
+    }
 
-    // Chargement Météo & Déduction Piste METAR
-async function loadWeatherData(apt, lat, lon) {
-  const aptLower = apt.toLowerCase();
+    async function loadWeatherData(apt, lat, lon) {
+      const aptLower = apt.toLowerCase();
 
-  // 1. Chargement Météo & Tendances
-  try {
-    const res = await fetch(`${WORKER_URL}/api/weather?lat=${lat}&lon=${lon}`);
-    const data = await res.json();
-    
-    if (data.main) {
-      document.getElementById(`${aptLower}-temp`).innerText = `${Math.round(data.main.temp)}°C`;
-      
-      const windDeg = data.wind?.deg || 0;
-      // data.wind.speed est reçu du worker en m/s
-      const windSpeedMs = (data.wind?.speed || 0).toFixed(1);
-      const windSpeedKmh = Math.round(windSpeedMs * 3.6);
-      const windSpeedKt = Math.round(windSpeedMs * 1.94384);
-
-      // Affichage complet des unités pour le vent actuel
-      document.getElementById(`${aptLower}-wind-text`).innerText = 
-        `Vent: ${windDeg}° @ ${windSpeedKt} kt (${windSpeedMs} m/s - ${windSpeedKmh} km/h)`;
+      try {
+        const res = await fetch(`${WORKER_URL}/api/weather?lat=${lat}&lon=${lon}`);
+        const data = await res.json();
         
-      document.getElementById(`${aptLower}-vis`).innerText = `Visibilité: ${(data.visibility / 1000).toFixed(1)} km`;
-      
-      drawCompass(`compass-${aptLower}`, windDeg, windSpeedKt, windSpeedMs);
-
-      // Calcul auto des pistes
-      if (aptLower === 'eblg') {
-        currentRwyEBLG = (windDeg > 130 && windDeg <= 310) ? "22" : "04";
-        document.getElementById('auto-rwy-eblg').innerText = `Piste ${currentRwyEBLG}`;
-      } else if (aptLower === 'ebci') {
-        currentRwyEBCI = (windDeg > 150 && windDeg <= 330) ? "24" : "06";
-        document.getElementById('auto-rwy-ebci').innerText = `Piste ${currentRwyEBCI}`;
-      }
-      updateMarkers();
-
-      // Génération des vignettes de Tendance
-      if (data.hourly) {
-        const forecastContainer = document.getElementById(`${aptLower}-forecast`);
-        if (forecastContainer) {
-          forecastContainer.innerHTML = '';
+        if (data.main) {
+          document.getElementById(`${aptLower}-temp`).innerText = `${Math.round(data.main.temp)}°C`;
           
-          for (let i = 3; i <= 12; i += 3) {
-            if (!data.hourly.time[i]) break;
-            
-            const time = new Date(data.hourly.time[i]).getHours() + 'h';
-            const temp = Math.round(data.hourly.temperature_2m[i]);
-            
-            // Calculs d'unités pour la tendance (Open-Meteo donne wind_speed_10m en km/h)
-            const windKmh = Math.round(data.hourly.wind_speed_10m[i]);
-            const windMs = (windKmh / 3.6).toFixed(1);
-            const windKt = Math.round(windKmh * 0.539957);
-            const dir = data.hourly.wind_direction_10m[i];
+          const windDeg = data.wind?.deg || 0;
+          const windSpeedMs = (data.wind?.speed || 0).toFixed(1);
+          const windSpeedKmh = Math.round(windSpeedMs * 3.6);
+          const windSpeedKt = Math.round(windSpeedMs * 1.94384);
 
-            const item = document.createElement('div');
-            item.style.cssText = "background:#0f172a; padding:6px 8px; border-radius:6px; text-align:center; min-width:85px; border:1px solid var(--border); font-size:0.75rem;";
-            item.innerHTML = `
-              <div style="color:var(--text-muted); font-weight:bold;">${time}</div>
-              <div style="color:#f59e0b; font-size:0.85rem; margin:2px 0;">${temp}°C</div>
-              <div style="color:var(--accent); font-weight:600;">${dir}°</div>
-              <div style="color:var(--text-light); font-size:0.7rem;">${windKt} kt</div>
-              <div style="color:var(--text-muted); font-size:0.65rem;">${windMs} m/s (${windKmh} km/h)</div>
-            `;
-            forecastContainer.appendChild(item);
+          document.getElementById(`${aptLower}-wind-text`).innerText = 
+            `Vent: ${windDeg}° @ ${windSpeedKt} kt (${windSpeedMs} m/s - ${windSpeedKmh} km/h)`;
+            
+          document.getElementById(`${aptLower}-vis`).innerText = `Visibilité: ${(data.visibility / 1000).toFixed(1)} km`;
+          
+          drawCompass(`compass-${aptLower}`, windDeg, windSpeedKt, windSpeedMs);
+
+          if (aptLower === 'eblg') {
+            currentRwyEBLG = (windDeg > 130 && windDeg <= 310) ? "22" : "04";
+            document.getElementById('auto-rwy-eblg').innerText = `Piste ${currentRwyEBLG}`;
+          } else if (aptLower === 'ebci') {
+            currentRwyEBCI = (windDeg > 150 && windDeg <= 330) ? "24" : "06";
+            document.getElementById('auto-rwy-ebci').innerText = `Piste ${currentRwyEBCI}`;
+          }
+          updateMarkers();
+
+          if (data.hourly) {
+            const forecastContainer = document.getElementById(`${aptLower}-forecast`);
+            if (forecastContainer) {
+              forecastContainer.innerHTML = '';
+              
+              for (let i = 3; i <= 12; i += 3) {
+                if (!data.hourly.time[i]) break;
+                
+                const time = new Date(data.hourly.time[i]).getHours() + 'h';
+                const temp = Math.round(data.hourly.temperature_2m[i]);
+                const windKmh = Math.round(data.hourly.wind_speed_10m[i]);
+                const windMs = (windKmh / 3.6).toFixed(1);
+                const windKt = Math.round(windKmh * 0.539957);
+                const dir = data.hourly.wind_direction_10m[i];
+
+                const item = document.createElement('div');
+                item.style.cssText = "background:#0f172a; padding:6px 8px; border-radius:6px; text-align:center; min-width:85px; border:1px solid var(--border); font-size:0.75rem;";
+                item.innerHTML = `
+                  <div style="color:var(--text-muted); font-weight:bold;">${time}</div>
+                  <div style="color:#f59e0b; font-size:0.85rem; margin:2px 0;">${temp}°C</div>
+                  <div style="color:var(--accent); font-weight:600;">${dir}°</div>
+                  <div style="color:var(--text-light); font-size:0.7rem;">${windKt} kt</div>
+                  <div style="color:var(--text-muted); font-size:0.65rem;">${windMs} m/s (${windKmh} km/h)</div>
+                `;
+                forecastContainer.appendChild(item);
+              }
+            }
           }
         }
+      } catch(e) {
+        console.error(`Erreur Météo ${apt}:`, e);
+      }
+
+      try {
+        const icao = apt.toUpperCase();
+        const resMetar = await fetch(`${WORKER_URL}/api/metar?station=${icao}`);
+        const metarData = await resMetar.json();
+        document.getElementById(`${aptLower}-metar`).innerText = metarData.raw || `${icao} METAR non disponible`;
+      } catch(e) {
+        document.getElementById(`${aptLower}-metar`).innerText = `${apt.toUpperCase()} METAR indisponible`;
       }
     }
-  } catch(e) {
-    console.error(`Erreur Météo ${apt}:`, e);
-  }
-
-  // 2. Chargement du METAR
-  try {
-    const icao = apt.toUpperCase();
-    const resMetar = await fetch(`${WORKER_URL}/api/metar?station=${icao}`);
-    const metarData = await resMetar.json();
-    document.getElementById(`${aptLower}-metar`).innerText = metarData.raw || `${icao} METAR non disponible`;
-  } catch(e) {
-    document.getElementById(`${aptLower}-metar`).innerText = `${apt.toUpperCase()} METAR indisponible`;
-  }
-}
 
     async function loadFlights(airport, type = 'departures', btn = null) {
       if (btn) {
@@ -370,39 +368,6 @@ async function loadWeatherData(apt, lat, lon) {
         tbody.innerHTML = '<tr><td colspan="4" style="color:#ef4444; text-align:center;">Erreur chargement</td></tr>';
       }
     }
-
-    // 1. Déclarer les constantes par défaut
-const DEFAULT_CENTER = [50.55, 5.0];
-const DEFAULT_ZOOM = 9;
-
-// Variable globale pour la carte
-let map;
-
-// 2. Chargement initial (au chargement du DOM)
-document.addEventListener("DOMContentLoaded", async () => {
-
-  // A. Initialisation de la carte Leaflet
-  map = L.map('map').setView(DEFAULT_CENTER, DEFAULT_ZOOM);
-
-  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-    maxZoom: 19,
-    attribution: '© OpenStreetMap'
-  }).addTo(map);
-
-  // B. Attacher l'événement au bouton "Recentrer" (Placé ICI, une fois la carte prête)
-  const resetBtn = document.getElementById('btn-reset-map');
-  if (resetBtn) {
-    resetBtn.addEventListener('click', () => {
-      map.flyTo(DEFAULT_CENTER, DEFAULT_ZOOM, {
-        duration: 1.2
-      });
-    });
-  }
-
-  // C. Lancement du chargement des météos, METARs et marqueurs
-  loadWeatherData('ebci', 50.4592, 4.4538);
-  loadWeatherData('eblg', 50.6374, 5.4432);
-});
 
     const sonometersData = [
       { id: 'F118', apt: 'EBCI', name: 'Rue Piconette 1, Sombreffe', lat: 50.505267, lon: 4.611181 },
@@ -442,8 +407,6 @@ document.addEventListener("DOMContentLoaded", async () => {
       { id: 'F012', apt: 'EBLG', name: 'Rue Barbe d Or 13, 4317 Aineffe', lat: 50.621917, lon: 5.254747 }
     ];
 
-    let activeMarkers = [];
-
     function getSonometerColor(stationId, airport) {
       if (airport === "EBLG") {
         if (currentRwyEBLG === "22") return "green";
@@ -465,6 +428,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
 
     function updateMarkers() {
+      if (!map) return;
       activeMarkers.forEach(m => map.removeLayer(m));
       activeMarkers = [];
 
@@ -472,7 +436,6 @@ document.addEventListener("DOMContentLoaded", async () => {
         const colorName = getSonometerColor(s.id, s.apt);
         const hexColor = colorName === "green" ? "#22c55e" : "#ef4444";
 
-        // Affichage sous forme de point (circleMarker)
         const marker = L.circleMarker([s.lat, s.lon], {
           radius: 7,
           fillColor: hexColor,
@@ -487,8 +450,27 @@ document.addEventListener("DOMContentLoaded", async () => {
       });
     }
 
-    // Chargement initial
+    // Initialisation unique au chargement du DOM
     document.addEventListener("DOMContentLoaded", () => {
+      // 1. Initialiser la carte Leaflet
+      map = L.map('map').setView(DEFAULT_CENTER, DEFAULT_ZOOM);
+
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        maxZoom: 19,
+        attribution: '© OpenStreetMap'
+      }).addTo(map);
+
+      // 2. Attacher l'événement au bouton de recentrage
+      const resetBtn = document.getElementById('btn-reset-map');
+      if (resetBtn) {
+        resetBtn.addEventListener('click', () => {
+          map.flyTo(DEFAULT_CENTER, DEFAULT_ZOOM, {
+            duration: 1.2
+          });
+        });
+      }
+
+      // 3. Charger les météos et vols
       loadWeatherData('ebci', 50.4592, 4.4538);
       loadWeatherData('eblg', 50.6374, 5.4432);
       loadFlights('EBLG', 'departures');
