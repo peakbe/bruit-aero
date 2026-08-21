@@ -45,12 +45,11 @@ export default {
         });
       }
 
-     // 3. Route FIDS (EBLG & EBCI)
+      // 3. FIDS (EBLG & EBCI)
       if (path.includes("/api/fids")) {
         const airport = (url.searchParams.get("airport") || "EBLG").toUpperCase();
-        const type = url.searchParams.get("type") || "departures"; // 'departures' ou 'arrivals'
+        const type = url.searchParams.get("type") || "departures";
 
-        // A. Traitement pour Liège Airport (EBLG)
         if (airport === "EBLG") {
           const fidsTargetUrl = `https://fids.liegeairport.com/api/v1/flights?type=${type}`;
           try {
@@ -77,10 +76,12 @@ export default {
                 headers: { ...corsHeaders, "Content-Type": "application/json" }
               });
             }
-          } catch (e) { console.error(e); }
+          } catch (e) {
+            console.error(e);
+          }
         }
 
-        // B. Fallback / Données de test pour EBCI et EBLG (Si API indisponible)
+        // Fallback / Données de test
         const mockData = airport === "EBCI" 
           ? [
               { flight: "FR1002", city: type === "departures" ? "Marseille (MRS)" : "Porto (OPO)", time: "14:10", status: "A l'heure" },
@@ -97,5 +98,17 @@ export default {
           headers: { ...corsHeaders, "Content-Type": "application/json" }
         });
       }
+
+      return new Response(JSON.stringify({ error: "Endpoint non trouvé", path }), {
+        status: 404,
+        headers: { ...corsHeaders, "Content-Type": "application/json" }
+      });
+
+    } catch (err) {
+      return new Response(JSON.stringify({ error: "Erreur serveur Proxy", details: err.message }), {
+        status: 500,
+        headers: { ...corsHeaders, "Content-Type": "application/json" }
+      });
+    }
   }
 };
