@@ -229,32 +229,58 @@
     }
 
     // Chargement Météo & Déduction Piste METAR
-    async function loadWeatherData(apt, lat, lon) {
-      try {
-        const res = await fetch(`${WORKER_URL}/api/weather?lat=${lat}&lon=${lon}`);
-        const data = await res.json();
-        
-        if (data.main) {
-          document.getElementById(`${apt}-temp`).innerText = `${Math.round(data.main.temp)}°C`;
-          const windDeg = data.wind?.deg || 0;
-          const windSpeed = Math.round((data.wind?.speed || 0) * 1.94384);
-          document.getElementById(`${apt}-wind-text`).innerText = `Vent: ${windDeg}° @ ${windSpeed} kt`;
-          document.getElementById(`${apt}-vis`).innerText = `Visibilité: ${(data.visibility / 1000).toFixed(1)} km`;
-          drawCompass(`compass-${apt}`, windDeg, windSpeed);
+  async function loadWeatherData(apt, lat, lon) {
+  try {
+    const res = await fetch(`${WORKER_URL}/api/weather?lat=${lat}&lon=${lon}`);
+    const data = await res.json();
+    
+    if (data.main) {
+      document.getElementById(`${apt}-temp`).innerText = `${Math.round(data.main.temp)}°C`;
+      const windDeg = data.wind?.deg || 0;
+      const windSpeed = Math.round((data.wind?.speed || 0) * 1.94384);
+      document.getElementById(`${apt}-wind-text`).innerText = `Vent: ${windDeg}° @ ${windSpeed} kt`;
+      document.getElementById(`${apt}-vis`).innerText = `Visibilité: ${(data.visibility / 1000).toFixed(1)} km`;
+      drawCompass(`compass-${apt}`, windDeg, windSpeed);
 
-          // Déduction automatique de la piste
-          if (apt === 'eblg') {
-            currentRwyEBLG = (windDeg > 130 && windDeg <= 310) ? "22" : "04";
-            document.getElementById('auto-rwy-eblg').innerText = `Piste ${currentRwyEBLG}`;
-          } else if (apt === 'ebci') {
-            currentRwyEBCI = (windDeg > 150 && windDeg <= 330) ? "24" : "06";
-            document.getElementById('auto-rwy-ebci').innerText = `Piste ${currentRwyEBCI}`;
-          }
-          updateMarkers();
-        }
-      } catch(e) {
-        console.error("Erreur Météo:", e);
+      // Calcul auto des pistes...
+      if (apt === 'eblg') {
+        currentRwyEBLG = (windDeg > 130 && windDeg <= 310) ? "22" : "04";
+        document.getElementById('auto-rwy-eblg').innerText = `Piste ${currentRwyEBLG}`;
+      } else if (apt === 'ebci') {
+        currentRwyEBCI = (windDeg > 150 && windDeg <= 330) ? "24" : "06";
+        document.getElementById('auto-rwy-ebci').innerText = `Piste ${currentRwyEBCI}`;
       }
+      updateMarkers();
+
+      // --- AFFICHAGE DES TENDANCES METEO ---
+      if (data.hourly) {
+        const forecastContainer = document.getElementById(`${apt}-forecast`);
+        forecastContainer.innerHTML = ''; // Réinitialisation
+
+        // On prend un point toutes les 3h sur les 12 prochaines heures
+        for (let i = 3; i <= 12; i += 3) {
+          const time = new Date(data.hourly.time[i]).getHours() + 'h';
+          const temp = Math.round(data.hourly.temperature_2m[i]);
+          const wind = Math.round(data.hourly.wind_speed_10m[i] * 0.539957); // km/h -> kt
+          const dir = data.hourly.wind_direction_10m[i];
+
+          const item = document.createElement('div');
+          item.style.cssText = "background:#0f172a; padding:6px 10px; border-radius:6px; text-align:center; min-width:65px; border:1px solid var(--border); font-size:0.75rem;";
+          item.innerHTML = `
+            <div style="color:var(--text-muted); font-weight:bold;">${time}</div>
+            <div style="color:#f59e0b; font-size:0.9rem; margin:2px 0;">${temp}°C</div>
+            <div style="color:var(--accent);">${dir}° / ${wind}kt</div>
+          `;
+          forecastContainer.appendChild(item);
+        }
+      }
+    }
+  } catch(e) {
+    console.error("Erreur Météo:", e);
+  }
+
+  // Suite du code pour le METAR...
+}
 
       try {
         const icao = apt === 'ebci' ? 'EBCI' : 'EBLG';
