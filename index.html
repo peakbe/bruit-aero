@@ -62,6 +62,26 @@
       .grid-container { grid-template-columns: 1fr; }
       .weather-box { flex-direction: column; text-align: center; }
     }
+    
+    .btn-reset {
+  background-color: #1e293b;
+  color: #f8fafc;
+  border: 1px solid var(--border, #334155);
+  padding: 6px 12px;
+  border-radius: 6px;
+  font-size: 0.85rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color 0.2s ease, border-color 0.2s ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.btn-reset:hover {
+  background-color: #334155;
+  border-color: var(--accent, #38bdf8);
+}
   </style>
 </head>
 <body>
@@ -351,12 +371,38 @@ async function loadWeatherData(apt, lat, lon) {
       }
     }
 
-    // Initialisation Carte Leaflet
-    const map = L.map('map').setView([50.55, 4.95], 9);
+    // 1. Déclarer les constantes par défaut
+const DEFAULT_CENTER = [50.55, 5.0];
+const DEFAULT_ZOOM = 9;
 
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      attribution: '© OpenStreetMap'
-    }).addTo(map);
+// Variable globale pour la carte
+let map;
+
+// 2. Chargement initial (au chargement du DOM)
+document.addEventListener("DOMContentLoaded", async () => {
+
+  // A. Initialisation de la carte Leaflet
+  map = L.map('map').setView(DEFAULT_CENTER, DEFAULT_ZOOM);
+
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    maxZoom: 19,
+    attribution: '© OpenStreetMap'
+  }).addTo(map);
+
+  // B. Attacher l'événement au bouton "Recentrer" (Placé ICI, une fois la carte prête)
+  const resetBtn = document.getElementById('btn-reset-map');
+  if (resetBtn) {
+    resetBtn.addEventListener('click', () => {
+      map.flyTo(DEFAULT_CENTER, DEFAULT_ZOOM, {
+        duration: 1.2
+      });
+    });
+  }
+
+  // C. Lancement du chargement des météos, METARs et marqueurs
+  loadWeatherData('ebci', 50.4592, 4.4538);
+  loadWeatherData('eblg', 50.6374, 5.4432);
+});
 
     const sonometersData = [
       { id: 'F118', apt: 'EBCI', name: 'Rue Piconette 1, Sombreffe', lat: 50.505267, lon: 4.611181 },
