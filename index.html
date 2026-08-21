@@ -162,7 +162,33 @@
       </table>
     </div>
   </div>
+  
+<!-- Carte Liège -->
+<div class="card">
+  <h3>Vols Liège Airport (EBLG)</h3>
+  <div class="tabs">
+    <button class="tab-btn active" onclick="loadFlights('EBLG', 'departures', this)">Départs</button>
+    <button class="tab-btn" onclick="loadFlights('EBLG', 'arrivals', this)">Arrivées</button>
+  </div>
+  <table>
+    <thead><tr><th>Vol</th><th>Destination/Origine</th><th>Heure</th><th>Statut</th></tr></thead>
+    <tbody id="eblg-flights-body"></tbody>
+  </table>
+</div>
 
+<!-- Carte Charleroi -->
+<div class="card">
+  <h3>Vols Charleroi Airport (EBCI)</h3>
+  <div class="tabs">
+    <button class="tab-btn active" onclick="loadFlights('EBCI', 'departures', this)">Départs</button>
+    <button class="tab-btn" onclick="loadFlights('EBCI', 'arrivals', this)">Arrivées</button>
+  </div>
+  <table>
+    <thead><tr><th>Vol</th><th>Destination/Origine</th><th>Heure</th><th>Statut</th></tr></thead>
+    <tbody id="ebci-flights-body"></tbody>
+  </table>
+</div>
+  
   <!-- SONOMETERS & NOISE MAP -->
   <div class="card">
     <div class="card-header">
@@ -285,76 +311,50 @@ async function loadWeatherData(apt, lat, lon) {
 }
 
 // B. Chargement FIDS Liège (EBLG)
-async function fetchEBLGFlights(type = 'departures', btn = null) {
+async function loadFlights(airport, type = 'departures', btn = null) {
+  // Gestion de l'état actif des onglets Départs/Arrivées
   if (btn) {
     btn.parentElement.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
     btn.classList.add('active');
   }
 
-  const tbody = document.getElementById('eblg-flights-body');
-  tbody.innerHTML = '<tr><td colspan="4" style="text-align:center; color:var(--text-muted);">Connexion au FIDS...</td></tr>';
+  const containerId = `${airport.toLowerCase()}-flights-body`;
+  const tbody = document.getElementById(containerId);
+  if (!tbody) return;
+
+  tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;">Chargement...</td></tr>';
 
   try {
-    const res = await fetch(`${WORKER_URL}/api/fids-eblg?type=${type}`);
+    const res = await fetch(`${WORKER_URL}/api/fids?airport=${airport}&type=${type}`);
     const data = await res.json();
 
     tbody.innerHTML = '';
     if (!data.flights || data.flights.length === 0) {
-      tbody.innerHTML = '<tr><td colspan="4">Aucun vol trouvé.</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;">Aucun vol trouvé.</td></tr>';
       return;
     }
 
+    // Affichage des 10 premiers vols
     data.flights.slice(0, 10).forEach(f => {
       const tr = document.createElement('tr');
       tr.innerHTML = `
-        <td style="font-weight:bold; color:var(--text-light);">${f.flight}</td>
-        <td>${f.destination}</td>
+        <td style="font-weight:bold;">${f.flight}</td>
+        <td>${f.city}</td>
         <td>${f.time}</td>
-        <td><span style="color: #38bdf8">${f.status}</span></td>
+        <td><span style="color:#38bdf8;">${f.status}</span></td>
       `;
       tbody.appendChild(tr);
     });
   } catch (err) {
-    tbody.innerHTML = '<tr><td colspan="4" style="color:#ef4444;">Erreur chargement FIDS</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="4" style="color:#ef4444; text-align:center;">Erreur chargement</td></tr>';
   }
 }
 
-    fetchEBLGFlights('departures');
-
-    // Données fictives EBCI
-    const ebciFlightData = {
-      dep: [
-        { flight: "FR1002", dest: "Marseille (MRS)", time: "15:10", status: "Embarquement" },
-        { flight: "FR2104", dest: "Porto (OPO)", time: "15:45", status: "A l'heure" },
-        { flight: "W64301", dest: "Bucarest (OTP)", time: "16:00", status: "A l'heure" }
-      ],
-      arr: [
-        { flight: "FR1003", dest: "Marseille (MRS)", time: "14:50", status: "Atterri" },
-        { flight: "FR2105", dest: "Porto (OPO)", time: "15:20", status: "Approche" }
-      ]
-    };
-
-    function renderEBCIFlights(type) {
-      const tbody = document.getElementById('ebci-flights-body');
-      tbody.innerHTML = '';
-      ebciFlightData[type].forEach(f => {
-        const tr = document.createElement('tr');
-        tr.innerHTML = `
-          <td style="font-weight:bold; color:var(--text-light);">${f.flight}</td>
-          <td>${f.dest}</td>
-          <td>${f.time}</td>
-          <td><span style="color: #10b981">${f.status}</span></td>
-        `;
-        tbody.appendChild(tr);
-      });
-    }
-
-    function switchFlightTab(apt, type, btn) {
-      btn.parentElement.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
-      renderEBCIFlights(type);
-    }
-    renderEBCIFlights('dep');
+// Appel initial au chargement de la page
+document.addEventListener('DOMContentLoaded', () => {
+  loadFlights('EBLG', 'departures');
+  loadFlights('EBCI', 'departures');
+});
 
     // Sonomètres
     const sonometers = [
