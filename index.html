@@ -193,10 +193,24 @@
     // REMPLACER PAR L'URL DE VOTRE WORKER CLOUDFLARE DÉPLOYÉ
     const WORKER_URL = "https://bruit-aero-proxy.pnyr682w7f.workers.dev/";
 
-    // Horloge UTC
-    setInterval(() => {
-      document.getElementById('clock').innerText = new Date().toISOString().substring(11, 19) + ' UTC';
-    }, 1000);
+    // Horloge - nouvelle version (Heure locale du navigateur)
+function updateClock() {
+  const now = new Date();
+  
+  // Formatage 24h avec heure locale du système
+  const timeString = now.toLocaleTimeString('fr-FR', {
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false
+  });
+
+  document.getElementById('clock').innerText = `${timeString} (Local)`;
+}
+
+// Lancement immédiat puis rafraîchissement chaque seconde
+updateClock();
+setInterval(updateClock, 1000);
 
     // Dessin de la rose des vents
     function drawCompass(canvasId, windDeg = 0, windSpeed = 0) {
