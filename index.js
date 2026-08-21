@@ -120,7 +120,24 @@ export default {
             console.error(e);
           }
         }
-
+        
+// Exemple de route dans le Worker Cloudflare
+if (url.pathname === '/api/opensky') {
+  // Bounding box couvrant EBCI et EBLG (sud de la Belgique)
+  const openskyUrl = 'https://opensky-network.org/api/states/all?lamin=50.2&lamax=50.8&lomin=4.2&lomax=5.8';
+  
+  const response = await fetch(openskyUrl, {
+    headers: { 'User-Agent': 'Dashboard-Aero-App' }
+  });
+  
+  const data = await response.json();
+  return new Response(JSON.stringify(data), {
+    headers: { 
+      'Content-Type': 'application/json',
+      'Access-Control-Allow-Origin': '*' 
+    }
+  });
+}
         // Fallback / Données de test
         const mockData = airport === "EBCI" 
           ? [
