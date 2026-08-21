@@ -82,6 +82,11 @@
       background-color: #334155;
       border-color: var(--accent);
     }
+
+    /* Style des avions sur la carte */
+    .plane-icon {
+      transition: transform 0.3s ease;
+    }
   </style>
 </head>
 <body>
@@ -110,7 +115,6 @@
           <div style="font-size: 0.8rem; margin-top: 4px; color: var(--text-muted);">Rose des vents</div>
         </div>
       </div>
-      <!-- CONTENEUR TENDANCE EBCI -->
       <div style="margin-top: 15px; border-top: 1px dashed var(--border); padding-top: 10px;">
         <div style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 8px;">Tendance (Prochaines heures) :</div>
         <div id="ebci-forecast" style="display: flex; gap: 10px; overflow-x: auto; padding-bottom: 5px;"></div>
@@ -135,7 +139,6 @@
           <div style="font-size: 0.8rem; margin-top: 4px; color: var(--text-muted);">Rose des vents</div>
         </div>
       </div>
-      <!-- CONTENEUR TENDANCE EBLG -->
       <div style="margin-top: 15px; border-top: 1px dashed var(--border); padding-top: 10px;">
         <div style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 8px;">Tendance (Prochaines heures) :</div>
         <div id="eblg-forecast" style="display: flex; gap: 10px; overflow-x: auto; padding-bottom: 5px;"></div>
@@ -174,17 +177,15 @@
     </div>
   </div>
   
-  <!-- SONOMETERS MAP -->
+  <!-- MAP WITH SONOMETERS & OPENSKY TRAFFIC -->
   <div class="card">
     <div class="card-header" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
-      <span class="card-title"><i data-feather="map-pin"></i> Emplacement des Sonomètres EBCI & EBLG</span>
+      <span class="card-title"><i data-feather="map-pin"></i> Sonomètres & Trafic Aérien en Direct</span>
       <div style="display: flex; align-items: center; gap: 15px; font-size: 0.85rem; color: var(--text-muted);">
-        <span>Piste EBLG auto : <strong id="auto-rwy-eblg" style="color: var(--accent);">--</strong></span>
-        <span>Piste EBCI auto : <strong id="auto-rwy-ebci" style="color: var(--accent);">--</strong></span>
-        <!-- AJOUT DU BOUTON RECENTRER ICI -->
-        <button id="btn-reset-map" class="btn-reset">
-          🎯 Recentrer la carte
-        </button>
+        <span>Avions en vol : <strong id="planes-count" style="color: #f59e0b;">0</strong></span>
+        <span>Piste EBLG : <strong id="auto-rwy-eblg" style="color: var(--accent);">--</strong></span>
+        <span>Piste EBCI : <strong id="auto-rwy-ebci" style="color: var(--accent);">--</strong></span>
+        <button id="btn-reset-map" class="btn-reset">🎯 Recentrer</button>
       </div>
     </div>
 
@@ -202,6 +203,7 @@
     
     let map;
     let activeMarkers = [];
+    let aircraftMarkers = {}; // Stockage des marqueurs d'avions par leur code ICAO24
     let currentRwyEBLG = "22";
     let currentRwyEBCI = "24";
 
@@ -293,10 +295,8 @@
             const forecastContainer = document.getElementById(`${aptLower}-forecast`);
             if (forecastContainer) {
               forecastContainer.innerHTML = '';
-              
               for (let i = 3; i <= 12; i += 3) {
                 if (!data.hourly.time[i]) break;
-                
                 const time = new Date(data.hourly.time[i]).getHours() + 'h';
                 const temp = Math.round(data.hourly.temperature_2m[i]);
                 const windKmh = Math.round(data.hourly.wind_speed_10m[i]);
@@ -366,6 +366,86 @@
         });
       } catch (err) {
         tbody.innerHTML = '<tr><td colspan="4" style="color:#ef4444; text-align:center;">Erreur chargement</td></tr>';
+      }
+    }
+
+    // --- FONCTION OPENSKY : TRAFIC AÉRIEN EN DIRECT ---
+    async function loadOpenSkyTraffic() {
+      if (!map) return;
+
+      try {
+        // Envoi de la requête proxy vers OpenSky ou directement si autorisé
+        const url = `${WORKER_URL}/api/opensky`; 
+        const res = await fetch(url);
+        const data = await res.json();
+
+        if (!data || !data.states) {
+          document.getElementById('planes-count').innerText = '0';
+          return;
+        }
+
+        const currentIcao24 = new Set();
+        document.getElementById('planes-count').innerText = data.states.length;
+
+        data.states.forEach(state => {
+          const icao24 = state[0];
+          const callsign = (state[1] || 'Inconnu').trim();
+          const lon = state[5];
+          const lat = state[6];
+          const altitudeMeters = state[7] || 0;
+          const altitudeFeet = Math.round(altitudeMeters * 3.28084);
+          const velocityMs = state[9] || 0;
+          const velocityKnots = Math.round(velocityMs * 1.94384);
+          const heading = state[10] || 0; // Cap en degrés
+
+          if (!lat || !lon) return;
+          currentIcao24.add(icao24);
+
+          // Icône SVG pour l'avion avec rotation dynamic selon la direction
+          const planeSvg = `
+            <svg width="24" height="24" viewBox="0 0 24 24" style="transform: rotate(${heading}deg); transform-origin: center;">
+              <path fill="#f59e0b" stroke="#000000" stroke-width="1" d="M21,16L21,14L13,9L13,3.5A1.5,1.5 0 0,0 11.5,2A1.5,1.5 0 0,0 10,3.5L10,9L2,14L2,16L10,13.5L10,19L8,20.5L8,22L11.5,21L15,22L15,20.5L13,19L13,13.5L21,16Z"/>
+            </svg>`;
+
+          const customIcon = L.divIcon({
+            html: planeSvg,
+            className: 'plane-icon',
+            iconSize: [24, 24],
+            iconAnchor: [12, 12]
+          });
+
+          const popupContent = `
+            <div style="font-family: sans-serif; font-size: 0.85rem;">
+              <strong style="color: #0284c7; font-size: 1rem;">✈️ Vol ${callsign}</strong><br>
+              <b>Altitude :</b> ${altitudeFeet} ft (${Math.round(altitudeMeters)} m)<br>
+              <b>Vitesse :</b> ${velocityKnots} kt (${Math.round(velocityMs * 3.6)} km/h)<br>
+              <b>Cap :</b> ${Math.round(heading)}°
+            </div>
+          `;
+
+          if (aircraftMarkers[icao24]) {
+            // Mettre à jour la position existante
+            aircraftMarkers[icao24].setLatLng([lat, lon]);
+            aircraftMarkers[icao24].setIcon(customIcon);
+            aircraftMarkers[icao24].setPopupContent(popupContent);
+          } else {
+            // Créer un nouveau marqueur
+            const marker = L.marker([lat, lon], { icon: customIcon }).bindPopup(popupContent);
+            marker.addTo(map);
+            aircraftMarkers[icao24] = marker;
+          }
+        });
+
+        // Supprimer les avions qui ne sont plus dans la zone
+        Object.keys(aircraftMarkers).forEach(icao24 => {
+          if (!currentIcao24.has(icao24)) {
+            map.removeLayer(aircraftMarkers[icao24]);
+            delete aircraftMarkers[icao24];
+          }
+        });
+
+      } catch (e) {
+        console.error("Erreur OpenSky :", e);
       }
     }
 
@@ -450,9 +530,7 @@
       });
     }
 
-    // Initialisation unique au chargement du DOM
     document.addEventListener("DOMContentLoaded", () => {
-      // 1. Initialiser la carte Leaflet
       map = L.map('map').setView(DEFAULT_CENTER, DEFAULT_ZOOM);
 
       L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
@@ -460,21 +538,21 @@
         attribution: '© OpenStreetMap'
       }).addTo(map);
 
-      // 2. Attacher l'événement au bouton de recentrage
       const resetBtn = document.getElementById('btn-reset-map');
       if (resetBtn) {
         resetBtn.addEventListener('click', () => {
-          map.flyTo(DEFAULT_CENTER, DEFAULT_ZOOM, {
-            duration: 1.2
-          });
+          map.flyTo(DEFAULT_CENTER, DEFAULT_ZOOM, { duration: 1.2 });
         });
       }
 
-      // 3. Charger les météos et vols
       loadWeatherData('ebci', 50.4592, 4.4538);
       loadWeatherData('eblg', 50.6374, 5.4432);
       loadFlights('EBLG', 'departures');
       loadFlights('EBCI', 'departures');
+
+      // Premier appel OpenSky + actualisation automatique toutes les 10 secondes
+      loadOpenSkyTraffic();
+      setInterval(loadOpenSkyTraffic, 10000);
     });
   </script>
 </body>
