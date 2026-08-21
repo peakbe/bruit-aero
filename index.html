@@ -255,72 +255,69 @@ setInterval(updateClock, 1000);
       ctx.fillText(`${windSpeed} kt`, radius, radius + 4);
     }
 
-    // Récupération Météo via Worker
-    async function loadWeatherData(apt, lat, lon) {
-      try {
-        const res = await fetch(`${WORKER_URL}/api/weather?lat=${lat}&lon=${lon}`);
-        const data = await res.json();
-        
-        if (data.main) {
-          document.getElementById(`${apt}-temp`).innerText = `${Math.round(data.main.temp)}°C`;
-          const windDeg = data.wind?.deg || 0;
-          const windSpeed = Math.round((data.wind?.speed || 0) * 1.94384); // m/s en noeuds
-          document.getElementById(`${apt}-wind-text`).innerText = `Vent: ${windDeg}° @ ${windSpeed} kt`;
-          document.getElementById(`${apt}-vis`).innerText = `Visibilité: ${(data.visibility / 1000).toFixed(1)} km`;
-          drawCompass(`compass-${apt}`, windDeg, windSpeed);
-        }
-      } catch(e) {
-        console.error("Erreur Météo:", e);
-      }
+    // A. Chargement Météo & METAR
+async function loadWeatherData(apt, lat, lon) {
+  try {
+    const res = await fetch(`${WORKER_URL}/api/weather?lat=${lat}&lon=${lon}`);
+    const data = await res.json();
+    
+    if (data.main) {
+      document.getElementById(`${apt}-temp`).innerText = `${Math.round(data.main.temp)}°C`;
+      const windDeg = data.wind?.deg || 0;
+      const windSpeed = Math.round((data.wind?.speed || 0) * 1.94384);
+      document.getElementById(`${apt}-wind-text`).innerText = `Vent: ${windDeg}° @ ${windSpeed} kt`;
+      document.getElementById(`${apt}-vis`).innerText = `Visibilité: ${(data.visibility / 1000).toFixed(1)} km`;
+      drawCompass(`compass-${apt}`, windDeg, windSpeed);
+    }
+  } catch(e) {
+    console.error("Erreur Météo:", e);
+  }
 
-      // Récupération METAR
-      try {
-        const icao = apt === 'ebci' ? 'EBCI' : 'EBLG';
-        const resMetar = await fetch(`${WORKER_URL}/api/metar?station=${icao}`);
-        const metarData = await resMetar.json();
-        document.getElementById(`${apt}-metar`).innerText = metarData.raw || `${icao} 181420Z 23012KT 9999 FEW030 19/11 Q1018`;
-      } catch(e) {
-        document.getElementById(`${apt}-metar`).innerText = `${apt.toUpperCase()} METAR indisponible`;
-      }
+  // Récupération METAR
+  try {
+    const icao = apt === 'ebci' ? 'EBCI' : 'EBLG';
+    const resMetar = await fetch(`${WORKER_URL}/api/metar?station=${icao}`);
+    const metarData = await resMetar.json();
+    document.getElementById(`${apt}-metar`).innerText = metarData.raw || `${icao} METAR non disponible`;
+  } catch(e) {
+    document.getElementById(`${apt}-metar`).innerText = `${apt.toUpperCase()} METAR indisponible`;
+  }
+}
+
+// B. Chargement FIDS Liège (EBLG)
+async function fetchEBLGFlights(type = 'departures', btn = null) {
+  if (btn) {
+    btn.parentElement.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+  }
+
+  const tbody = document.getElementById('eblg-flights-body');
+  tbody.innerHTML = '<tr><td colspan="4" style="text-align:center; color:var(--text-muted);">Connexion au FIDS...</td></tr>';
+
+  try {
+    const res = await fetch(`${WORKER_URL}/api/fids-eblg?type=${type}`);
+    const data = await res.json();
+
+    tbody.innerHTML = '';
+    if (!data.flights || data.flights.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="4">Aucun vol trouvé.</td></tr>';
+      return;
     }
 
-    loadWeatherData('ebci', '50.45', '4.45');
-    loadWeatherData('eblg', '50.63', '5.44');
-
-    // Chargement FIDS Liège Airport (EBLG)
-    async function fetchEBLGFlights(type = 'departures', btn = null) {
-      if (btn) {
-        btn.parentElement.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-        btn.classList.add('active');
-      }
-
-      const tbody = document.getElementById('eblg-flights-body');
-      tbody.innerHTML = '<tr><td colspan="4" style="text-align:center; color:var(--text-muted);">Connexion au FIDS...</td></tr>';
-
-      try {
-        const res = await fetch(`${WORKER_URL}/api/fids-eblg?type=${type}`);
-        const data = await res.json();
-
-        tbody.innerHTML = '';
-        if (!data.flights || data.flights.length === 0) {
-          tbody.innerHTML = '<tr><td colspan="4">Aucun vol trouvé.</td></tr>';
-          return;
-        }
-
-        data.flights.slice(0, 10).forEach(f => {
-          const tr = document.createElement('tr');
-          tr.innerHTML = `
-            <td style="font-weight:bold; color:var(--text-light);">${f.flight}</td>
-            <td>${f.destination}</td>
-            <td>${f.time}</td>
-            <td><span style="color: #38bdf8">${f.status}</span></td>
-          `;
-          tbody.appendChild(tr);
-        });
-      } catch (err) {
-        tbody.innerHTML = '<tr><td colspan="4" style="color:#ef4444;">Erreur chargement FIDS</td></tr>';
-      }
-    }
+    data.flights.slice(0, 10).forEach(f => {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td style="font-weight:bold; color:var(--text-light);">${f.flight}</td>
+        <td>${f.destination}</td>
+        <td>${f.time}</td>
+        <td><span style="color: #38bdf8">${f.status}</span></td>
+      `;
+      tbody.appendChild(tr);
+    });
+  } catch (err) {
+    tbody.innerHTML = '<tr><td colspan="4" style="color:#ef4444;">Erreur chargement FIDS</td></tr>';
+  }
+}
 
     fetchEBLGFlights('departures');
 
