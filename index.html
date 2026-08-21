@@ -190,15 +190,34 @@
 </div>
   
   <!-- SONOMETERS MAP -->
-  <div class="card">
-    <div class="card-header">
-      <span class="card-title"><i data-feather="map-pin"></i> Emplacement des Sonomètres EBCI & EBLG</span>
-      <span style="color: var(--text-muted); font-size: 0.85rem;">Réseau de Mesure Wallon</span>
-    </div>
-    <div style="width: 100%;">
-      <div id="map" style="width: 100%; height: 450px; border-radius: 8px;"></div>
+<div class="card">
+  <div class="card-header" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+    <span class="card-title"><i data-feather="map-pin"></i> Emplacement des Sonomètres EBCI & EBLG</span>
+    
+    <!-- Sélecteurs de pistes -->
+    <div style="display: flex; gap: 15px; align-items: center;">
+      <label style="font-size: 0.85rem; color: var(--text-muted);">
+        Piste EBLG : 
+        <select id="runway-eblg" onchange="updateMarkers()" style="background: #1e293b; color: #fff; border: 1px solid #334155; padding: 4px 8px; border-radius: 4px;">
+          <option value="22">Piste 22</option>
+          <option value="04">Piste 04</option>
+        </select>
+      </label>
+
+      <label style="font-size: 0.85rem; color: var(--text-muted);">
+        Piste EBCI : 
+        <select id="runway-ebci" onchange="updateMarkers()" style="background: #1e293b; color: #fff; border: 1px solid #334155; padding: 4px 8px; border-radius: 4px;">
+          <option value="24">Piste 24</option>
+          <option value="06">Piste 06</option>
+        </select>
+      </label>
     </div>
   </div>
+
+  <div style="width: 100%;">
+    <div id="map" style="width: 100%; height: 450px; border-radius: 8px;"></div>
+  </div>
+</div>
 
   <script>
     feather.replace();
