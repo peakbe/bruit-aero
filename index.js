@@ -20,9 +20,9 @@ export default {
   const lon = url.searchParams.get('lon') || '5.4432';
 
   try {
-    // Interrogation d'Open-Meteo (Gratuit, sans clé d'API)
+    // Demande des données actuelles + prévisions horaires sur 24h
     const response = await fetch(
-      `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,relative_humidity_2m,visibility,wind_speed_10m,wind_direction_10m`
+      `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,relative_humidity_2m,visibility,wind_speed_10m,wind_direction_10m&hourly=temperature_2m,wind_speed_10m,wind_direction_10m,weather_code&forecast_hours=24`
     );
 
     if (!response.ok) {
@@ -34,16 +34,15 @@ export default {
 
     const data = await response.json();
 
-    // On reformate la réponse pour garder la même structure (compatible avec votre index.html)
     const formattedData = {
-      main: {
-        temp: data.current.temperature_2m
-      },
+      main: { temp: data.current.temperature_2m },
       wind: {
-        speed: data.current.wind_speed_10m / 3.6, // Conversion km/h -> m/s pour correspondre au calcul knots du HTML
+        speed: data.current.wind_speed_10m / 3.6, // Conversion m/s
         deg: data.current.wind_direction_10m
       },
-      visibility: data.current.visibility // en mètres
+      visibility: data.current.visibility,
+      // Tendance : prévisions heure par heure
+      hourly: data.hourly
     };
 
     return new Response(JSON.stringify(formattedData), {
