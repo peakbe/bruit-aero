@@ -72,56 +72,56 @@
   </header>
 
   <div class="grid-container">
-    <!-- EBCI WEATHER -->
-    <div class="card">
-      <div class="card-header">
-        <span class="card-title">Charleroi (EBCI / CRL) - Météo</span>
-        <span class="badge badge-dep">Direct Proxy</span>
+  <!-- EBCI WEATHER -->
+  <div class="card">
+    <div class="card-header">
+      <span class="card-title">Charleroi (EBCI / CRL) - Météo</span>
+      <span class="badge badge-dep">Direct Proxy</span>
+    </div>
+    <div class="weather-box">
+      <div class="metar-info">
+        <div class="temp-large" id="ebci-temp">--°C</div>
+        <div style="color: var(--text-muted);" id="ebci-wind-text">Vent: --° @ -- kt</div>
+        <div style="color: var(--text-muted);" id="ebci-vis">Visibilité: -- km</div>
+        <div class="metar-code" id="ebci-metar">Chargement du METAR...</div>
       </div>
-      <div class="weather-box">
-        <div class="metar-info">
-          <div class="temp-large" id="ebci-temp">--°C</div>
-          <div style="color: var(--text-muted);" id="ebci-wind-text">Vent: --° @ -- kt</div>
-          <div style="color: var(--text-muted);" id="ebci-vis">Visibilité: -- km</div>
-          <div class="metar-code" id="ebci-metar">Chargement du METAR...</div>
-        </div>
-        <!-- À placer sous la weather-box de chaque aéroport -->
-<div style="margin-top: 15px; border-top: 1px dashed var(--border); padding-top: 10px;">
-  <div style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 8px;">Tendance (Prochaines heures) :</div>
-  <div id="ebci-forecast" style="display: flex; gap: 10px; overflow-x: auto; padding-bottom: 5px;"></div>
-</div>
-        <div class="compass-container">
-          <canvas id="compass-ebci" class="compass" width="130" height="130"></canvas>
-          <div style="font-size: 0.8rem; margin-top: 4px; color: var(--text-muted);">Rose des vents</div>
-        </div>
+      <div class="compass-container">
+        <canvas id="compass-ebci" class="compass" width="130" height="130"></canvas>
+        <div style="font-size: 0.8rem; margin-top: 4px; color: var(--text-muted);">Rose des vents</div>
       </div>
     </div>
-
-    <!-- EBLG WEATHER -->
-    <div class="card">
-      <div class="card-header">
-        <span class="card-title">Liège (EBLG / LGG) - Météo</span>
-        <span class="badge badge-arr">Direct Proxy</span>
-      </div>
-      <div class="weather-box">
-        <div class="metar-info">
-          <div class="temp-large" id="eblg-temp">--°C</div>
-          <div style="color: var(--text-muted);" id="eblg-wind-text">Vent: --° @ -- kt</div>
-          <div style="color: var(--text-muted);" id="eblg-vis">Visibilité: -- km</div>
-          <div class="metar-code" id="eblg-metar">Chargement du METAR...</div>
-        </div>
-        <!-- À placer sous la weather-box de chaque aéroport -->
-<div style="margin-top: 15px; border-top: 1px dashed var(--border); padding-top: 10px;">
-  <div style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 8px;">Tendance (Prochaines heures) :</div>
-  <div id="ebci-forecast" style="display: flex; gap: 10px; overflow-x: auto; padding-bottom: 5px;"></div>
-</div>
-        <div class="compass-container">
-          <canvas id="compass-eblg" class="compass" width="130" height="130"></canvas>
-          <div style="font-size: 0.8rem; margin-top: 4px; color: var(--text-muted);">Rose des vents</div>
-        </div>
-      </div>
+    <!-- CONTENEUR TENDANCE EBCI -->
+    <div style="margin-top: 15px; border-top: 1px dashed var(--border); padding-top: 10px;">
+      <div style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 8px;">Tendance (Prochaines heures) :</div>
+      <div id="ebci-forecast" style="display: flex; gap: 10px; overflow-x: auto; padding-bottom: 5px;"></div>
     </div>
   </div>
+
+  <!-- EBLG WEATHER -->
+  <div class="card">
+    <div class="card-header">
+      <span class="card-title">Liège (EBLG / LGG) - Météo</span>
+      <span class="badge badge-arr">Direct Proxy</span>
+    </div>
+    <div class="weather-box">
+      <div class="metar-info">
+        <div class="temp-large" id="eblg-temp">--°C</div>
+        <div style="color: var(--text-muted);" id="eblg-wind-text">Vent: --° @ -- kt</div>
+        <div style="color: var(--text-muted);" id="eblg-vis">Visibilité: -- km</div>
+        <div class="metar-code" id="eblg-metar">Chargement du METAR...</div>
+      </div>
+      <div class="compass-container">
+        <canvas id="compass-eblg" class="compass" width="130" height="130"></canvas>
+        <div style="font-size: 0.8rem; margin-top: 4px; color: var(--text-muted);">Rose des vents</div>
+      </div>
+    </div>
+    <!-- CONTENEUR TENDANCE EBLG -->
+    <div style="margin-top: 15px; border-top: 1px dashed var(--border); padding-top: 10px;">
+      <div style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 8px;">Tendance (Prochaines heures) :</div>
+      <div id="eblg-forecast" style="display: flex; gap: 10px; overflow-x: auto; padding-bottom: 5px;"></div>
+    </div>
+  </div>
+</div>
 
   <!-- FLIGHTS TABLES SECTION -->
   <div class="grid-container">
