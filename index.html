@@ -229,39 +229,44 @@
     }
 
     // Chargement Météo & Déduction Piste METAR
-  async function loadWeatherData(apt, lat, lon) {
-  // 1. Chargement de la météo et des tendances
+ async function loadWeatherData(apt, lat, lon) {
+  const aptLower = apt.toLowerCase();
+
+  // 1. Chargement Météo & Tendances
   try {
     const res = await fetch(`${WORKER_URL}/api/weather?lat=${lat}&lon=${lon}`);
     const data = await res.json();
     
     if (data.main) {
-      document.getElementById(`${apt}-temp`).innerText = `${Math.round(data.main.temp)}°C`;
+      document.getElementById(`${aptLower}-temp`).innerText = `${Math.round(data.main.temp)}°C`;
       const windDeg = data.wind?.deg || 0;
       const windSpeed = Math.round((data.wind?.speed || 0) * 1.94384);
-      document.getElementById(`${apt}-wind-text`).innerText = `Vent: ${windDeg}° @ ${windSpeed} kt`;
-      document.getElementById(`${apt}-vis`).innerText = `Visibilité: ${(data.visibility / 1000).toFixed(1)} km`;
-      drawCompass(`compass-${apt}`, windDeg, windSpeed);
+      document.getElementById(`${aptLower}-wind-text`).innerText = `Vent: ${windDeg}° @ ${windSpeed} kt`;
+      document.getElementById(`${aptLower}-vis`).innerText = `Visibilité: ${(data.visibility / 1000).toFixed(1)} km`;
+      drawCompass(`compass-${aptLower}`, windDeg, windSpeed);
 
-      // Calcul des pistes
-      if (apt === 'eblg') {
+      // Calcul auto des pistes
+      if (aptLower === 'eblg') {
         currentRwyEBLG = (windDeg > 130 && windDeg <= 310) ? "22" : "04";
         document.getElementById('auto-rwy-eblg').innerText = `Piste ${currentRwyEBLG}`;
-      } else if (apt === 'ebci') {
+      } else if (aptLower === 'ebci') {
         currentRwyEBCI = (windDeg > 150 && windDeg <= 330) ? "24" : "06";
         document.getElementById('auto-rwy-ebci').innerText = `Piste ${currentRwyEBCI}`;
       }
       updateMarkers();
 
-      // Tendances
+      // Génération des vignettes de Tendance
       if (data.hourly) {
-        const forecastContainer = document.getElementById(`${apt}-forecast`);
+        const forecastContainer = document.getElementById(`${aptLower}-forecast`);
         if (forecastContainer) {
-          forecastContainer.innerHTML = '';
+          forecastContainer.innerHTML = ''; // Nettoyage
+          
           for (let i = 3; i <= 12; i += 3) {
+            if (!data.hourly.time[i]) break;
+            
             const time = new Date(data.hourly.time[i]).getHours() + 'h';
             const temp = Math.round(data.hourly.temperature_2m[i]);
-            const wind = Math.round(data.hourly.wind_speed_10m[i] * 0.539957);
+            const wind = Math.round(data.hourly.wind_speed_10m[i] * 0.539957); // km/h vers nœuds
             const dir = data.hourly.wind_direction_10m[i];
 
             const item = document.createElement('div');
@@ -277,19 +282,19 @@
       }
     }
   } catch(e) {
-    console.error("Erreur Météo:", e);
+    console.error(`Erreur Météo ${apt}:`, e);
   }
 
-  // 2. Chargement du METAR (À l'intérieur de la fonction async)
+  // 2. Chargement du METAR
   try {
-    const icao = apt === 'ebci' ? 'EBCI' : 'EBLG';
+    const icao = aptUpper = apt.toUpperCase();
     const resMetar = await fetch(`${WORKER_URL}/api/metar?station=${icao}`);
     const metarData = await resMetar.json();
-    document.getElementById(`${apt}-metar`).innerText = metarData.raw || `${icao} METAR non disponible`;
+    document.getElementById(`${aptLower}-metar`).innerText = metarData.raw || `${icao} METAR non disponible`;
   } catch(e) {
-    document.getElementById(`${apt}-metar`).innerText = `${apt.toUpperCase()} METAR indisponible`;
+    document.getElementById(`${aptLower}-metar`).innerText = `${apt.toUpperCase()} METAR indisponible`;
   }
-} // <-- L'accolade de fermeture de la fonction doit être ICI à la toute fin !
+}
 
     async function loadFlights(airport, type = 'departures', btn = null) {
       if (btn) {
