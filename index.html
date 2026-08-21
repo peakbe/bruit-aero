@@ -9,7 +9,6 @@
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-  <!-- Feather Icons -->
   <script src="https://unpkg.com/feather-icons"></script>
 
   <style>
@@ -39,14 +38,14 @@
     .weather-box { display: flex; gap: 20px; align-items: center; justify-content: space-between; }
     .metar-info { flex: 1; }
     .temp-large { font-size: 2.5rem; font-weight: bold; color: #f59e0b; }
-    .metar-code { font-family: monospace; background: #0f172a; padding: 8px; border-radius: 6px; border: 1px solid var(--border); font-size: 0.85rem; color: #10b981; margin-top: 10px; }
+    .metar-code { font-family: monospace; background: #0f172a; padding: 8px; border-radius: 6px; border: 1px solid var(--border); font-size: 0.85rem; color: #10b981; margin-top: 10px; word-break: break-all; }
     
     .compass-container { text-align: center; }
     canvas.compass { background: #0f172a; border-radius: 50%; border: 2px solid var(--border); }
 
     /* Flight Tables */
-    .tab-container { display: flex; gap: 10px; margin-bottom: 15px; }
-    .tab-btn { background: #0f172a; border: 1px solid var(--border); color: var(--text-muted); padding: 8px 16px; border-radius: 6px; cursor: pointer; transition: 0.2s; }
+    .tab-container { display: flex; gap: 10px; }
+    .tab-btn { background: #0f172a; border: 1px solid var(--border); color: var(--text-muted); padding: 6px 12px; border-radius: 6px; cursor: pointer; transition: 0.2s; font-size: 0.85rem; }
     .tab-btn.active { background: var(--accent); color: #000; font-weight: bold; border-color: var(--accent); }
 
     table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 0.9rem; }
@@ -61,9 +60,8 @@
     .noise-container { height: 260px; overflow-y: auto; padding-right: 5px; }
     .noise-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
     .noise-card { background: #0f172a; padding: 8px 12px; border-radius: 8px; border: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; }
-    .noise-val { font-size: 1.1rem; font-weight: bold; color: #ef4444; }
+    .noise-val { font-size: 1.1rem; font-weight: bold; }
 
-    /* Custom Scrollbar for Noise Grid */
     .noise-container::-scrollbar { width: 6px; }
     .noise-container::-scrollbar-track { background: #0f172a; }
     .noise-container::-scrollbar-thumb { background: var(--border); border-radius: 3px; }
@@ -87,14 +85,14 @@
     <div class="card">
       <div class="card-header">
         <span class="card-title">Charleroi (EBCI / CRL) - Météo</span>
-        <span class="badge badge-dep">METAR Direct</span>
+        <span class="badge badge-dep">Direct Proxy</span>
       </div>
       <div class="weather-box">
         <div class="metar-info">
-          <div class="temp-large" id="ebci-temp">19°C</div>
-          <div style="color: var(--text-muted);" id="ebci-wind-text">Vent: 230° @ 12 kt</div>
-          <div style="color: var(--text-muted);" id="ebci-vis">Visibilité: > 10 km</div>
-          <div class="metar-code" id="ebci-metar">EBCI 181420Z 23012KT 9999 FEW030 19/11 Q1018 NOSIG</div>
+          <div class="temp-large" id="ebci-temp">--°C</div>
+          <div style="color: var(--text-muted);" id="ebci-wind-text">Vent: --° @ -- kt</div>
+          <div style="color: var(--text-muted);" id="ebci-vis">Visibilité: -- km</div>
+          <div class="metar-code" id="ebci-metar">Chargement du METAR...</div>
         </div>
         <div class="compass-container">
           <canvas id="compass-ebci" class="compass" width="130" height="130"></canvas>
@@ -107,14 +105,14 @@
     <div class="card">
       <div class="card-header">
         <span class="card-title">Liège (EBLG / LGG) - Météo</span>
-        <span class="badge badge-arr">METAR Direct</span>
+        <span class="badge badge-arr">Direct Proxy</span>
       </div>
       <div class="weather-box">
         <div class="metar-info">
-          <div class="temp-large" id="eblg-temp">18°C</div>
-          <div style="color: var(--text-muted);" id="eblg-wind-text">Vent: 250° @ 08 kt</div>
-          <div style="color: var(--text-muted);" id="eblg-vis">Visibilité: 8000m</div>
-          <div class="metar-code" id="eblg-metar">EBLG 181420Z 25008KT 8000 SCT025 18/12 Q1017 NOSIG</div>
+          <div class="temp-large" id="eblg-temp">--°C</div>
+          <div style="color: var(--text-muted);" id="eblg-wind-text">Vent: --° @ -- kt</div>
+          <div style="color: var(--text-muted);" id="eblg-vis">Visibilité: -- km</div>
+          <div class="metar-code" id="eblg-metar">Chargement du METAR...</div>
         </div>
         <div class="compass-container">
           <canvas id="compass-eblg" class="compass" width="130" height="130"></canvas>
@@ -148,10 +146,10 @@
     <!-- EBLG FLIGHTS -->
     <div class="card">
       <div class="card-header">
-        <span class="card-title">Vols - Liège (EBLG)</span>
+        <span class="card-title">Vols - Liège (EBLG - FIDS)</span>
         <div class="tab-container">
-          <button class="tab-btn active" onclick="switchFlightTab('eblg', 'dep', this)">Départs</button>
-          <button class="tab-btn" onclick="switchFlightTab('eblg', 'arr', this)">Arrivées</button>
+          <button class="tab-btn active" onclick="fetchEBLGFlights('departures', this)">Départs</button>
+          <button class="tab-btn" onclick="fetchEBLGFlights('arrivals', this)">Arrivées</button>
         </div>
       </div>
       <table>
@@ -192,13 +190,16 @@
   <script>
     feather.replace();
 
-    // Clock
+    // REMPLACER PAR L'URL DE VOTRE WORKER CLOUDFLARE DÉPLOYÉ
+    const WORKER_URL = "https://bruit-aero-proxy.pnyr682w7f.workers.dev/";
+
+    // Horloge UTC
     setInterval(() => {
       document.getElementById('clock').innerText = new Date().toISOString().substring(11, 19) + ' UTC';
     }, 1000);
 
-    // Dynamic Wind Rose Drawing
-    function drawCompass(canvasId, windDeg, windSpeed) {
+    // Dessin de la rose des vents
+    function drawCompass(canvasId, windDeg = 0, windSpeed = 0) {
       const canvas = document.getElementById(canvasId);
       const ctx = canvas.getContext('2d');
       const radius = canvas.width / 2;
@@ -240,48 +241,98 @@
       ctx.fillText(`${windSpeed} kt`, radius, radius + 4);
     }
 
-    drawCompass('compass-ebci', 230, 12);
-    drawCompass('compass-eblg', 250, 8);
-
-    // Flight Data Mocking
-    const flightData = {
-      ebci: {
-        dep: [
-          { flight: "FR1002", dest: "Marseille (MRS)", time: "15:10", status: "Embarquement" },
-          { flight: "FR2104", dest: "Porto (OPO)", time: "15:45", status: "A l'heure" },
-          { flight: "W64301", dest: "Bucarest (OTP)", time: "16:00", status: "A l'heure" },
-          { flight: "FR6312", dest: "Alicante (ALC)", time: "16:25", status: "A l'heure" },
-          { flight: "FR8831", dest: "Tenerife (TFS)", time: "17:10", status: "A l'heure" }
-        ],
-        arr: [
-          { flight: "FR1003", dest: "Marseille (MRS)", time: "14:50", status: "Atterri" },
-          { flight: "FR2105", dest: "Porto (OPO)", time: "15:20", status: "Approche" },
-          { flight: "FR8832", dest: "Tenerife (TFS)", time: "16:05", status: "A l'heure" }
-        ]
-      },
-      eblg: {
-        dep: [
-          { flight: "3V801", dest: "Chicago (ORD)", time: "15:00", status: "Parti" },
-          { flight: "TAY21B", dest: "East Midlands (EMA)", time: "15:30", status: "Embarquement" },
-          { flight: "ETH3701", dest: "Addis Abeba (ADD)", time: "16:15", status: "A l'heure" }
-        ],
-        arr: [
-          { flight: "3V802", dest: "New York (JFK)", time: "14:40", status: "Atterri" },
-          { flight: "QTR8101", dest: "Doha (DOH)", time: "15:15", status: "Approche" }
-        ]
+    // Récupération Météo via Worker
+    async function loadWeatherData(apt, lat, lon) {
+      try {
+        const res = await fetch(`${WORKER_URL}/api/weather?lat=${lat}&lon=${lon}`);
+        const data = await res.json();
+        
+        if (data.main) {
+          document.getElementById(`${apt}-temp`).innerText = `${Math.round(data.main.temp)}°C`;
+          const windDeg = data.wind?.deg || 0;
+          const windSpeed = Math.round((data.wind?.speed || 0) * 1.94384); // m/s en noeuds
+          document.getElementById(`${apt}-wind-text`).innerText = `Vent: ${windDeg}° @ ${windSpeed} kt`;
+          document.getElementById(`${apt}-vis`).innerText = `Visibilité: ${(data.visibility / 1000).toFixed(1)} km`;
+          drawCompass(`compass-${apt}`, windDeg, windSpeed);
+        }
+      } catch(e) {
+        console.error("Erreur Météo:", e);
       }
+
+      // Récupération METAR
+      try {
+        const icao = apt === 'ebci' ? 'EBCI' : 'EBLG';
+        const resMetar = await fetch(`${WORKER_URL}/api/metar?station=${icao}`);
+        const metarData = await resMetar.json();
+        document.getElementById(`${apt}-metar`).innerText = metarData.raw || `${icao} 181420Z 23012KT 9999 FEW030 19/11 Q1018`;
+      } catch(e) {
+        document.getElementById(`${apt}-metar`).innerText = `${apt.toUpperCase()} METAR indisponible`;
+      }
+    }
+
+    loadWeatherData('ebci', '50.45', '4.45');
+    loadWeatherData('eblg', '50.63', '5.44');
+
+    // Chargement FIDS Liège Airport (EBLG)
+    async function fetchEBLGFlights(type = 'departures', btn = null) {
+      if (btn) {
+        btn.parentElement.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+      }
+
+      const tbody = document.getElementById('eblg-flights-body');
+      tbody.innerHTML = '<tr><td colspan="4" style="text-align:center; color:var(--text-muted);">Connexion au FIDS...</td></tr>';
+
+      try {
+        const res = await fetch(`${WORKER_URL}/api/fids-eblg?type=${type}`);
+        const data = await res.json();
+
+        tbody.innerHTML = '';
+        if (!data.flights || data.flights.length === 0) {
+          tbody.innerHTML = '<tr><td colspan="4">Aucun vol trouvé.</td></tr>';
+          return;
+        }
+
+        data.flights.slice(0, 10).forEach(f => {
+          const tr = document.createElement('tr');
+          tr.innerHTML = `
+            <td style="font-weight:bold; color:var(--text-light);">${f.flight}</td>
+            <td>${f.destination}</td>
+            <td>${f.time}</td>
+            <td><span style="color: #38bdf8">${f.status}</span></td>
+          `;
+          tbody.appendChild(tr);
+        });
+      } catch (err) {
+        tbody.innerHTML = '<tr><td colspan="4" style="color:#ef4444;">Erreur chargement FIDS</td></tr>';
+      }
+    }
+
+    fetchEBLGFlights('departures');
+
+    // Données fictives EBCI
+    const ebciFlightData = {
+      dep: [
+        { flight: "FR1002", dest: "Marseille (MRS)", time: "15:10", status: "Embarquement" },
+        { flight: "FR2104", dest: "Porto (OPO)", time: "15:45", status: "A l'heure" },
+        { flight: "W64301", dest: "Bucarest (OTP)", time: "16:00", status: "A l'heure" }
+      ],
+      arr: [
+        { flight: "FR1003", dest: "Marseille (MRS)", time: "14:50", status: "Atterri" },
+        { flight: "FR2105", dest: "Porto (OPO)", time: "15:20", status: "Approche" }
+      ]
     };
 
-    function renderFlights(apt, type) {
-      const tbody = document.getElementById(`${apt}-flights-body`);
+    function renderEBCIFlights(type) {
+      const tbody = document.getElementById('ebci-flights-body');
       tbody.innerHTML = '';
-      flightData[apt][type].forEach(f => {
+      ebciFlightData[type].forEach(f => {
         const tr = document.createElement('tr');
         tr.innerHTML = `
           <td style="font-weight:bold; color:var(--text-light);">${f.flight}</td>
           <td>${f.dest}</td>
           <td>${f.time}</td>
-          <td><span style="color: ${f.status.includes('Retard') ? '#ef4444' : f.status === 'Atterri' || f.status === 'Parti' ? '#10b981' : '#38bdf8'}">${f.status}</span></td>
+          <td><span style="color: #10b981">${f.status}</span></td>
         `;
         tbody.appendChild(tr);
       });
@@ -290,15 +341,12 @@
     function switchFlightTab(apt, type, btn) {
       btn.parentElement.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
       btn.classList.add('active');
-      renderFlights(apt, type);
+      renderEBCIFlights(type);
     }
+    renderEBCIFlights('dep');
 
-    renderFlights('ebci', 'dep');
-    renderFlights('eblg', 'dep');
-
-    // --- DONNÉES RÉELLES DES SONOMÈTRES (EBCI & EBLG) ---
+    // Sonomètres
     const sonometers = [
-      // Charleroi (EBCI)
       { id: 'F118', apt: 'EBCI', name: 'F118 - Sombreffe', addr: 'Rue Piconette, Sombreffe', lat: 50.505267, lng: 4.611181, val: 52 },
       { id: 'F109', apt: 'EBCI', name: 'F109 - Sombreffe', addr: 'Chaussée de Charleroi, Sombreffe', lat: 50.490353, lng: 4.562389, val: 55 },
       { id: 'F108', apt: 'EBCI', name: 'F108 - Fleurus', addr: 'Avenue Brunard, Fleurus', lat: 50.486658, lng: 4.546281, val: 58 },
@@ -317,7 +365,6 @@
       { id: 'F116', apt: 'EBCI', name: 'F116 - Fontaine-l\'Évêque', addr: 'Rue de l\'Enseignement, Fontaine-l\'Évêque', lat: 50.410633, lng: 4.315053, val: 46 },
       { id: 'F114', apt: 'EBCI', name: 'F114 - Anderlues', addr: 'Rue de la Source, Anderlues', lat: 50.409831, lng: 4.277167, val: 45 },
 
-      // Liège (EBLG)
       { id: 'F017', apt: 'EBLG', name: 'F017 - Wonck', addr: 'Rue de la Pommeraie, Wonck', lat: 50.764883, lng: 5.630606, val: 48 },
       { id: 'F001', apt: 'EBLG', name: 'F001 - Houtain', addr: 'Rue Franquet, Houtain', lat: 50.738044, lng: 5.608833, val: 52 },
       { id: 'F014', apt: 'EBLG', name: 'F014 - Juprelle', addr: 'Rue Léon Labaye, Juprelle', lat: 50.718894, lng: 5.573164, val: 55 },
@@ -337,48 +384,31 @@
       { id: 'F012', apt: 'EBLG', name: 'F012 - Aineffe', addr: 'Rue Barbe d\'Or, Aineffe', lat: 50.621917, lng: 5.254747, val: 47 }
     ];
 
-    // Initialisation Carte Leaflet
     const map = L.map('map');
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-      maxZoom: 19,
-      attribution: '© OpenStreetMap'
-    }).addTo(map);
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', { maxZoom: 19, attribution: '© OpenStreetMap' }).addTo(map);
 
     const markers = {};
     const bounds = L.latLngBounds();
 
     function getMarkerColor(val) {
-      if (val >= 65) return '#ef4444'; // Rouge (Elevé)
-      if (val >= 55) return '#f59e0b'; // Orange (Moyen)
-      return '#10b981';                // Vert (Faible)
+      if (val >= 65) return '#ef4444';
+      if (val >= 55) return '#f59e0b';
+      return '#10b981';
     }
 
     sonometers.forEach(s => {
       bounds.extend([s.lat, s.lng]);
-
       const marker = L.circleMarker([s.lat, s.lng], {
-        radius: 7,
-        fillColor: getMarkerColor(s.val),
-        color: "#ffffff",
-        weight: 1.5,
-        opacity: 1,
-        fillOpacity: 0.85
+        radius: 7, fillColor: getMarkerColor(s.val), color: "#ffffff", weight: 1.5, fillOpacity: 0.85
       }).addTo(map);
 
-      marker.bindPopup(`
-        <div style="color:#000;">
-          <b>${s.name}</b><br>
-          <small>${s.addr}</small><br>
-          <b>Niveau:</b> <span id="pop-${s.id}">${s.val}</span> dB(A)
-        </div>
-      `);
+      marker.bindPopup(`<div style="color:#000;"><b>${s.name}</b><br><small>${s.addr}</small><br><b>Niveau:</b> <span id="pop-${s.id}">${s.val}</span> dB(A)</div>`);
       markers[s.id] = marker;
     });
 
-    // Fit map view to bounds of all sonometers
     map.fitBounds(bounds, { padding: [20, 20] });
 
-    // Chart.js - Suivi en direct (Echantillon de 4 sonomètres)
+    // Chart.js
     const trackedIds = ['F119', 'F106', 'F005', 'F015'];
     const ctxChart = document.getElementById('noiseChart').getContext('2d');
     const noiseChart = new Chart(ctxChart, {
@@ -391,8 +421,7 @@
             label: s.id,
             data: [s.val - 2, s.val + 1, s.val - 1, s.val + 3, s.val - 2, s.val],
             borderColor: ['#38bdf8', '#f59e0b', '#10b981', '#ec4899'][idx],
-            tension: 0.3,
-            borderWidth: 2
+            tension: 0.3, borderWidth: 2
           };
         })
       },
@@ -406,23 +435,20 @@
       }
     });
 
-    // Live Noise Fluctuations Simulation
+    // Mise à jour continue
     setInterval(() => {
       const container = document.getElementById('noise-cards');
       container.innerHTML = '';
 
       sonometers.forEach(s => {
-        // Variation simulée entre -2 et +2 dB
         s.val = Math.min(80, Math.max(40, s.val + Math.floor(Math.random() * 5) - 2));
 
-        // Mise à jour de la carte
         if (markers[s.id]) {
           markers[s.id].setStyle({ fillColor: getMarkerColor(s.val) });
           const pop = document.getElementById(`pop-${s.id}`);
           if (pop) pop.innerText = s.val;
         }
 
-        // Création de la carte dans le panneau latéral
         const card = document.createElement('div');
         card.className = 'noise-card';
         card.innerHTML = `
@@ -435,7 +461,6 @@
         container.appendChild(card);
       });
 
-      // Update Chart pour les sonomètres suivis
       trackedIds.forEach((id, idx) => {
         const s = sonometers.find(x => x.id === id);
         noiseChart.data.datasets[idx].data.shift();
