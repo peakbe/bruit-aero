@@ -14,80 +14,94 @@ export default {
     const path = url.pathname.toLowerCase();
 
     try {
-      // 1. Météo OpenWeather
-     if (url.pathname === '/api/weather') {
-  const lat = url.searchParams.get('lat') || '50.6374';
-  const lon = url.searchParams.get('lon') || '5.4432';
+      // 1. Météo Open-Meteo
+      if (path === "/api/weather") {
+        const lat = url.searchParams.get("lat") || "50.6374";
+        const lon = url.searchParams.get("lon") || "5.4432";
 
-  try {
-    // Demande des données actuelles + prévisions horaires sur 24h
-    const response = await fetch(
-      `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,relative_humidity_2m,visibility,wind_speed_10m,wind_direction_10m&hourly=temperature_2m,wind_speed_10m,wind_direction_10m,weather_code&forecast_hours=24`
-    );
+        try {
+          const response = await fetch(
+            `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,relative_humidity_2m,visibility,wind_speed_10m,wind_direction_10m&hourly=temperature_2m,wind_speed_10m,wind_direction_10m,weather_code&forecast_hours=24`
+          );
 
-    if (!response.ok) {
-      return new Response(JSON.stringify({ error: "Météo indisponible" }), {
-        status: response.status,
-        headers: { "Content-Type": "application/json", ...corsHeaders }
-      });
-    }
+          if (!response.ok) {
+            return new Response(
+              JSON.stringify({ error: "Données indisponibles" }),
+              {
+                status: response.status,
+                headers: { ...corsHeaders, "Content-Type": "application/json" },
+              }
+            );
+          }
 
-    const data = await response.json();
+          const data = await response.json();
 
-    const formattedData = {
-      main: { temp: data.current.temperature_2m },
-      wind: {
-        speed: data.current.wind_speed_10m / 3.6, // Conversion m/s
-        deg: data.current.wind_direction_10m
-      },
-      visibility: data.current.visibility,
-      // Tendance : prévisions heure par heure
-      hourly: data.hourly
-    };
+          const formattedData = {
+            main: { temp: data.current.temperature_2m },
+            wind: {
+              speed: data.current.wind_speed_10m / 3.6, // Conversion m/s
+              deg: data.current.wind_direction_10m,
+            },
+            visibility: data.current.visibility,
+            hourly: data.hourly,
+          };
 
-    return new Response(JSON.stringify(formattedData), {
-      headers: { "Content-Type": "application/json", ...corsHeaders }
-    });
-  } catch (err) {
-    return new Response(JSON.stringify({ error: "Erreur serveur météo" }), {
-      status: 500,
-      headers: { "Content-Type": "application/json", ...corsHeaders }
-    });
-  }
-}
-
-      // 2. METAR
-    if (url.pathname === '/api/metar') {
-      const station = url.searchParams.get('station') || 'EBLG';
-      
-      try {
-        const response = await fetch(`https://tgftp.nws.noaa.gov/data/observations/metar/stations/${station.toUpperCase()}.TXT`);
-        
-        if (!response.ok) {
-          return new Response(JSON.stringify({ error: "METAR introuvable" }), {
-            status: response.status,
-            headers: { "Content-Type": "application/json", ...corsHeaders }
+          return new Response(JSON.stringify(formattedData), {
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
           });
+        } catch (err) {
+          return new Response(
+            JSON.stringify({ error: "Données indisponibles" }),
+            {
+              status: 500,
+              headers: { ...corsHeaders, "Content-Type": "application/json" },
+            }
+          );
         }
-
-        const text = await response.text();
-        const lines = text.trim().split('\n');
-        const rawMetar = lines.length > 1 ? lines[1].trim() : text.trim();
-
-        return new Response(JSON.stringify({ raw: rawMetar }), {
-          headers: { "Content-Type": "application/json", ...corsHeaders }
-        });
-      } catch (err) {
-        return new Response(JSON.stringify({ error: "Erreur serveur" }), {
-          status: 500,
-          headers: { "Content-Type": "application/json", ...corsHeaders }
-        });
       }
-    }
 
-      // 3. FIDS (EBLG & EBCI)
+      // 2. METAR NOAA
+      if (path === "/api/metar") {
+        const station = url.searchParams.get("station") || "EBLG";
+
+        try {
+          const response = await fetch(
+            `https://tgftp.nws.noaa.gov/data/observations/metar/stations/${station.toUpperCase()}.TXT`
+          );
+
+          if (!response.ok) {
+            return new Response(
+              JSON.stringify({ error: "Données indisponibles" }),
+              {
+                status: response.status,
+                headers: { ...corsHeaders, "Content-Type": "application/json" },
+              }
+            );
+          }
+
+          const text = await response.text();
+          const lines = text.trim().split("\n");
+          const rawMetar = lines.length > 1 ? lines[1].trim() : text.trim();
+
+          return new Response(JSON.stringify({ raw: rawMetar }), {
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          });
+        } catch (err) {
+          return new Response(
+            JSON.stringify({ error: "Données indisponibles" }),
+            {
+              status: 500,
+              headers: { ...corsHeaders, "Content-Type": "application/json" },
+            }
+          );
+        }
+      }
+
+      // 3. FIDS (Vols)
       if (path.includes("/api/fids")) {
-        const airport = (url.searchParams.get("airport") || "EBLG").toUpperCase();
+        const airport = (
+          url.searchParams.get("airport") || "EBLG"
+        ).toUpperCase();
         const type = url.searchParams.get("type") || "departures";
 
         if (airport === "EBLG") {
@@ -95,77 +109,110 @@ export default {
           try {
             const response = await fetch(fidsTargetUrl, {
               headers: {
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-                "Referer": "https://www.liegeairport.com/"
-              }
+                "User-Agent":
+                  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+                Referer: "https://www.liegeairport.com/",
+              },
             });
 
             if (response.ok) {
               const rawData = await response.json();
-              const list = Array.isArray(rawData) ? rawData : (rawData.flights || []);
-              
-              const cleanFlights = list.slice(0, 10).map(f => ({
+              const list = Array.isArray(rawData)
+                ? rawData
+                : rawData.flights || [];
+
+              const cleanFlights = list.slice(0, 10).map((f) => ({
                 flight: f.flightNumber || f.code || "N/A",
                 city: f.destination || f.origin || f.city || "Inconnu",
                 time: f.scheduledTime || f.time || "--:--",
-                status: f.status || "Programmé"
+                status: f.status || "Programmé",
               }));
 
-              return new Response(JSON.stringify({ airport, type, flights: cleanFlights }), {
-                status: 200,
-                headers: { ...corsHeaders, "Content-Type": "application/json" }
-              });
+              return new Response(
+                JSON.stringify({ airport, type, flights: cleanFlights }),
+                {
+                  status: 200,
+                  headers: {
+                    ...corsHeaders,
+                    "Content-Type": "application/json",
+                  },
+                }
+              );
             }
           } catch (e) {
             console.error(e);
           }
         }
-        
-// Exemple de route dans le Worker Cloudflare
-if (url.pathname === '/api/opensky') {
-  // Bounding box couvrant EBCI et EBLG (sud de la Belgique)
-  const openskyUrl = 'https://opensky-network.org/api/states/all?lamin=50.2&lamax=50.8&lomin=4.2&lomax=5.8';
-  
-  const response = await fetch(openskyUrl, {
-    headers: { 'User-Agent': 'Dashboard-Aero-App' }
-  });
-  
-  const data = await response.json();
-  return new Response(JSON.stringify(data), {
-    headers: { 
-      'Content-Type': 'application/json',
-      'Access-Control-Allow-Origin': '*' 
-    }
-  });
-}
-        // Fallback / Données de test
-        const mockData = airport === "EBCI" 
-          ? [
-              { flight: "FR1002", city: type === "departures" ? "Marseille (MRS)" : "Porto (OPO)", time: "14:10", status: "A l'heure" },
-              { flight: "FR2104", city: type === "departures" ? "Alicante (ALC)" : "Milan (BGY)", time: "14:45", status: "Embarquement" },
-              { flight: "W64201", city: type === "departures" ? "Varsovie (WAW)" : "Budapest (BUD)", time: "15:20", status: "Programmé" }
-            ]
-          : [
-              { flight: "3V801", city: type === "departures" ? "Tel Aviv (TLV)" : "Dubaï (DWC)", time: "22:15", status: "Programmé" },
-              { flight: "3V452", city: type === "departures" ? "Madrid (MAD)" : "Zhengzhou (CGO)", time: "23:00", status: "A l'heure" }
-            ];
 
-        return new Response(JSON.stringify({ airport, type, flights: mockData }), {
-          status: 200,
-          headers: { ...corsHeaders, "Content-Type": "application/json" }
-        });
+        // Si l'aéroport n'est pas supporté ou si l'API externe échoue
+        return new Response(
+          JSON.stringify({
+            airport,
+            type,
+            flights: [],
+            message: "Données indisponibles",
+          }),
+          {
+            status: 200,
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          }
+        );
       }
 
-      return new Response(JSON.stringify({ error: "Endpoint non trouvé", path }), {
-        status: 404,
-        headers: { ...corsHeaders, "Content-Type": "application/json" }
-      });
+      // 4. OpenSky Network
+      if (path === "/api/opensky") {
+        try {
+          const openskyUrl =
+            "https://opensky-network.org/api/states/all?lamin=50.2&lamax=50.8&lomin=4.2&lomax=5.8";
 
+          const response = await fetch(openskyUrl, {
+            headers: { "User-Agent": "Dashboard-Aero-App" },
+          });
+
+          if (!response.ok) {
+            return new Response(
+              JSON.stringify({ error: "Données indisponibles" }),
+              {
+                status: response.status,
+                headers: { ...corsHeaders, "Content-Type": "application/json" },
+              }
+            );
+          }
+
+          const data = await response.json();
+          return new Response(JSON.stringify(data), {
+            headers: { ...corsHeaders, "Content-Type": "application/json" },
+          });
+        } catch (err) {
+          return new Response(
+            JSON.stringify({ error: "Données indisponibles" }),
+            {
+              status: 500,
+              headers: { ...corsHeaders, "Content-Type": "application/json" },
+            }
+          );
+        }
+      }
+
+      // Endpoint non reconnu
+      return new Response(
+        JSON.stringify({ error: "Endpoint non trouvé", path }),
+        {
+          status: 404,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        }
+      );
     } catch (err) {
-      return new Response(JSON.stringify({ error: "Erreur serveur Proxy", details: err.message }), {
-        status: 500,
-        headers: { ...corsHeaders, "Content-Type": "application/json" }
-      });
+      return new Response(
+        JSON.stringify({
+          error: "Données indisponibles",
+          details: err.message,
+        }),
+        {
+          status: 500,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        }
+      );
     }
-  }
+  },
 };
