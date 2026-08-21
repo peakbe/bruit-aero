@@ -28,22 +28,29 @@ export default {
         });
       }
 
-      // 2. METAR (AVWX)
-      if (path.includes("/api/metar")) {
-        const station = url.searchParams.get("station") || "EBCI";
-        const targetUrl = `https://avwx.rest/api/metar/${station}`;
+      // 2. METAR
+     if (url.pathname === '/api/metar') {
+  const station = url.searchParams.get('station') || 'EBLG';
+  
+  // NWS / NOAA est gratuit et sans authentification
+  const response = await fetch(`https://tgftp.nws.noaa.gov/data/observations/metar/stations/${station.toUpperCase()}.TXT`);
+  
+  if (!response.ok) {
+    return new Response(JSON.stringify({ error: "METAR introuvable" }), {
+      status: response.status,
+      headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
+    });
+  }
 
-        const res = await fetch(targetUrl, {
-          headers: {
-            ...(env.AVWR_API_KEY && { "Authorization": `BEARER ${env.AVWR_API_KEY}` })
-          }
-        });
-        const data = await res.json();
-        return new Response(JSON.stringify(data), {
-          status: res.status,
-          headers: { ...corsHeaders, "Content-Type": "application/json", "Cache-Control": "public, max-age=180" }
-        });
-      }
+  const text = await response.text();
+  // Le METAR brut est généralement sur la 2ème ligne
+  const lines = text.trim().split('\n');
+  const rawMetar = lines.length > 1 ? lines[1].trim() : text.trim();
+
+  return new Response(JSON.stringify({ raw: rawMetar }), {
+    headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
+  });
+}
 
       // 3. FIDS (EBLG & EBCI)
       if (path.includes("/api/fids")) {
