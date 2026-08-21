@@ -159,50 +159,33 @@ export default {
         );
       }
 
-      // 4. OpenSky Network (avec Authentification)
+      // 4. OpenSky Network
+// Alternative à OpenSky si toujours indisponible : Adsb.fi
 if (path === "/api/opensky") {
   try {
-    const openskyUrl =
-      "https://opensky-network.org/api/states/all?lamin=50.2&lamax=50.8&lomin=4.2&lomax=5.8";
+    // Coordonnées pour Liège / Charleroi
+    const adsbUrl = "https://api.adsb.fi/v2/lat/50.5/lon/5.0/dist/50";
 
-    // Récupération des identifiants depuis l'environnement Cloudflare Worker
-    const clientId = env.OPENSKY_CLIENT_ID || "peak-api-client";
-    const clientSecret = env.OPENSKY_CLIENT_SECRET;
-
-    const headers = {
-      "User-Agent": "Dashboard-Aero-App",
-    };
-
-    // Si le secret est présent, on ajoute l'en-tête d'authentification Basic
-    if (clientSecret) {
-      const credentials = btoa(`${clientId}:${clientSecret}`);
-      headers["Authorization"] = `Basic ${credentials}`;
-    }
-
-    const response = await fetch(openskyUrl, { headers });
+    const response = await fetch(adsbUrl, {
+      headers: { "User-Agent": "Dashboard-Aero-App" }
+    });
 
     if (!response.ok) {
-      return new Response(
-        JSON.stringify({ error: "Données indisponibles" }),
-        {
-          status: response.status,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        }
-      );
+      return new Response(JSON.stringify({ error: "Données indisponibles" }), {
+        status: 503,
+        headers: { ...corsHeaders, "Content-Type": "application/json" }
+      });
     }
 
     const data = await response.json();
     return new Response(JSON.stringify(data), {
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
+      headers: { ...corsHeaders, "Content-Type": "application/json" }
     });
   } catch (err) {
-    return new Response(
-      JSON.stringify({ error: "Données indisponibles" }),
-      {
-        status: 500,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      }
-    );
+    return new Response(JSON.stringify({ error: "Données indisponibles" }), {
+      status: 503,
+      headers: { ...corsHeaders, "Content-Type": "application/json" }
+    });
   }
 }
 
