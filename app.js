@@ -4,9 +4,9 @@
 const WORKER_BASE_URL = "https://bruit-aero-proxy.pnyr682w7f.workers.dev";
 
 var map;
-let planeMarkers = {}; 
-let lastValidStates = [];
-let currentAirport = "EBLG"; // Aéroport affiché par défaut
+var planeMarkers = {}; 
+var lastValidStates = [];
+var currentAirport = "EBLG";t
 
 const EBLG_LAT = 50.6374, EBLG_LON = 5.4432;
 const EBCI_LAT = 50.4592, EBCI_LON = 4.4538;
