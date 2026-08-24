@@ -67,10 +67,10 @@
   <!-- Carte Radar -->
   <div id="map"></div>
 
-  <!-- Tableaux des vols EBLG -->
+  <!-- Tableaux des vols dynamiques -->
   <div class="tables-container">
     <div class="card">
-      <h3>Départs (EBLG)</h3>
+      <h3 id="departures-title">Départs (EBLG)</h3>
       <table>
         <thead>
           <tr><th>Vol</th><th>Destination</th><th>Heure</th><th>Statut</th></tr>
@@ -80,7 +80,7 @@
     </div>
 
     <div class="card">
-      <h3>Arrivées (EBLG)</h3>
+      <h3 id="arrivals-title">Arrivées (EBLG)</h3>
       <table>
         <thead>
           <tr><th>Vol</th><th>Origine</th><th>Heure</th><th>Statut</th></tr>
@@ -90,35 +90,30 @@
     </div>
   </div>
 
-  <!-- Librairies JS -->
+  <!-- Librairie Leaflet JS -->
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   
-<!-- Insérez ceci juste AVANT votre script app.js -->
-<script>
-  (function() {
-    var proto = L.Marker.prototype;
-    var tileLayerProto = L.TileLayer.prototype;
-
-    L.Marker.include({
-      _setPos: function (pos) {
-        proto._setPos.call(this, pos);
-        if (this.options.rotationAngle) {
-          this._icon.style[L.DomUtil.TRANSFORM] += ' rotate(' + this.options.rotationAngle + 'deg)';
+  <!-- Patch Inline pour la rotation des marqueurs d'avions -->
+  <script>
+    (function() {
+      var proto = L.Marker.prototype;
+      L.Marker.include({
+        _setPos: function (pos) {
+          proto._setPos.call(this, pos);
+          if (this.options.rotationAngle) {
+            this._icon.style[L.DomUtil.TRANSFORM] += ' rotate(' + this.options.rotationAngle + 'deg)';
+          }
+        },
+        setRotationAngle: function (angle) {
+          this.options.rotationAngle = angle;
+          this.update();
+          return this;
         }
-      },
-      setRotationAngle: function (angle) {
-        this.options.rotationAngle = angle;
-        this.update();
-        return this;
-      }
-    });
-  })();
-</script>
+      });
+    })();
+  </script>
 
-<!-- Votre script principal -->
-<script src="app.js"></script>
-  
-  <!-- Script principal -->
+  <!-- Script principal unique -->
   <script src="app.js"></script>
 </body>
 </html>
