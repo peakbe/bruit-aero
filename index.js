@@ -1,3 +1,8 @@
+const WORKER_BASE_URL = "https://bruit-aero-proxy.pnyr682w7f.workers.dev";
+let map;
+let planeMarkers = {};
+let lastValidStates = [];
+
 export default {
   async fetch(request, env, ctx) {
     const corsHeaders = {
@@ -221,3 +226,8 @@ if (path === "/api/opensky") {
     }
   }
 };
+
+document.addEventListener("DOMContentLoaded", () => {
+  initMap(); // Lance la carte et les rafraîchissements
+  // Appel de vos autres fonctions si besoin (ex: fetchWeather())
+});
