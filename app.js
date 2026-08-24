@@ -5,7 +5,7 @@ const WORKER_BASE_URL = "https://bruit-aero-proxy.pnyr682w7f.workers.dev";
 
 let map;
 let planeMarkers = {}; 
-let lastValidStates = []; // CACHE DE SECOURS
+let lastValidStates = [];
 
 const EBLG_LAT = 50.6374, EBLG_LON = 5.4432;
 const EBCI_LAT = 50.4592, EBCI_LON = 4.4538;
@@ -24,7 +24,10 @@ const yellowPlaneIcon = L.divIcon({
 // =================================================================
 function initMap() {
   const mapContainer = document.getElementById("map");
-  if (!mapContainer) return;
+  if (!mapContainer) {
+    console.error("Conteneur #map introuvable.");
+    return;
+  }
 
   map = L.map("map").setView([50.55, 4.95], 9);
 
@@ -70,7 +73,7 @@ function initMap() {
 }
 
 // =================================================================
-// 3. GESTION DU RADAR VOLS (AVEC CACHE ANTI-DISPARITION)
+// 3. GESTION DU RADAR VOLS (AVEC CACHE)
 // =================================================================
 async function fetchRadarData() {
   try {
@@ -78,7 +81,6 @@ async function fetchRadarData() {
     
     if (response.ok) {
       const data = await response.json();
-      // Si on reçoit des avions valides, on met à jour le cache et les marqueurs
       if (data && Array.isArray(data.states) && data.states.length > 0) {
         lastValidStates = data.states;
         updatePlaneMarkers(data.states);
@@ -89,7 +91,6 @@ async function fetchRadarData() {
     console.warn("Erreur temporaire radar, utilisation du cache :", error);
   }
 
-  // Fallback : En cas d'erreur ou de réponse vide de l'API, on conserve le dernier cache connu
   if (lastValidStates.length > 0) {
     updatePlaneMarkers(lastValidStates);
   }
@@ -104,7 +105,7 @@ function updatePlaneMarkers(states) {
     const callsign = (flight[1] || "Inconnu").trim();
     const longitude = flight[5];
     const latitude = flight[6];
-    const altitude = flight[7] !== null ? `${flight[7]} m` : "N/C";
+    const altitude = flight[7] !== null ? `${Math.round(flight[7])} m` : "N/C";
     const speed = flight[9] !== null ? `${Math.round(flight[9] * 3.6)} km/h` : "N/C";
     const heading = flight[10] || 0;
 
@@ -141,7 +142,6 @@ function updatePlaneMarkers(states) {
     }
   });
 
-  // Ne retire les marqueurs que si l'API a explicitement renvoyé de nouvelles données qui n'incluent plus ces avions
   Object.keys(planeMarkers).forEach((icao) => {
     if (!currentIcaos.has(icao)) {
       map.removeLayer(planeMarkers[icao]);
@@ -151,7 +151,7 @@ function updatePlaneMarkers(states) {
 }
 
 // =================================================================
-// 4. VOLS & MÉTÉO (CONSERVÉS)
+// 4. VOLS & MÉTÉO
 // =================================================================
 async function fetchFlightsData() {
   const containerDepartures = document.getElementById("departures-list");
@@ -211,6 +211,9 @@ async function loadAirportWeather(lat, lon, station, tempElemId, metarElemId) {
   }
 }
 
-document.addEventListener("DOMContentLoaded", () => {
+// Initialisation au chargement de la page
+if (document.readyState === "loading") {
+  document.addEventListener("DOMContentLoaded", initMap);
+} else {
   initMap();
-});
+}
