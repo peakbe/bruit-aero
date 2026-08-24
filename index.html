@@ -92,7 +92,31 @@
 
   <!-- Librairies JS -->
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/leaflet-rotatedmarker@0.2.2/leaflet.rotatedMarker.min.js"></script>
+  
+<!-- Insérez ceci juste AVANT votre script app.js -->
+<script>
+  (function() {
+    var proto = L.Marker.prototype;
+    var tileLayerProto = L.TileLayer.prototype;
+
+    L.Marker.include({
+      _setPos: function (pos) {
+        proto._setPos.call(this, pos);
+        if (this.options.rotationAngle) {
+          this._icon.style[L.DomUtil.TRANSFORM] += ' rotate(' + this.options.rotationAngle + 'deg)';
+        }
+      },
+      setRotationAngle: function (angle) {
+        this.options.rotationAngle = angle;
+        this.update();
+        return this;
+      }
+    });
+  })();
+</script>
+
+<!-- Votre script principal -->
+<script src="app.js"></script>
   
   <!-- Script principal -->
   <script src="app.js"></script>
