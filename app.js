@@ -150,14 +150,7 @@ function updatePlaneMarkers(states) {
     }
   });
 
-  Object.keys(planeMarkers).forEach((icao) => {
-    if (!currentIcaos.has(icao)) {
-      map.removeLayer(planeMarkers[icao]);
-      delete planeMarkers[icao];
-    }
-  });
-}
-
+  // Nettoyage des avions hors de portée
   Object.keys(planeMarkers).forEach((icao) => {
     if (!currentIcaos.has(icao)) {
       map.removeLayer(planeMarkers[icao]);
