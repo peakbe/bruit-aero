@@ -84,47 +84,54 @@ export default {
         }
       }
 
-      // 3. FIDS (Vols)
-      if (path.includes("/api/fids")) {
-        const airport = (url.searchParams.get("airport") || "EBLG").toUpperCase();
-        const type = url.searchParams.get("type") || "departures";
+      // 3. FIDS (Vols Liège Airport)
+if (path.includes("/api/fids")) {
+  const airport = (url.searchParams.get("airport") || "EBLG").toUpperCase();
+  const type = url.searchParams.get("type") || "departures";
 
-        if (airport === "EBLG") {
-          const fidsTargetUrl = `https://fids.liegeairport.com/api/v1/flights?type=${type}`;
-          try {
-            const response = await fetch(fidsTargetUrl, {
-              headers: {
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-                Referer: "https://www.liegeairport.com/",
-              },
-            });
+  if (airport === "EBLG") {
+    const fidsTargetUrl = `https://fids.liegeairport.com/api/v1/flights?type=${type}`;
+    try {
+      const response = await fetch(fidsTargetUrl, {
+        headers: {
+          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+          "Accept": "application/json, text/plain, */*",
+          "Referer": "https://www.liegeairport.com/",
+        },
+      });
 
-            if (response.ok) {
-              const rawData = await response.json();
-              const list = Array.isArray(rawData) ? rawData : rawData.flights || [];
+      if (response.ok) {
+        const rawData = await response.json();
+        const list = Array.isArray(rawData) ? rawData : (rawData.flights || []);
 
-              const cleanFlights = list.slice(0, 10).map((f) => ({
-                flight: f.flightNumber || f.code || "N/A",
-                city: f.destination || f.origin || f.city || "Inconnu",
-                time: f.scheduledTime || f.time || "--:--",
-                status: f.status || "Programmé",
-              }));
-
-              return new Response(
-                JSON.stringify({ airport, type, flights: cleanFlights }),
-                { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-              );
-            }
-          } catch (e) {
-            console.error(e);
-          }
-        }
+        const cleanFlights = list.slice(0, 10).map((f) => ({
+          flight: f.flightNumber || f.code || "N/A",
+          city: f.destination || f.origin || f.city || "Inconnu",
+          time: f.scheduledTime || f.time || "--:--",
+          status: f.status || "Programmé",
+        }));
 
         return new Response(
-          JSON.stringify({ airport, type, flights: [], message: "Données indisponibles" }),
+          JSON.stringify({ airport, type, flights: cleanFlights }),
           { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
+    } catch (e) {
+      console.error("Erreur FIDS Liège:", e);
+    }
+  }
+
+  // Fallback si l'API de l'aéroport bloque la requête
+  return new Response(
+    JSON.stringify({ 
+      airport, 
+      type, 
+      flights: [], 
+      error: "Données indisponibles" 
+    }),
+    { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+  );
+}
 
      // 4. Radar Vol (adsb.lol avec fallback sur adsb.fi, format OpenSky)
 if (path === "/api/opensky") {
