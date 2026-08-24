@@ -6,6 +6,7 @@ const WORKER_BASE_URL = "https://bruit-aero-proxy.pnyr682w7f.workers.dev";
 let map;
 let planeMarkers = {}; 
 let lastValidStates = [];
+let currentAirport = "EBLG"; // Aéroport affiché par défaut
 
 const EBLG_LAT = 50.6374, EBLG_LON = 5.4432;
 const EBCI_LAT = 50.4592, EBCI_LON = 4.4538;
@@ -36,8 +37,12 @@ function initMap() {
     attribution: "© OpenStreetMap",
   }).addTo(map);
 
-  L.marker([EBLG_LAT, EBLG_LON]).addTo(map).bindPopup("<b>Liège Airport (EBLG)</b>");
-  L.marker([EBCI_LAT, EBCI_LON]).addTo(map).bindPopup("<b>Charleroi Airport (EBCI)</b>");
+  // Marqueurs aéroports avec événement de clic
+  const markerEBLG = L.marker([EBLG_LAT, EBLG_LON]).addTo(map).bindPopup("<b>Liège Airport (EBLG)</b>");
+  const markerEBCI = L.marker([EBCI_LAT, EBCI_LON]).addTo(map).bindPopup("<b>Charleroi Airport (EBCI)</b>");
+
+  markerEBLG.on('click', () => fetchFlightsData('EBLG'));
+  markerEBCI.on('click', () => fetchFlightsData('EBCI'));
 
   // Bouton Recentrer
   const RecenterControl = L.Control.extend({
@@ -64,11 +69,11 @@ function initMap() {
   map.addControl(new RecenterControl());
 
   fetchRadarData();
-  fetchFlightsData();
+  fetchFlightsData(currentAirport);
   fetchWeatherData();
 
   setInterval(fetchRadarData, 8000);
-  setInterval(fetchFlightsData, 120000);
+  setInterval(() => fetchFlightsData(currentAirport), 120000);
   setInterval(fetchWeatherData, 300000);
 }
 
@@ -153,16 +158,25 @@ function updatePlaneMarkers(states) {
 // =================================================================
 // 4. VOLS & MÉTÉO
 // =================================================================
-async function fetchFlightsData() {
+async function fetchFlightsData(airport = currentAirport) {
+  currentAirport = airport;
+
+  // Mise à jour des titres dynamiques dans le DOM s'ils existent
+  const titleDepartures = document.getElementById("departures-title");
+  const titleArrivals = document.getElementById("arrivals-title");
+  if (titleDepartures) titleDepartures.textContent = `Départs (${airport})`;
+  if (titleArrivals) titleArrivals.textContent = `Arrivées (${airport})`;
+
   const containerDepartures = document.getElementById("departures-list");
   const containerArrivals = document.getElementById("arrivals-list");
-  if (containerDepartures) await loadFlightType("departures", containerDepartures);
-  if (containerArrivals) await loadFlightType("arrivals", containerArrivals);
+  
+  if (containerDepartures) await loadFlightType("departures", containerDepartures, airport);
+  if (containerArrivals) await loadFlightType("arrivals", containerArrivals, airport);
 }
 
-async function loadFlightType(type, elementContainer) {
+async function loadFlightType(type, elementContainer, airport) {
   try {
-    const response = await fetch(`${WORKER_BASE_URL}/api/fids?airport=EBLG&type=${type}`);
+    const response = await fetch(`${WORKER_BASE_URL}/api/fids?airport=${airport}&type=${type}`);
     if (!response.ok) return;
 
     const data = await response.json();
@@ -179,9 +193,11 @@ async function loadFlightType(type, elementContainer) {
           `
         )
         .join("");
+    } else {
+      elementContainer.innerHTML = `<tr><td colspan="4" style="text-align:center;">Aucun vol trouvé pour ${airport}</td></tr>`;
     }
   } catch (error) {
-    console.error(`Erreur vols (${type}) :`, error);
+    console.error(`Erreur vols (${type}) pour ${airport}:`, error);
   }
 }
 
