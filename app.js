@@ -105,6 +105,9 @@ function updatePlaneMarkers(states) {
   if (!map) return;
   const currentIcaos = new Set();
 
+  // Vérification si le plugin de rotation est disponible
+  const hasRotationPlugin = typeof L.Marker.prototype.setRotationAngle === "function";
+
   states.forEach((flight) => {
     const icao24 = flight[0];
     const callsign = (flight[1] || "Inconnu").trim();
@@ -129,13 +132,13 @@ function updatePlaneMarkers(states) {
 
       if (planeMarkers[icao24]) {
         planeMarkers[icao24].setLatLng([latitude, longitude]);
-        if (typeof planeMarkers[icao24].setRotationAngle === "function") {
+        if (hasRotationPlugin) {
           planeMarkers[icao24].setRotationAngle(heading);
         }
         planeMarkers[icao24].getPopup().setContent(popupContent);
       } else {
         const markerOptions = { icon: yellowPlaneIcon };
-        if (typeof L.Marker.prototype.setRotationAngle === "function") {
+        if (hasRotationPlugin) {
           markerOptions.rotationAngle = heading;
           markerOptions.rotationOrigin = "center center";
         }
@@ -146,6 +149,14 @@ function updatePlaneMarkers(states) {
       }
     }
   });
+
+  Object.keys(planeMarkers).forEach((icao) => {
+    if (!currentIcaos.has(icao)) {
+      map.removeLayer(planeMarkers[icao]);
+      delete planeMarkers[icao];
+    }
+  });
+}
 
   Object.keys(planeMarkers).forEach((icao) => {
     if (!currentIcaos.has(icao)) {
