@@ -27,19 +27,15 @@ export default {
           if (!response.ok) {
             return new Response(
               JSON.stringify({ error: "Données indisponibles" }),
-              {
-                status: response.status,
-                headers: { ...corsHeaders, "Content-Type": "application/json" },
-              }
+              { status: response.status, headers: { ...corsHeaders, "Content-Type": "application/json" } }
             );
           }
 
           const data = await response.json();
-
           const formattedData = {
             main: { temp: data.current.temperature_2m },
             wind: {
-              speed: data.current.wind_speed_10m / 3.6, // Conversion m/s
+              speed: data.current.wind_speed_10m / 3.6,
               deg: data.current.wind_direction_10m,
             },
             visibility: data.current.visibility,
@@ -52,10 +48,7 @@ export default {
         } catch (err) {
           return new Response(
             JSON.stringify({ error: "Données indisponibles" }),
-            {
-              status: 500,
-              headers: { ...corsHeaders, "Content-Type": "application/json" },
-            }
+            { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
           );
         }
       }
@@ -72,10 +65,7 @@ export default {
           if (!response.ok) {
             return new Response(
               JSON.stringify({ error: "Données indisponibles" }),
-              {
-                status: response.status,
-                headers: { ...corsHeaders, "Content-Type": "application/json" },
-              }
+              { status: response.status, headers: { ...corsHeaders, "Content-Type": "application/json" } }
             );
           }
 
@@ -89,19 +79,14 @@ export default {
         } catch (err) {
           return new Response(
             JSON.stringify({ error: "Données indisponibles" }),
-            {
-              status: 500,
-              headers: { ...corsHeaders, "Content-Type": "application/json" },
-            }
+            { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
           );
         }
       }
 
       // 3. FIDS (Vols)
       if (path.includes("/api/fids")) {
-        const airport = (
-          url.searchParams.get("airport") || "EBLG"
-        ).toUpperCase();
+        const airport = (url.searchParams.get("airport") || "EBLG").toUpperCase();
         const type = url.searchParams.get("type") || "departures";
 
         if (airport === "EBLG") {
@@ -109,17 +94,14 @@ export default {
           try {
             const response = await fetch(fidsTargetUrl, {
               headers: {
-                "User-Agent":
-                  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
                 Referer: "https://www.liegeairport.com/",
               },
             });
 
             if (response.ok) {
               const rawData = await response.json();
-              const list = Array.isArray(rawData)
-                ? rawData
-                : rawData.flights || [];
+              const list = Array.isArray(rawData) ? rawData : rawData.flights || [];
 
               const cleanFlights = list.slice(0, 10).map((f) => ({
                 flight: f.flightNumber || f.code || "N/A",
@@ -130,13 +112,7 @@ export default {
 
               return new Response(
                 JSON.stringify({ airport, type, flights: cleanFlights }),
-                {
-                  status: 200,
-                  headers: {
-                    ...corsHeaders,
-                    "Content-Type": "application/json",
-                  },
-                }
+                { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
               );
             }
           } catch (e) {
@@ -144,110 +120,87 @@ export default {
           }
         }
 
-        // Si l'aéroport n'est pas supporté ou si l'API externe échoue
         return new Response(
-          JSON.stringify({
-            airport,
-            type,
-            flights: [],
-            message: "Données indisponibles",
-          }),
-          {
-            status: 200,
-            headers: { ...corsHeaders, "Content-Type": "application/json" },
-          }
+          JSON.stringify({ airport, type, flights: [], message: "Données indisponibles" }),
+          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
 
-     // 4. Radar Vol (adsb.lol formaté comme OpenSky)
-if (path === "/api/opensky") {
-  try {
-    // Recherche autour du sud de la Belgique (lat: 50.5, lon: 5.0, rayon: 60 nautical miles)
-    const adsbUrl = "https://api.adsb.lol/v2/point/50.5/5.0/60";
+      // 4. Radar Vol (adsb.lol formaté comme OpenSky)
+      if (path === "/api/opensky") {
+        try {
+          const adsbUrl = "https://api.adsb.lol/v2/point/50.5/5.0/60";
 
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 4000);
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), 4000);
 
-    const response = await fetch(adsbUrl, {
-      headers: { "User-Agent": "Dashboard-Aero-App" },
-      signal: controller.signal,
-    });
+          const response = await fetch(adsbUrl, {
+            headers: { "User-Agent": "Dashboard-Aero-App" },
+            signal: controller.signal,
+          });
 
-    clearTimeout(timeoutId);
+          clearTimeout(timeoutId);
 
-    if (!response.ok) {
-      return new Response(
-        JSON.stringify({ error: "Données indisponibles" }),
-        {
-          status: 503,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
+          if (!response.ok) {
+            return new Response(
+              JSON.stringify({ error: "Données indisponibles" }),
+              { status: 503, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+            );
+          }
+
+          const rawData = await response.json();
+          const acList = rawData.ac || [];
+          const currentTime = Math.floor(Date.now() / 1000);
+
+          const states = acList.map((ac) => {
+            const icao24 = (ac.hex || "").toLowerCase();
+            const callsign = (ac.flight || "").trim();
+            const origin_country = "Unknown";
+            const time_position = ac.seen_pos ? currentTime - Math.round(ac.seen_pos) : currentTime;
+            const last_contact = ac.seen ? currentTime - Math.round(ac.seen) : currentTime;
+            const longitude = ac.lon ?? null;
+            const latitude = ac.lat ?? null;
+            const baro_altitude = ac.alt_baro !== undefined && ac.alt_baro !== "ground" ? Math.round(ac.alt_baro * 0.3048) : null;
+            const on_ground = ac.alt_baro === "ground" || ac.gs === 0;
+            const velocity = ac.gs !== undefined ? ac.gs * 0.514444 : null;
+            const true_track = ac.track ?? null;
+            const vertical_rate = ac.geom_rate !== undefined ? ac.geom_rate * 0.00508 : null;
+            const sensors = null;
+            const geo_altitude = ac.alt_geom !== undefined ? Math.round(ac.alt_geom * 0.3048) : null;
+            const squawk = ac.squawk || null;
+            const spi = false;
+            const position_source = 0;
+
+            return [
+              icao24, callsign, origin_country, time_position, last_contact,
+              longitude, latitude, baro_altitude, on_ground, velocity,
+              true_track, vertical_rate, sensors, geo_altitude, squawk, spi, position_source
+            ];
+          });
+
+          return new Response(
+            JSON.stringify({ time: currentTime, states }),
+            { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        } catch (err) {
+          return new Response(
+            JSON.stringify({ error: "Données indisponibles" }),
+            { status: 503, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
         }
+      }
+
+      // 404 Endpoint non trouvé
+      return new Response(
+        JSON.stringify({ error: "Endpoint non trouvé", path }),
+        { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+
+    } catch (err) {
+      return new Response(
+        JSON.stringify({ error: "Données indisponibles", details: err.message }),
+        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
-
-    const rawData = await response.json();
-    const acList = rawData.ac || [];
-    const currentTime = Math.floor(Date.now() / 1000);
-
-    // Mappage au format exact d'un vecteur OpenSky
-    const states = acList.map((ac) => {
-      const icao24 = (ac.hex || "").toLowerCase();
-      const callsign = (ac.flight || "").trim();
-      const origin_country = "Unknown";
-      const time_position = ac.seen_pos ? currentTime - Math.round(ac.seen_pos) : currentTime;
-      const last_contact = ac.seen ? currentTime - Math.round(ac.seen) : currentTime;
-      const longitude = ac.lon ?? null;
-      const latitude = ac.lat ?? null;
-      const baro_altitude = ac.alt_baro !== undefined && ac.alt_baro !== "ground" ? Math.round(ac.alt_baro * 0.3048) : null; // Pieds vers Mètres
-      const on_ground = ac.alt_baro === "ground" || ac.gs === 0;
-      const velocity = ac.gs !== undefined ? ac.gs * 0.514444 : null; // Noeuds vers m/s
-      const true_track = ac.track ?? null;
-      const vertical_rate = ac.geom_rate !== undefined ? ac.geom_rate * 0.00508 : null; // Pieds/min vers m/s
-      const sensors = null;
-      const geo_altitude = ac.alt_geom !== undefined ? Math.round(ac.alt_geom * 0.3048) : null;
-      const squawk = ac.squawk || null;
-      const spi = false;
-      const position_source = 0;
-
-      return [
-        icao24,           // 0: icao24
-        callsign,         // 1: callsign
-        origin_country,   // 2: origin_country
-        time_position,    // 3: time_position
-        last_contact,     // 4: last_contact
-        longitude,        // 5: longitude
-        latitude,         // 6: latitude
-        baro_altitude,    // 7: baro_altitude (mètres)
-        on_ground,        // 8: on_ground
-        velocity,         // 9: velocity (m/s)
-        true_track,       // 10: true_track (degrés)
-        vertical_rate,    // 11: vertical_rate (m/s)
-        sensors,          // 12: sensors
-        geo_altitude,     // 13: geo_altitude (mètres)
-        squawk,           // 14: squawk
-        spi,              // 15: spi
-        position_source   // 16: position_source
-      ];
-    });
-
-    const openSkyFormattedData = {
-      time: currentTime,
-      states: states
-    };
-
-    return new Response(JSON.stringify(openSkyFormattedData), {
-      status: 200,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
-  } catch (err) {
-    return new Response(
-      JSON.stringify({ error: "Données indisponibles" }),
-      {
-        status: 503,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      }
-    );
   }
-}
-  },
 };
