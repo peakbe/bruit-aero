@@ -93,13 +93,16 @@
   <!-- Librairie Leaflet JS -->
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   
-  <!-- Patch Inline pour la rotation des marqueurs d'avions -->
+  <!-- Patch de rotation sans récursion infinie -->
   <script>
     (function() {
-      var proto = L.Marker.prototype;
+      if (L.Marker.prototype.__rotatedOriginalSetPos) return; // Évite les ré-exécutions
+      
+      L.Marker.prototype.__rotatedOriginalSetPos = L.Marker.prototype._setPos;
+      
       L.Marker.include({
         _setPos: function (pos) {
-          proto._setPos.call(this, pos);
+          this.__rotatedOriginalSetPos(pos);
           if (this.options.rotationAngle) {
             this._icon.style[L.DomUtil.TRANSFORM] += ' rotate(' + this.options.rotationAngle + 'deg)';
           }
