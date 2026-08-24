@@ -9,6 +9,16 @@ let planeMarkers = {};
 const EBLG_LAT = 50.6374, EBLG_LON = 5.4432;
 const EBCI_LAT = 50.4592, EBCI_LON = 4.4538;
 
+// Définition de l'icône d'avion jaune (SVG)
+const yellowPlaneIcon = L.divIcon({
+  className: "custom-plane-icon",
+  html: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="30" height="30">
+           <path fill="#FFD700" stroke="#000000" stroke-width="1" d="M21,16v-2l-8-5V3.5C13,2.67,12.33,2,11.5,2S10,2.67,10,3.5V9l-8,5v2l8-2.5V19l-2,1.5V22l3.5-1l3.5,1v-1.5L13,19v-5.5L21,16z"/>
+         </svg>`,
+  iconSize: [30, 30],
+  iconAnchor: [15, 15],
+});
+
 // =================================================================
 // 2. INITIALISATION CARTE
 // =================================================================
@@ -27,6 +37,29 @@ function initMap() {
   L.marker([EBLG_LAT, EBLG_LON]).addTo(map).bindPopup("<b>Liège Airport (EBLG)</b>");
   L.marker([EBCI_LAT, EBCI_LON]).addTo(map).bindPopup("<b>Charleroi Airport (EBCI)</b>");
 
+  // Bouton personnalisé "Recentrer" (Placé DANS initMap)
+  const RecenterControl = L.Control.extend({
+    options: { position: "topleft" },
+    onAdd: function (mapInstance) {
+      const container = L.DomUtil.create("div", "leaflet-bar");
+      const button = L.DomUtil.create("button", "leaflet-btn-recenter", container);
+      
+      button.innerHTML = "🎯 Recentrer";
+      button.title = "Recentrer la carte";
+
+      L.DomEvent.disableClickPropagation(button);
+
+      button.onclick = function () {
+        mapInstance.setView([50.55, 4.95], 9);
+      };
+
+      return container;
+    }
+  });
+
+  map.addControl(new RecenterControl());
+
+  // Lancement des appels API
   fetchRadarData();
   fetchFlightsData();
   fetchWeatherData();
@@ -35,30 +68,6 @@ function initMap() {
   setInterval(fetchFlightsData, 120000);
   setInterval(fetchWeatherData, 300000);
 }
-
-// Création du bouton personnalisé "Recentrer"
-const RecenterControl = L.Control.extend({
-  options: { position: "topleft" },
-  onAdd: function (map) {
-    const container = L.DomUtil.create("div", "leaflet-bar");
-    const button = L.DomUtil.create("button", "leaflet-btn-recenter", container);
-    
-    button.innerHTML = "🎯 Recentrer";
-    button.title = "Recentrer la carte";
-
-    // Empêche le clic de traverser vers la carte
-    L.DomEvent.disableClickPropagation(button);
-
-    button.onclick = function () {
-      map.setView([50.55, 4.95], 9); // Coordonnées centrales (entre Liège et Charleroi)
-    };
-
-    return container;
-  }
-});
-
-// Ajout du bouton sur la carte
-map.addControl(new RecenterControl());
 
 // =================================================================
 // 3. GESTION DU RADAR VOLS
@@ -77,16 +86,6 @@ async function fetchRadarData() {
   }
 }
 
-// Définition de l'icône d'avion jaune (SVG)
-const yellowPlaneIcon = L.divIcon({
-  className: "custom-plane-icon",
-  html: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="30" height="30">
-           <path fill="#FFD700" stroke="#000000" stroke-width="1" d="M21,16v-2l-8-5V3.5C13,2.67,12.33,2,11.5,2S10,2.67,10,3.5V9l-8,5v2l8-2.5V19l-2,1.5V22l3.5-1l3.5,1v-1.5L13,19v-5.5L21,16z"/>
-         </svg>`,
-  iconSize: [30, 30],
-  iconAnchor: [15, 15], // Centre de rotation
-});
-
 function updatePlaneMarkers(states) {
   if (!map) return;
   const currentIcaos = new Set();
@@ -98,7 +97,7 @@ function updatePlaneMarkers(states) {
     const latitude = flight[6];
     const altitude = flight[7] !== null ? `${flight[7]} m` : "N/C";
     const speed = flight[9] !== null ? `${Math.round(flight[9] * 3.6)} km/h` : "N/C";
-    const heading = flight[10] || 0; // Cap en degrés (0° à 360°)
+    const heading = flight[10] || 0;
 
     if (latitude !== null && longitude !== null) {
       currentIcaos.add(icao24);
@@ -113,14 +112,13 @@ function updatePlaneMarkers(states) {
         </div>
       `;
 
-      // Si l'avion existe déjà, mise à jour de la position et de l'orientation
       if (planeMarkers[icao24]) {
         planeMarkers[icao24].setLatLng([latitude, longitude]);
-        planeMarkers[icao24].setRotationAngle(heading);
+        if (typeof planeMarkers[icao24].setRotationAngle === "function") {
+          planeMarkers[icao24].setRotationAngle(heading);
+        }
         planeMarkers[icao24].getPopup().setContent(popupContent);
-      } 
-      // Création du nouvel avion avec l'icône jaune
-      else {
+      } else {
         const marker = L.marker([latitude, longitude], {
           icon: yellowPlaneIcon,
           rotationAngle: heading,
@@ -133,7 +131,6 @@ function updatePlaneMarkers(states) {
     }
   });
 
-  // Nettoyage des avions hors de portée
   Object.keys(planeMarkers).forEach((icao) => {
     if (!currentIcaos.has(icao)) {
       map.removeLayer(planeMarkers[icao]);
@@ -182,9 +179,7 @@ async function loadFlightType(type, elementContainer) {
 // 5. GESTION MÉTÉO (EBLG + EBCI)
 // =================================================================
 async function fetchWeatherData() {
-  // 1. Météo EBLG (Liège)
   loadAirportWeather(EBLG_LAT, EBLG_LON, "EBLG", "eblg-temp", "eblg-metar");
-  // 2. Météo EBCI (Charleroi)
   loadAirportWeather(EBCI_LAT, EBCI_LON, "EBCI", "ebci-temp", "ebci-metar");
 }
 
