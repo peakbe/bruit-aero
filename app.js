@@ -53,6 +53,16 @@ async function fetchRadarData() {
   }
 }
 
+// Définition de l'icône d'avion jaune (SVG)
+const yellowPlaneIcon = L.divIcon({
+  className: "custom-plane-icon",
+  html: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="30" height="30">
+           <path fill="#FFD700" stroke="#000000" stroke-width="1" d="M21,16v-2l-8-5V3.5C13,2.67,12.33,2,11.5,2S10,2.67,10,3.5V9l-8,5v2l8-2.5V19l-2,1.5V22l3.5-1l3.5,1v-1.5L13,19v-5.5L21,16z"/>
+         </svg>`,
+  iconSize: [30, 30],
+  iconAnchor: [15, 15], // Centre de rotation
+});
+
 function updatePlaneMarkers(states) {
   if (!map) return;
   const currentIcaos = new Set();
@@ -64,6 +74,7 @@ function updatePlaneMarkers(states) {
     const latitude = flight[6];
     const altitude = flight[7] !== null ? `${flight[7]} m` : "N/C";
     const speed = flight[9] !== null ? `${Math.round(flight[9] * 3.6)} km/h` : "N/C";
+    const heading = flight[10] || 0; // Cap en degrés (0° à 360°)
 
     if (latitude !== null && longitude !== null) {
       currentIcaos.add(icao24);
@@ -73,22 +84,32 @@ function updatePlaneMarkers(states) {
           <strong>Vol : ${callsign}</strong><br/>
           ICAO : ${icao24.toUpperCase()}<br/>
           Altitude : ${altitude}<br/>
-          Vitesse : ${speed}
+          Vitesse : ${speed}<br/>
+          Cap : ${Math.round(heading)}°
         </div>
       `;
 
+      // Si l'avion existe déjà, mise à jour de la position et de l'orientation
       if (planeMarkers[icao24]) {
         planeMarkers[icao24].setLatLng([latitude, longitude]);
+        planeMarkers[icao24].setRotationAngle(heading);
         planeMarkers[icao24].getPopup().setContent(popupContent);
-      } else {
-        const marker = L.marker([latitude, longitude]).bindPopup(popupContent);
+      } 
+      // Création du nouvel avion avec l'icône jaune
+      else {
+        const marker = L.marker([latitude, longitude], {
+          icon: yellowPlaneIcon,
+          rotationAngle: heading,
+          rotationOrigin: "center center"
+        }).bindPopup(popupContent);
+
         marker.addTo(map);
         planeMarkers[icao24] = marker;
       }
     }
   });
 
-  // Suppression des avions sortis de zone
+  // Nettoyage des avions hors de portée
   Object.keys(planeMarkers).forEach((icao) => {
     if (!currentIcaos.has(icao)) {
       map.removeLayer(planeMarkers[icao]);
