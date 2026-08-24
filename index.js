@@ -1,233 +1,209 @@
+// =================================================================
+// 1. CONFIGURATION & VARIABLES GLOBALES
+// =================================================================
 const WORKER_BASE_URL = "https://bruit-aero-proxy.pnyr682w7f.workers.dev";
+
 let map;
-let planeMarkers = {};
-let lastValidStates = [];
+let planeMarkers = {}; // Stocke les marqueurs d'avions Leaflet par ICAO24
+let lastValidStates = []; // Cache des derniers vols pour éviter la disparition des marqueurs
 
-export default {
-  async fetch(request, env, ctx) {
-    const corsHeaders = {
-      "Access-Control-Allow-Origin": "*",
-      "Access-Control-Allow-Methods": "GET, OPTIONS",
-      "Access-Control-Allow-Headers": "Content-Type",
-    };
+// Coordonnées de l'aéroport de Liège (EBLG)
+const EBLG_LAT = 50.6374;
+const EBLG_LON = 5.4432;
 
-    if (request.method === "OPTIONS") {
-      return new Response(null, { headers: corsHeaders });
-    }
-
-    const url = new URL(request.url);
-    const path = url.pathname.toLowerCase();
-
-    try {
-      // 1. Météo Open-Meteo
-      if (path === "/api/weather") {
-        const lat = url.searchParams.get("lat") || "50.6374";
-        const lon = url.searchParams.get("lon") || "5.4432";
-
-        try {
-          const response = await fetch(
-            `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,relative_humidity_2m,visibility,wind_speed_10m,wind_direction_10m&hourly=temperature_2m,wind_speed_10m,wind_direction_10m,weather_code&forecast_hours=24`
-          );
-
-          if (!response.ok) {
-            return new Response(
-              JSON.stringify({ error: "Données indisponibles" }),
-              { status: response.status, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-            );
-          }
-
-          const data = await response.json();
-          const formattedData = {
-            main: { temp: data.current.temperature_2m },
-            wind: {
-              speed: data.current.wind_speed_10m / 3.6,
-              deg: data.current.wind_direction_10m,
-            },
-            visibility: data.current.visibility,
-            hourly: data.hourly,
-          };
-
-          return new Response(JSON.stringify(formattedData), {
-            headers: { ...corsHeaders, "Content-Type": "application/json" },
-          });
-        } catch (err) {
-          return new Response(
-            JSON.stringify({ error: "Données indisponibles" }),
-            { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-          );
-        }
-      }
-
-      // 2. METAR NOAA
-      if (path === "/api/metar") {
-        const station = url.searchParams.get("station") || "EBLG";
-
-        try {
-          const response = await fetch(
-            `https://tgftp.nws.noaa.gov/data/observations/metar/stations/${station.toUpperCase()}.TXT`
-          );
-
-          if (!response.ok) {
-            return new Response(
-              JSON.stringify({ error: "Données indisponibles" }),
-              { status: response.status, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-            );
-          }
-
-          const text = await response.text();
-          const lines = text.trim().split("\n");
-          const rawMetar = lines.length > 1 ? lines[1].trim() : text.trim();
-
-          return new Response(JSON.stringify({ raw: rawMetar }), {
-            headers: { ...corsHeaders, "Content-Type": "application/json" },
-          });
-        } catch (err) {
-          return new Response(
-            JSON.stringify({ error: "Données indisponibles" }),
-            { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-          );
-        }
-      }
-
-      // 3. FIDS (Vols Liège Airport)
-if (path.includes("/api/fids")) {
-  const airport = (url.searchParams.get("airport") || "EBLG").toUpperCase();
-  const type = url.searchParams.get("type") || "departures";
-
-  if (airport === "EBLG") {
-    const fidsTargetUrl = `https://fids.liegeairport.com/api/v1/flights?type=${type}`;
-    try {
-      const response = await fetch(fidsTargetUrl, {
-        headers: {
-          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-          "Accept": "application/json, text/plain, */*",
-          "Referer": "https://www.liegeairport.com/",
-        },
-      });
-
-      if (response.ok) {
-        const rawData = await response.json();
-        const list = Array.isArray(rawData) ? rawData : (rawData.flights || []);
-
-        const cleanFlights = list.slice(0, 10).map((f) => ({
-          flight: f.flightNumber || f.code || "N/A",
-          city: f.destination || f.origin || f.city || "Inconnu",
-          time: f.scheduledTime || f.time || "--:--",
-          status: f.status || "Programmé",
-        }));
-
-        return new Response(
-          JSON.stringify({ airport, type, flights: cleanFlights }),
-          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
-      }
-    } catch (e) {
-      console.error("Erreur FIDS Liège:", e);
-    }
+// =================================================================
+// 2. INITIALISATION DE LA CARTE LEAFLET
+// =================================================================
+function initMap() {
+  // Recherche de l'élément HTML de la carte
+  const mapContainer = document.getElementById("map");
+  if (!mapContainer) {
+    console.warn("Conteneur #map non trouvé dans le DOM.");
+    return;
   }
 
-  // Fallback si l'API de l'aéroport bloque la requête
-  return new Response(
-    JSON.stringify({ 
-      airport, 
-      type, 
-      flights: [], 
-      error: "Données indisponibles" 
-    }),
-    { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-  );
+  // Initialisation de Leaflet centrée sur la zone de Liège
+  map = L.map("map").setView([EBLG_LAT, EBLG_LON], 9);
+
+  L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+    maxZoom: 19,
+    attribution: "© OpenStreetMap",
+  }).addTo(map);
+
+  // Marqueur fixe pour l'aéroport EBLG
+  L.marker([EBLG_LAT, EBLG_LON])
+    .addTo(map)
+    .bindPopup("<b>Aéroport de Liège (EBLG)</b>");
+
+  // Premier chargement des données
+  fetchRadarData();
+  fetchFlightsData();
+
+  // Boucles de rafraîchissement (8s pour le radar, 2 min pour les vols)
+  setInterval(fetchRadarData, 8000);
+  setInterval(fetchFlightsData, 120000);
 }
 
-     // 4. Radar Vol (adsb.lol avec fallback sur adsb.fi, format OpenSky)
-if (path === "/api/opensky") {
-  const currentTime = Math.floor(Date.now() / 1000);
-  
-  const mapToOpenSky = (acList) => {
-    return acList.map((ac) => [
-      (ac.hex || "").toLowerCase(),
-      (ac.flight || "").trim(),
-      "Unknown",
-      ac.seen_pos ? currentTime - Math.round(ac.seen_pos) : currentTime,
-      ac.seen ? currentTime - Math.round(ac.seen) : currentTime,
-      ac.lon ?? null,
-      ac.lat ?? null,
-      ac.alt_baro !== undefined && ac.alt_baro !== "ground" ? Math.round(ac.alt_baro * 0.3048) : null,
-      ac.alt_baro === "ground" || ac.gs === 0,
-      ac.gs !== undefined ? ac.gs * 0.514444 : null,
-      ac.track ?? null,
-      ac.geom_rate !== undefined ? ac.geom_rate * 0.00508 : null,
-      null,
-      ac.alt_geom !== undefined ? Math.round(ac.alt_geom * 0.3048) : null,
-      ac.squawk || null,
-      false,
-      0
-    ]);
-  };
-
+// =================================================================
+// 3. GESTION DU RADAR VOLS (ANTI-DISPARITION ET CACHE)
+// =================================================================
+async function fetchRadarData() {
   try {
-    // Essai 1 : adsb.lol (Timeout porté à 6 sec)
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 6000);
+    const response = await fetch(`${WORKER_BASE_URL}/api/opensky`);
 
-    let response = await fetch("https://api.adsb.lol/v2/point/50.5/5.0/60", {
-      headers: { "User-Agent": "Dashboard-Aero-App" },
-      signal: controller.signal,
-    }).catch(() => null);
-
-    clearTimeout(timeoutId);
-
-    // Essai 2 (Fallback) : adsb.fi si le premier a échoué
-    if (!response || !response.ok) {
-      const controller2 = new AbortController();
-      const timeoutId2 = setTimeout(() => controller2.abort(), 5000);
-      
-      response = await fetch("https://api.adsb.fi/v2/lat/50.5/lon/5.0/dist/60", {
-        headers: { "User-Agent": "Dashboard-Aero-App" },
-        signal: controller2.signal,
-      }).catch(() => null);
-      
-      clearTimeout(timeoutId2);
+    if (!response.ok) {
+      console.warn("API Radar indisponible, conservation des avions actuels.");
+      return;
     }
 
-    if (response && response.ok) {
-      const rawData = await response.json();
-      const acList = rawData.ac || [];
-      return new Response(
-        JSON.stringify({ time: currentTime, states: mapToOpenSky(acList) }),
-        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+    const data = await response.json();
+
+    // On ne rafraîchit la carte que si le serveur renvoie un tableau valide d'avions
+    if (data && Array.isArray(data.states) && data.states.length > 0) {
+      lastValidStates = data.states; // Mise à jour du cache local
+      updatePlaneMarkers(data.states);
+    } else {
+      console.warn("Réponse radar vide. Les avions affichés sont conservés.");
     }
-
-    // Si aucune API ne répond : renvoie une structure OpenSky valide mais vide
-    return new Response(
-      JSON.stringify({ time: currentTime, states: [], message: "Données indisponibles" }),
-      { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-    );
-
-  } catch (err) {
-    return new Response(
-      JSON.stringify({ time: currentTime, states: [], message: "Données indisponibles" }),
-      { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-    );
+  } catch (error) {
+    console.error("Erreur lors de la récupération des données radar :", error);
   }
 }
 
-      // 404 Endpoint non trouvé
-      return new Response(
-        JSON.stringify({ error: "Endpoint non trouvé", path }),
-        { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+function updatePlaneMarkers(states) {
+  if (!map) return;
 
-    } catch (err) {
-      return new Response(
-        JSON.stringify({ error: "Données indisponibles", details: err.message }),
-        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+  const currentIcaos = new Set();
+
+  states.forEach((flight) => {
+    const icao24 = flight[0];
+    const callsign = (flight[1] || "Inconnu").trim();
+    const longitude = flight[5];
+    const latitude = flight[6];
+    const altitude = flight[7] !== null ? `${flight[7]} m` : "N/C";
+    const speed = flight[9] !== null ? `${Math.round(flight[9] * 3.6)} km/h` : "N/C";
+    const heading = flight[10] || 0;
+
+    if (latitude !== null && longitude !== null) {
+      currentIcaos.add(icao24);
+
+      const popupContent = `
+        <div style="font-family: sans-serif; font-size: 13px;">
+          <strong>Vol : ${callsign}</strong><br/>
+          ICAO : ${icao24.toUpperCase()}<br/>
+          Altitude : ${altitude}<br/>
+          Vitesse : ${speed}
+        </div>
+      `;
+
+      // Si l'avion existe déjà, mise à jour fluide de sa position
+      if (planeMarkers[icao24]) {
+        planeMarkers[icao24].setLatLng([latitude, longitude]);
+        planeMarkers[icao24].getPopup().setContent(popupContent);
+
+        if (typeof planeMarkers[icao24].setRotationAngle === "function") {
+          planeMarkers[icao24].setRotationAngle(heading);
+        }
+      } 
+      // Sinon, création d'un nouveau marqueur
+      else {
+        const marker = L.marker([latitude, longitude]).bindPopup(popupContent);
+        marker.addTo(map);
+        planeMarkers[icao24] = marker;
+      }
     }
-  }
-};
+  });
 
+  // Nettoyage optionnel des avions qui ne sont plus détectés
+  Object.keys(planeMarkers).forEach((icao) => {
+    if (!currentIcaos.has(icao)) {
+      map.removeLayer(planeMarkers[icao]);
+      delete planeMarkers[icao];
+    }
+  });
+}
+
+// =================================================================
+// 4. GESTION DES VOLS AU DÉPART ET À L'ARRIVÉE (FIDS)
+// =================================================================
+async function fetchFlightsData() {
+  const containerDepartures = document.getElementById("departures-list");
+  const containerArrivals = document.getElementById("arrivals-list");
+
+  if (containerDepartures) {
+    await loadFlightType("departures", containerDepartures);
+  }
+
+  if (containerArrivals) {
+    await loadFlightType("arrivals", containerArrivals);
+  }
+}
+
+async function loadFlightType(type, elementContainer) {
+  try {
+    const response = await fetch(`${WORKER_BASE_URL}/api/fids?airport=EBLG&type=${type}`);
+
+    if (!response.ok) {
+      elementContainer.innerHTML = "<tr><td colspan='4'>Données indisponibles</td></tr>";
+      return;
+    }
+
+    const data = await response.json();
+
+    if (data && Array.isArray(data.flights) && data.flights.length > 0) {
+      elementContainer.innerHTML = data.flights
+        .map(
+          (f) => `
+            <tr>
+              <td><strong>${f.flight}</strong></td>
+              <td>${f.city}</td>
+              <td>${f.time}</td>
+              <td><span class="badge">${f.status}</span></td>
+            </tr>
+          `
+        )
+        .join("");
+    } else {
+      elementContainer.innerHTML = "<tr><td colspan='4'>Données indisponibles</td></tr>";
+    }
+  } catch (error) {
+    console.error(`Erreur chargement vols (${type}) :`, error);
+    elementContainer.innerHTML = "<tr><td colspan='4'>Données indisponibles</td></tr>";
+  }
+}
+
+// =================================================================
+// 5. GESTION DE LA MÉTÉO ET DES METAR (EXEMPLE)
+// =================================================================
+async function fetchWeatherData() {
+  try {
+    const resWeather = await fetch(`${WORKER_BASE_URL}/api/weather?lat=${EBLG_LAT}&lon=${EBLG_LON}`);
+    const resMetar = await fetch(`${WORKER_BASE_URL}/api/metar?station=EBLG`);
+
+    if (resWeather.ok) {
+      const weather = await resWeather.json();
+      const tempEl = document.getElementById("temp-value");
+      if (tempEl && weather.main) {
+        tempEl.innerText = `${Math.round(weather.main.temp)}°C`;
+      }
+    }
+
+    if (resMetar.ok) {
+      const metar = await resMetar.json();
+      const metarEl = document.getElementById("metar-raw");
+      if (metarEl && metar.raw) {
+        metarEl.innerText = metar.raw;
+      }
+    }
+  } catch (err) {
+    console.error("Erreur météo/METAR :", err);
+  }
+}
+
+// =================================================================
+// 6. ÉVÉNEMENT DÉMARRAGE DU DOM
+// =================================================================
 document.addEventListener("DOMContentLoaded", () => {
-  initMap(); // Lance la carte et les rafraîchissements
-  // Appel de vos autres fonctions si besoin (ex: fetchWeather())
+  initMap();
+  fetchWeatherData();
 });
