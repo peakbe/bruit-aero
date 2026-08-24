@@ -36,6 +36,30 @@ function initMap() {
   setInterval(fetchWeatherData, 300000);
 }
 
+// Création du bouton personnalisé "Recentrer"
+const RecenterControl = L.Control.extend({
+  options: { position: "topleft" },
+  onAdd: function (map) {
+    const container = L.DomUtil.create("div", "leaflet-bar");
+    const button = L.DomUtil.create("button", "leaflet-btn-recenter", container);
+    
+    button.innerHTML = "🎯 Recentrer";
+    button.title = "Recentrer la carte";
+
+    // Empêche le clic de traverser vers la carte
+    L.DomEvent.disableClickPropagation(button);
+
+    button.onclick = function () {
+      map.setView([50.55, 4.95], 9); // Coordonnées centrales (entre Liège et Charleroi)
+    };
+
+    return container;
+  }
+});
+
+// Ajout du bouton sur la carte
+map.addControl(new RecenterControl());
+
 // =================================================================
 // 3. GESTION DU RADAR VOLS
 // =================================================================
