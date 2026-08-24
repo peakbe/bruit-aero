@@ -5,18 +5,18 @@ const WORKER_BASE_URL = "https://bruit-aero-proxy.pnyr682w7f.workers.dev";
 
 let map;
 let planeMarkers = {}; 
+let lastValidStates = []; // CACHE DE SECOURS
 
 const EBLG_LAT = 50.6374, EBLG_LON = 5.4432;
 const EBCI_LAT = 50.4592, EBCI_LON = 4.4538;
 
-// Définition de l'icône d'avion jaune (SVG)
 const yellowPlaneIcon = L.divIcon({
   className: "custom-plane-icon",
-  html: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="30" height="30">
-           <path fill="#FFD700" stroke="#000000" stroke-width="1" d="M21,16v-2l-8-5V3.5C13,2.67,12.33,2,11.5,2S10,2.67,10,3.5V9l-8,5v2l8-2.5V19l-2,1.5V22l3.5-1l3.5,1v-1.5L13,19v-5.5L21,16z"/>
+  html: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="28" height="28">
+           <path fill="#FFD700" stroke="#000000" stroke-width="1.2" d="M21,16v-2l-8-5V3.5C13,2.67,12.33,2,11.5,2S10,2.67,10,3.5V9l-8,5v2l8-2.5V19l-2,1.5V22l3.5-1l3.5,1v-1.5L13,19v-5.5L21,16z"/>
          </svg>`,
-  iconSize: [30, 30],
-  iconAnchor: [15, 15],
+  iconSize: [28, 28],
+  iconAnchor: [14, 14],
 });
 
 // =================================================================
@@ -33,23 +33,24 @@ function initMap() {
     attribution: "© OpenStreetMap",
   }).addTo(map);
 
-  // Repères fixes des aéroports
   L.marker([EBLG_LAT, EBLG_LON]).addTo(map).bindPopup("<b>Liège Airport (EBLG)</b>");
   L.marker([EBCI_LAT, EBCI_LON]).addTo(map).bindPopup("<b>Charleroi Airport (EBCI)</b>");
 
-  // Bouton personnalisé "Recentrer" (Placé DANS initMap)
+  // Bouton Recentrer
   const RecenterControl = L.Control.extend({
     options: { position: "topleft" },
     onAdd: function (mapInstance) {
       const container = L.DomUtil.create("div", "leaflet-bar");
       const button = L.DomUtil.create("button", "leaflet-btn-recenter", container);
-      
+      button.type = "button";
       button.innerHTML = "🎯 Recentrer";
       button.title = "Recentrer la carte";
 
       L.DomEvent.disableClickPropagation(button);
+      L.DomEvent.disableScrollPropagation(button);
 
-      button.onclick = function () {
+      button.onclick = function (e) {
+        e.preventDefault();
         mapInstance.setView([50.55, 4.95], 9);
       };
 
@@ -59,7 +60,6 @@ function initMap() {
 
   map.addControl(new RecenterControl());
 
-  // Lancement des appels API
   fetchRadarData();
   fetchFlightsData();
   fetchWeatherData();
@@ -70,19 +70,28 @@ function initMap() {
 }
 
 // =================================================================
-// 3. GESTION DU RADAR VOLS
+// 3. GESTION DU RADAR VOLS (AVEC CACHE ANTI-DISPARITION)
 // =================================================================
 async function fetchRadarData() {
   try {
     const response = await fetch(`${WORKER_BASE_URL}/api/opensky`);
-    if (!response.ok) return;
-
-    const data = await response.json();
-    if (data && Array.isArray(data.states)) {
-      updatePlaneMarkers(data.states);
+    
+    if (response.ok) {
+      const data = await response.json();
+      // Si on reçoit des avions valides, on met à jour le cache et les marqueurs
+      if (data && Array.isArray(data.states) && data.states.length > 0) {
+        lastValidStates = data.states;
+        updatePlaneMarkers(data.states);
+        return;
+      }
     }
   } catch (error) {
-    console.error("Erreur radar :", error);
+    console.warn("Erreur temporaire radar, utilisation du cache :", error);
+  }
+
+  // Fallback : En cas d'erreur ou de réponse vide de l'API, on conserve le dernier cache connu
+  if (lastValidStates.length > 0) {
+    updatePlaneMarkers(lastValidStates);
   }
 }
 
@@ -119,18 +128,20 @@ function updatePlaneMarkers(states) {
         }
         planeMarkers[icao24].getPopup().setContent(popupContent);
       } else {
-        const marker = L.marker([latitude, longitude], {
-          icon: yellowPlaneIcon,
-          rotationAngle: heading,
-          rotationOrigin: "center center"
-        }).bindPopup(popupContent);
+        const markerOptions = { icon: yellowPlaneIcon };
+        if (typeof L.Marker.prototype.setRotationAngle === "function") {
+          markerOptions.rotationAngle = heading;
+          markerOptions.rotationOrigin = "center center";
+        }
 
+        const marker = L.marker([latitude, longitude], markerOptions).bindPopup(popupContent);
         marker.addTo(map);
         planeMarkers[icao24] = marker;
       }
     }
   });
 
+  // Ne retire les marqueurs que si l'API a explicitement renvoyé de nouvelles données qui n'incluent plus ces avions
   Object.keys(planeMarkers).forEach((icao) => {
     if (!currentIcaos.has(icao)) {
       map.removeLayer(planeMarkers[icao]);
@@ -140,12 +151,11 @@ function updatePlaneMarkers(states) {
 }
 
 // =================================================================
-// 4. VOLS DÉPARTS / ARRIVÉES
+// 4. VOLS & MÉTÉO (CONSERVÉS)
 // =================================================================
 async function fetchFlightsData() {
   const containerDepartures = document.getElementById("departures-list");
   const containerArrivals = document.getElementById("arrivals-list");
-
   if (containerDepartures) await loadFlightType("departures", containerDepartures);
   if (containerArrivals) await loadFlightType("arrivals", containerArrivals);
 }
@@ -175,9 +185,6 @@ async function loadFlightType(type, elementContainer) {
   }
 }
 
-// =================================================================
-// 5. GESTION MÉTÉO (EBLG + EBCI)
-// =================================================================
 async function fetchWeatherData() {
   loadAirportWeather(EBLG_LAT, EBLG_LON, "EBLG", "eblg-temp", "eblg-metar");
   loadAirportWeather(EBCI_LAT, EBCI_LON, "EBCI", "ebci-temp", "ebci-metar");
@@ -204,9 +211,6 @@ async function loadAirportWeather(lat, lon, station, tempElemId, metarElemId) {
   }
 }
 
-// =================================================================
-// 6. DÉMARRAGE
-// =================================================================
 document.addEventListener("DOMContentLoaded", () => {
   initMap();
 });
