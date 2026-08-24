@@ -126,69 +126,79 @@ export default {
         );
       }
 
-      // 4. Radar Vol (adsb.lol formaté comme OpenSky)
-      if (path === "/api/opensky") {
-        try {
-          const adsbUrl = "https://api.adsb.lol/v2/point/50.5/5.0/60";
+     // 4. Radar Vol (adsb.lol avec fallback sur adsb.fi, format OpenSky)
+if (path === "/api/opensky") {
+  const currentTime = Math.floor(Date.now() / 1000);
+  
+  const mapToOpenSky = (acList) => {
+    return acList.map((ac) => [
+      (ac.hex || "").toLowerCase(),
+      (ac.flight || "").trim(),
+      "Unknown",
+      ac.seen_pos ? currentTime - Math.round(ac.seen_pos) : currentTime,
+      ac.seen ? currentTime - Math.round(ac.seen) : currentTime,
+      ac.lon ?? null,
+      ac.lat ?? null,
+      ac.alt_baro !== undefined && ac.alt_baro !== "ground" ? Math.round(ac.alt_baro * 0.3048) : null,
+      ac.alt_baro === "ground" || ac.gs === 0,
+      ac.gs !== undefined ? ac.gs * 0.514444 : null,
+      ac.track ?? null,
+      ac.geom_rate !== undefined ? ac.geom_rate * 0.00508 : null,
+      null,
+      ac.alt_geom !== undefined ? Math.round(ac.alt_geom * 0.3048) : null,
+      ac.squawk || null,
+      false,
+      0
+    ]);
+  };
 
-          const controller = new AbortController();
-          const timeoutId = setTimeout(() => controller.abort(), 4000);
+  try {
+    // Essai 1 : adsb.lol (Timeout porté à 6 sec)
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 6000);
 
-          const response = await fetch(adsbUrl, {
-            headers: { "User-Agent": "Dashboard-Aero-App" },
-            signal: controller.signal,
-          });
+    let response = await fetch("https://api.adsb.lol/v2/point/50.5/5.0/60", {
+      headers: { "User-Agent": "Dashboard-Aero-App" },
+      signal: controller.signal,
+    }).catch(() => null);
 
-          clearTimeout(timeoutId);
+    clearTimeout(timeoutId);
 
-          if (!response.ok) {
-            return new Response(
-              JSON.stringify({ error: "Données indisponibles" }),
-              { status: 503, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-            );
-          }
+    // Essai 2 (Fallback) : adsb.fi si le premier a échoué
+    if (!response || !response.ok) {
+      const controller2 = new AbortController();
+      const timeoutId2 = setTimeout(() => controller2.abort(), 5000);
+      
+      response = await fetch("https://api.adsb.fi/v2/lat/50.5/lon/5.0/dist/60", {
+        headers: { "User-Agent": "Dashboard-Aero-App" },
+        signal: controller2.signal,
+      }).catch(() => null);
+      
+      clearTimeout(timeoutId2);
+    }
 
-          const rawData = await response.json();
-          const acList = rawData.ac || [];
-          const currentTime = Math.floor(Date.now() / 1000);
+    if (response && response.ok) {
+      const rawData = await response.json();
+      const acList = rawData.ac || [];
+      return new Response(
+        JSON.stringify({ time: currentTime, states: mapToOpenSky(acList) }),
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
 
-          const states = acList.map((ac) => {
-            const icao24 = (ac.hex || "").toLowerCase();
-            const callsign = (ac.flight || "").trim();
-            const origin_country = "Unknown";
-            const time_position = ac.seen_pos ? currentTime - Math.round(ac.seen_pos) : currentTime;
-            const last_contact = ac.seen ? currentTime - Math.round(ac.seen) : currentTime;
-            const longitude = ac.lon ?? null;
-            const latitude = ac.lat ?? null;
-            const baro_altitude = ac.alt_baro !== undefined && ac.alt_baro !== "ground" ? Math.round(ac.alt_baro * 0.3048) : null;
-            const on_ground = ac.alt_baro === "ground" || ac.gs === 0;
-            const velocity = ac.gs !== undefined ? ac.gs * 0.514444 : null;
-            const true_track = ac.track ?? null;
-            const vertical_rate = ac.geom_rate !== undefined ? ac.geom_rate * 0.00508 : null;
-            const sensors = null;
-            const geo_altitude = ac.alt_geom !== undefined ? Math.round(ac.alt_geom * 0.3048) : null;
-            const squawk = ac.squawk || null;
-            const spi = false;
-            const position_source = 0;
+    // Si aucune API ne répond : renvoie une structure OpenSky valide mais vide
+    return new Response(
+      JSON.stringify({ time: currentTime, states: [], message: "Données indisponibles" }),
+      { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    );
 
-            return [
-              icao24, callsign, origin_country, time_position, last_contact,
-              longitude, latitude, baro_altitude, on_ground, velocity,
-              true_track, vertical_rate, sensors, geo_altitude, squawk, spi, position_source
-            ];
-          });
-
-          return new Response(
-            JSON.stringify({ time: currentTime, states }),
-            { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-          );
-        } catch (err) {
-          return new Response(
-            JSON.stringify({ error: "Données indisponibles" }),
-            { status: 503, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-          );
-        }
-      }
+  } catch (err) {
+    return new Response(
+      JSON.stringify({ time: currentTime, states: [], message: "Données indisponibles" }),
+      { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    );
+  }
+}
 
       // 404 Endpoint non trouvé
       return new Response(
