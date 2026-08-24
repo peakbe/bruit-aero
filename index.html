@@ -7,29 +7,34 @@
 
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
 
-  <style>
-    body { font-family: system-ui, sans-serif; margin: 20px; background: #f8f9fa; }
-    .weather-container { display: flex; gap: 20px; margin-bottom: 20px; }
-    .card { background: white; padding: 15px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); flex: 1; }
-    #map { height: 480px; width: 100%; border-radius: 8px; margin-bottom: 20px; }
-    .tables-container { display: flex; gap: 20px; }
-    table { width: 100%; border-collapse: collapse; background: white; }
-    th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
-    th { background-color: #f4f4f4; }
-    .badge { background: #e2e8f0; padding: 2px 6px; border-radius: 4px; font-size: 12px; }
-    .leaflet-btn-recenter {
-  background: white;
-  border: 2px solid rgba(0,0,0,0.2);
-  border-radius: 4px;
-  cursor: pointer;
-  font-size: 16px;
-  padding: 5px 8px;
-  box-shadow: 0 1px 5px rgba(0,0,0,0.4);
-}
-.leaflet-btn-recenter:hover {
-  background: #f4f4f4;
-}
-  </style>
+ <style>
+  body { font-family: system-ui, sans-serif; margin: 20px; background: #f8f9fa; }
+  .weather-container { display: flex; gap: 20px; margin-bottom: 20px; }
+  .card { background: white; padding: 15px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); flex: 1; }
+  #map { height: 480px; width: 100%; border-radius: 8px; margin-bottom: 20px; }
+  
+  /* Style forcé du bouton Recentrer */
+  .leaflet-btn-recenter {
+    background: #ffffff !important;
+    color: #333333 !important;
+    border: none !important;
+    padding: 6px 10px !important;
+    font-size: 13px !important;
+    font-weight: bold !important;
+    cursor: pointer !important;
+    display: block !important;
+    line-height: 1.5 !important;
+  }
+  .leaflet-btn-recenter:hover {
+    background: #f0f0f0 !important;
+  }
+
+  .tables-container { display: flex; gap: 20px; }
+  table { width: 100%; border-collapse: collapse; background: white; }
+  th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+  th { background-color: #f4f4f4; }
+  .badge { background: #e2e8f0; padding: 2px 6px; border-radius: 4px; font-size: 12px; }
+</style>
 </head>
 <body>
 
