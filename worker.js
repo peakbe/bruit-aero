@@ -115,56 +115,65 @@ if (path.includes("/api/fids")) {
   });
 }
 
-      // 4. Radar Vol (adsb.lol / adsb.fi avec fallback)
-      if (path === "/api/opensky") {
-        const currentTime = Math.floor(Date.now() / 1000);
-        
-        const mapToOpenSky = (acList) => acList.map((ac) => [
-          (ac.hex || "").toLowerCase(),
-          (ac.flight || "").trim(),
-          "Unknown",
-          ac.seen_pos ? currentTime - Math.round(ac.seen_pos) : currentTime,
-          ac.seen ? currentTime - Math.round(ac.seen) : currentTime,
-          ac.lon ?? null,
-          ac.lat ?? null,
-          ac.alt_baro !== undefined && ac.alt_baro !== "ground" ? Math.round(ac.alt_baro * 0.3048) : null,
-          ac.alt_baro === "ground" || ac.gs === 0,
-          ac.gs !== undefined ? ac.gs * 0.514444 : null,
-          ac.track ?? null,
-          ac.geom_rate !== undefined ? ac.geom_rate * 0.00508 : null,
-          null,
-          ac.alt_geom !== undefined ? Math.round(ac.alt_geom * 0.3048) : null,
-          ac.squawk || null,
-          false,
-          0
-        ]);
-
-        try {
-          let response = await fetch("https://api.adsb.lol/v2/point/50.5/5.0/60", {
-            headers: { "User-Agent": "Dashboard-Aero-App" }
-          }).catch(() => null);
-
-          if (!response || !response.ok) {
-            response = await fetch("https://api.adsb.fi/v2/lat/50.5/lon/5.0/dist/60", {
-              headers: { "User-Agent": "Dashboard-Aero-App" }
-            }).catch(() => null);
-          }
-
-          if (response && response.ok) {
-            const rawData = await response.json();
-            return new Response(JSON.stringify({ time: currentTime, states: mapToOpenSky(rawData.ac || []) }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
-          }
-
-          return new Response(JSON.stringify({ time: currentTime, states: [], message: "Données indisponibles" }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
-        } catch (err) {
-          return new Response(JSON.stringify({ time: currentTime, states: [], message: "Données indisponibles" }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      // 1. Endpoint Radar (OpenSky avec fallback ADSB.lol)
+if (path.includes("/api/opensky")) {
+  try {
+    // Essai 1 : OpenSky Network
+    const openskyRes = await fetch(
+      "https://opensky-network.org/api/states/all?lamin=50.0&lomin=3.5&lamax=51.5&lomax=6.5",
+      {
+        headers: {
+          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
         }
       }
+    );
 
-      return new Response(JSON.stringify({ error: "Endpoint non trouvé" }), { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } });
-
-    } catch (err) {
-      return new Response(JSON.stringify({ error: "Données indisponibles" }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    if (openskyRes.ok) {
+      const data = await openskyRes.json();
+      if (data && data.states && data.states.length > 0) {
+        return new Response(JSON.stringify(data), {
+          status: 200,
+          headers: { ...corsHeaders, "Content-Type": "application/json" }
+        });
+      }
     }
+  } catch (e) {
+    console.log("OpenSky indisponible, bascule sur ADSB.lol");
   }
-};
+
+  // Essai 2 : Fallback sur API ADSB.lol (Zone Belgique : lat 50.55, lon 4.95, rayon 100NM)
+  try {
+    const adsbRes = await fetch("https://api.adsb.lol/v2/lat/50.55/lon/4.95/dist/100");
+    if (adsbRes.ok) {
+      const adsbData = await adsbRes.json();
+      
+      // Conversion du format ADSB.lol vers le format OpenSky [icao, callsign, origin, time, last_contact, lon, lat, alt, ...]
+      const mappedStates = (adsbData.ac || []).map((ac) => [
+        ac.hex,                            // 0: ICAO24
+        ac.flight || "Inconnu",            // 1: Callsign
+        "BE",                              // 2: Country
+        ac.seen,                           // 3: Time
+        ac.seen,                           // 4: Last contact
+        ac.lon,                            // 5: Longitude
+        ac.lat,                            // 6: Latitude
+        ac.alt_geom ? ac.alt_geom * 0.3048 : null, // 7: Altitude (conversion pieds -> mètres)
+        false,                             // 8: On ground
+        ac.gs ? ac.gs * 0.514444 : null,   // 9: Speed (noeuds -> m/s)
+        ac.track || 0                      // 10: Heading / Cap
+      ]);
+
+      return new Response(JSON.stringify({ states: mappedStates }), {
+        status: 200,
+        headers: { ...corsHeaders, "Content-Type": "application/json" }
+      });
+    }
+  } catch (e) {
+    console.error("Erreur fallback ADSB:", e);
+  }
+
+  // Si aucune donnée n'est disponible
+  return new Response(JSON.stringify({ states: [] }), {
+    status: 200,
+    headers: { ...corsHeaders, "Content-Type": "application/json" }
+  });
+}
