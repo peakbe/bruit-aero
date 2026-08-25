@@ -92,8 +92,8 @@
     <div style="color: var(--text-muted);" id="clock">--:--:--</div>
   </header>
   
-<!-- BARRE DE CONTRÔLE UNIQUE (AÉROPORTS & PISTES) -->
-<div class="control-bar">
+<!-- BARRE DE CONTRÔLE SUR UNE SEULE LIGNE -->
+<div class="control-bar-inline">
   <!-- Filtre Aéroports -->
   <div class="control-group">
     <span class="control-label">Aéroport :</span>
@@ -110,6 +110,8 @@
     <button class="tab-btn active" onclick="setRunwayEBCI('24', map)">24</button>
     <button class="tab-btn" onclick="setRunwayEBCI('06', map)">06</button>
   </div>
+
+  <div class="control-divider" data-airport-divider></div>
 
   <!-- Pistes EBLG -->
   <div class="control-group" data-airport="EBLG">
