@@ -3,13 +3,11 @@
 // =================================================================
 var WORKER_BASE_URL = "https://bruit-aero-proxy.pnyr682w7f.workers.dev";
 
-// Utilisation de var pour éviter les conflits 'let/const' au rechargement
 var map = map || null;
 var planeMarkers = planeMarkers || {}; 
 var lastValidStates = lastValidStates || [];
 var currentAirport = currentAirport || "EBLG";
 
-// Coordonnées des aéroports
 var AIRPORTS = {
   EBLG: { lat: 50.6374, lon: 5.4432, name: "Liège Airport" },
   EBCI: { lat: 50.4592, lon: 4.4538, name: "Charleroi Airport" }
@@ -41,17 +39,14 @@ function initMap() {
     attribution: "© OpenStreetMap",
   }).addTo(map);
 
-  // Marqueurs aéroports avec événement de clic
   const markerEBLG = L.marker([AIRPORTS.EBLG.lat, AIRPORTS.EBLG.lon]).addTo(map).bindPopup(`<b>${AIRPORTS.EBLG.name} (EBLG)</b>`);
   const markerEBCI = L.marker([AIRPORTS.EBCI.lat, AIRPORTS.EBCI.lon]).addTo(map).bindPopup(`<b>${AIRPORTS.EBCI.name} (EBCI)</b>`);
 
   markerEBLG.on('click', () => fetchFlightsData('EBLG'));
   markerEBCI.on('click', () => fetchFlightsData('EBCI'));
 
-  // Affichage initial des sonomètres sur la carte
   renderSonometersOnMap(map);
 
-  // Bouton Recentrer
   const RecenterControl = L.Control.extend({
     options: { position: "topleft" },
     onAdd: function (mapInstance) {
@@ -85,7 +80,7 @@ function initMap() {
 }
 
 // =================================================================
-// 3. GESTION DU RADAR VOLS (AVEC CACHE)
+// 3. GESTION DU RADAR VOLS
 // =================================================================
 async function fetchRadarData() {
   try {
@@ -111,7 +106,6 @@ async function fetchRadarData() {
 function updatePlaneMarkers(states) {
   if (!map) return;
   const currentIcaos = new Set();
-
   const hasRotationPlugin = typeof L.Marker.prototype.setRotationAngle === "function";
 
   states.forEach((flight) => {
@@ -164,9 +158,6 @@ function updatePlaneMarkers(states) {
   });
 }
 
-// ==========================================
-// GESTION DES ONGLETS DE VOLS (EBCI / EBLG)
-// ==========================================
 function switchFlightTab(airport, type, btnElement) {
   const parentTabContainer = btnElement.parentElement;
   if (parentTabContainer) {
@@ -185,7 +176,7 @@ function switchFlightTab(airport, type, btnElement) {
 }
 
 // ==========================================
-// 4. DATA DES SONOMÈTRES EBCI ET EBLG
+// 4. DATA DES SONOMÈTRES
 // ==========================================
 const sonometersEBCI = [
   { id: "F118", address: "Rue Piconette 1, Sombreffe", latDMS: "50 30 18.96 N", lonDMS: "4 36 40.25 E" },
@@ -233,9 +224,6 @@ const sonometersEBLG = [
 let currentRunwayEBCI = "24"; 
 let currentRunwayEBLG = "22"; 
 
-// ==========================================
-// 6. CONVERTISSEUR COORDONNÉES DMS -> DD
-// ==========================================
 function dmsToDecimal(dmsStr) {
   const parts = dmsStr.trim().split(/\s+/);
   const degrees = parseFloat(parts[0]);
@@ -250,9 +238,6 @@ function dmsToDecimal(dmsStr) {
   return dd;
 }
 
-// ==========================================
-// 7. LOGIQUE DES COULEURS PAR PISTE
-// ==========================================
 function getSonometerColor(id, airport) {
   if (airport === "EBLG") {
     if (currentRunwayEBLG === "22") {
@@ -275,9 +260,6 @@ function getSonometerColor(id, airport) {
   return "#10b981";
 }
 
-// ==========================================
-// 8. AFFICHAGE SUR LA CARTE LEAFLET
-// ==========================================
 const sonometerMarkers = [];
 
 function renderSonometersOnMap(map) {
@@ -319,9 +301,6 @@ function renderSonometersOnMap(map) {
   });
 }
 
-// ==========================================
-// 9. BASCULEMENT DES PISTES (UI)
-// ==========================================
 function setRunwayEBCI(runwayNum, map) {
   currentRunwayEBCI = runwayNum;
   renderSonometersOnMap(map);
@@ -333,8 +312,12 @@ function setRunwayEBLG(runwayNum, map) {
 }
 
 // =================================================================
-// 10. VOLS & MÉTÉO
+// 6. VOLS & MÉTÉO (CORRIGÉS ET SÉCURISÉS)
 // =================================================================
+function msToKmh(ms) {
+  return Math.round(ms * 3.6);
+}
+
 async function fetchFlightsData(specificAirport = null) {
   const ebciBody = document.getElementById("ebci-flights-body");
   const eblgBody = document.getElementById("eblg-flights-body");
@@ -349,7 +332,6 @@ async function fetchFlightsData(specificAirport = null) {
   if (eblgBody) await loadFlightType("departures", eblgBody, "EBLG");
 }
 
-// Limit à 10 vols (Départs et Arrivées)
 async function loadFlightType(type, elementContainer, airport) {
   try {
     const response = await fetch(`${WORKER_BASE_URL}/api/fids?airport=${airport}&type=${type}`);
@@ -357,7 +339,6 @@ async function loadFlightType(type, elementContainer, airport) {
 
     const data = await response.json();
     if (data && Array.isArray(data.flights) && data.flights.length > 0) {
-      // Conservation des 10 premiers vols uniquement
       const next10Flights = data.flights.slice(0, 10);
 
       elementContainer.innerHTML = next10Flights
@@ -380,10 +361,9 @@ async function loadFlightType(type, elementContainer, airport) {
   }
 }
 
-// Récupération météo actuelle + Prévisions météo (Tendances)
-// Convertit les m/s en km/h
-function msToKmh(ms) {
-  return Math.round(ms * 3.6);
+async function fetchWeatherData() {
+  loadAirportWeather(AIRPORTS.EBLG.lat, AIRPORTS.EBLG.lon, "EBLG", "eblg-temp", "eblg-metar", "eblg-forecast");
+  loadAirportWeather(AIRPORTS.EBCI.lat, AIRPORTS.EBCI.lon, "EBCI", "ebci-temp", "ebci-metar", "ebci-forecast");
 }
 
 async function loadAirportWeather(lat, lon, station, tempElemId, metarElemId, forecastElemId) {
@@ -396,11 +376,9 @@ async function loadAirportWeather(lat, lon, station, tempElemId, metarElemId, fo
       const tempEl = document.getElementById(tempElemId);
       
       if (tempEl && weather.main) {
-        // Extraction de la vitesse du vent (en m/s par défaut)
         const windMs = weather.wind?.speed || 0;
         const windKmh = msToKmh(windMs);
 
-        // Affichage Température + Vent (m/s et km/h)
         tempEl.innerHTML = `
           <strong>${Math.round(weather.main.temp)}°C</strong> 
           <span style="font-size: 0.85em; opacity: 0.8;">| 💨 ${windMs} m/s (${windKmh} km/h)</span>
@@ -411,36 +389,40 @@ async function loadAirportWeather(lat, lon, station, tempElemId, metarElemId, fo
     if (resMetar.ok) {
       const metar = await resMetar.json();
       const metarEl = document.getElementById(metarElemId);
-      if (metarEl && metar.raw) metarEl.innerText = metar.raw;
+      if (metarEl) {
+        // Fallback pour couvrir plusieurs formats JSON renvoyés par l'API Proxy
+        const rawText = metar.raw || metar.sanitized || metar.metar || (typeof metar === 'string' ? metar : null);
+        if (rawText) metarEl.innerText = rawText;
+      }
     }
 
-    // Prévisions météo avec le vent
     const forecastEl = document.getElementById(forecastElemId);
     if (forecastEl) {
       const resForecast = await fetch(`${WORKER_BASE_URL}/api/forecast?lat=${lat}&lon=${lon}`);
       if (resForecast.ok) {
         const forecastData = await resForecast.json();
-        const upcomingForecast = forecastData.list.slice(0, 4); 
+        if (forecastData && Array.isArray(forecastData.list)) {
+          const upcomingForecast = forecastData.list.slice(0, 4); 
 
-        forecastEl.innerHTML = upcomingForecast.map(item => {
-          const time = new Date(item.dt * 1000).toLocaleTimeString('fr-BE', { hour: '2-digit', minute: '2-digit' });
-          const temp = Math.round(item.main.temp);
-          const icon = item.weather[0].icon;
-          
-          const forecastWindMs = item.wind?.speed || 0;
-          const forecastWindKmh = msToKmh(forecastWindMs);
+          forecastEl.innerHTML = upcomingForecast.map(item => {
+            const time = new Date(item.dt * 1000).toLocaleTimeString('fr-BE', { hour: '2-digit', minute: '2-digit' });
+            const temp = Math.round(item.main.temp);
+            const icon = item.weather[0]?.icon || "01d";
+            const forecastWindMs = item.wind?.speed || 0;
+            const forecastWindKmh = msToKmh(forecastWindMs);
 
-          return `
-            <div style="text-align: center; font-size: 0.8rem; padding: 4px; border-right: 1px solid rgba(255,255,255,0.1);">
-              <div>${time}</div>
-              <img src="https://openweathermap.org/img/wn/${icon}.png" width="30" height="30" alt="icon"/>
-              <div><strong>${temp}°C</strong></div>
-              <div style="font-size: 0.75rem; color: #cbd5e1; margin-top: 2px;">
-                💨 ${forecastWindMs} m/s<br>(${forecastWindKmh} km/h)
+            return `
+              <div style="text-align: center; font-size: 0.8rem; padding: 4px; border-right: 1px solid rgba(255,255,255,0.1);">
+                <div>${time}</div>
+                <img src="https://openweathermap.org/img/wn/${icon}.png" width="30" height="30" alt="icon"/>
+                <div><strong>${temp}°C</strong></div>
+                <div style="font-size: 0.75rem; color: #cbd5e1; margin-top: 2px;">
+                  💨 ${forecastWindMs} m/s<br>(${forecastWindKmh} km/h)
+                </div>
               </div>
-            </div>
-          `;
-        }).join('');
+            `;
+          }).join('');
+        }
       }
     }
   } catch (err) {
@@ -448,34 +430,7 @@ async function loadAirportWeather(lat, lon, station, tempElemId, metarElemId, fo
   }
 }
 
-// Mise à jour de l'appel global météo avec l'élément forecast
-async function fetchWeatherData() {
-  loadAirportWeather(AIRPORTS.EBLG.lat, AIRPORTS.EBLG.lon, "EBLG", "eblg-temp", "eblg-metar", "eblg-forecast");
-  loadAirportWeather(AIRPORTS.EBCI.lat, AIRPORTS.EBCI.lon, "EBCI", "ebci-temp", "ebci-metar", "ebci-forecast");
-}
-
-async function loadAirportWeather(lat, lon, station, tempElemId, metarElemId) {
-  try {
-    const resWeather = await fetch(`${WORKER_BASE_URL}/api/weather?lat=${lat}&lon=${lon}`);
-    const resMetar = await fetch(`${WORKER_BASE_URL}/api/metar?station=${station}`);
-
-    if (resWeather.ok) {
-      const weather = await resWeather.json();
-      const tempEl = document.getElementById(tempElemId);
-      if (tempEl && weather.main) tempEl.innerText = `${Math.round(weather.main.temp)}°C`;
-    }
-
-    if (resMetar.ok) {
-      const metar = await resMetar.json();
-      const metarEl = document.getElementById(metarElemId);
-      if (metarEl && metar.raw) metarEl.innerText = metar.raw;
-    }
-  } catch (err) {
-    console.error(`Erreur météo ${station} :`, err);
-  }
-}
-
-// Initialisation au chargement de la page
+// Initialisation au chargement
 if (document.readyState === "loading") {
   document.addEventListener("DOMContentLoaded", initMap);
 } else {
