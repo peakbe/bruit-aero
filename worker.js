@@ -22,16 +22,17 @@ export default {
       // -------------------------------------------------------------
       // 1. ENDPOINT RADAR (OpenSky avec Fallback ADSB.lol)
       // -------------------------------------------------------------
-      if (path.includes("/api/opensky")) {
-        try {
-          // Essai 1 : OpenSky Network
-          const openskyUrl = "https://opensky-network.org/api/states/all?lamin=49.0&lomin=2.0&lamax=52.0&lomax=7.0";
-            {
-              headers: {
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
-              }
-            }
-          );
+     if (url.pathname === "/api/opensky") {
+        // Coordonnées élargies pour capturer plus de vols
+        const openskyUrl = "https://opensky-network.org/api/states/all?lamin=49.0&lomin=2.0&lamax=52.0&lomax=7.0";
+
+        // Déclaration correcte des options HTTP avec User-Agent
+        const response = await fetch(openskyUrl, {
+          headers: {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            "Accept": "application/json"
+          }
+        });
 
           if (openskyRes.ok) {
             const data = await openskyRes.json();
