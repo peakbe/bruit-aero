@@ -80,50 +80,69 @@ export default {
       }
 
      // -------------------------------------------------------------
-      // 2. ENDPOINT FIDS (VOLS EN TEMPS RÉEL VIA AVIATIONSTACK)
+      // 2. ENDPOINT FIDS (VOLS EN TEMPS RÉEL VIA AERODATABOX / RAPIDAPI)
       // -------------------------------------------------------------
       if (path.includes("/api/fids")) {
         const type = url.searchParams.get("type") || "departures";
-        const airportCode = (url.searchParams.get("airport") || "EBLG").toUpperCase();
+        const airportCode = (url.searchParams.get("airport") || "EBLG").toUpperCase(); // EBCI ou EBLG
 
-        const iataCode = airportCode === "EBCI" ? "CRL" : "LGG";
-        const paramType = type === "departures" ? "dep_iata" : "arr_iata";
-        
-        // Remplacez directement ici par votre clé si pas configurée dans env
-        const apiKey = env.AVIATIONSTACK_KEY || "VOTRE_CLE_ICI"; 
+        // Inserer votre clé RapidAPI ici ou dans env.RAPIDAPI_KEY
+        const apiKey = env.RAPIDAPI_KEY || "VOTRE_CLE_RAPIDAPI_ICI";
 
         try {
-          const targetUrl = `http://api.aviationstack.com/v1/flights?access_key=${apiKey}&${paramType}=${iataCode}&limit=10`;
-          const apiRes = await fetch(targetUrl);
+          // AeroDataBox a besoin d'une plage horaire (YYYY-MM-DDTHH:mm)
+          const now = new Date();
+          const from = now.toISOString().slice(0, 16); // ex: 2026-08-25T16:00
+          
+          const future = new Date(now.getTime() + 12 * 60 * 60 * 1000); // 12 heures plus tard
+          const to = future.toISOString().slice(0, 16);
+
+          const isDep = type === "departures";
+          const direction = isDep ? "Departures" : "Arrivals";
+
+          const targetUrl = `https://aerodatabox.p.rapidapi.com/flights/airports/icao/${airportCode}/${from}/${to}?direction=${direction}&withLeg=true&withCancelled=true&withCodeshares=false&withCargo=true&withPrivate=true`;
+
+          const apiRes = await fetch(targetUrl, {
+            headers: {
+              "x-rapidapi-key": apiKey,
+              "x-rapidapi-host": "aerodatabox.p.rapidapi.com"
+            }
+          });
 
           if (apiRes.ok) {
             const data = await apiRes.json();
-            
-            // S'il y a une erreur renvoyée par l'API (ex: quota dépassé)
-            if (data.error) {
-              console.error("Erreur Aviationstack API:", data.error);
-            } else if (data && data.data && data.data.length > 0) {
-              const flights = data.data.map((f) => {
-                const isDep = type === "departures";
-                const flightInfo = f.flight || {};
-                const targetAirport = isDep ? f.arrival : f.departure;
-                const timeStr = isDep ? f.departure?.scheduled : f.arrival?.scheduled;
+            const rawList = isDep ? data.departures : data.arrivals;
+
+            if (rawList && Array.isArray(rawList) && rawList.length > 0) {
+              const flights = rawList.slice(0, 10).map((f) => {
+                const movement = isDep ? f.departure : f.arrival;
+                const airportInfo = isDep ? f.arrival?.airport : f.departure?.airport;
+                
+                // Heure prévue ou estimée
+                const timeStr = movement?.scheduledTime?.local || movement?.revisedTime?.local;
 
                 let formattedTime = "--:--";
                 if (timeStr) {
-                  const d = new Date(timeStr);
-                  formattedTime = d.toLocaleTimeString("fr-BE", {
-                    hour: "2-digit",
-                    minute: "2-digit",
-                    timeZone: "Europe/Brussels"
-                  });
+                  // Format AeroDataBox : "2026-08-25 16:30+02:00"
+                  formattedTime = timeStr.slice(11, 16);
                 }
 
+                // Statut traduisible
+                let status = "Programmé";
+                if (f.status === "EnRoute" || f.status === "Active") status = "En vol";
+                else if (f.status === "Landed") status = "Atterri";
+                else if (f.status === "Boarding") status = "Embarquement";
+                else if (f.status === "Canceled") status = "Annulé";
+
+                const flightNum = f.number || f.callSign || "N/A";
+                const cityName = airportInfo?.municipalityName || airportInfo?.name || "Inconnu";
+                const iata = airportInfo?.iata ? ` (${airportInfo.iata})` : "";
+
                 return {
-                  flight: flightInfo.iata || flightInfo.icao || "N/A",
-                  city: `${targetAirport?.airport || targetAirport?.iata || 'Inconnu'} (${targetAirport?.iata || ''})`,
+                  flight: flightNum,
+                  city: `${cityName}${iata}`,
                   time: formattedTime,
-                  status: f.flight_status === "active" ? "En vol" : (f.flight_status === "landed" ? "Atterri" : "Programmé")
+                  status: status
                 };
               });
 
@@ -133,13 +152,13 @@ export default {
               });
             }
           } else {
-            console.error("Réponse HTTP non-OK d'Aviationstack:", apiRes.status);
+            console.error("Erreur HTTP RapidAPI:", apiRes.status);
           }
         } catch (e) {
-          console.error("Erreur de connexion à Aviationstack:", e);
+          console.error("Erreur de connexion à AeroDataBox:", e);
         }
 
-        // --- FALLBACK SI L'API ÉCHOUE (Horaires dynamiques basés sur le vrai programme habituel) ---
+        // --- FALLBACK D'URGENCE (Si quota dépassé ou clé manquante) ---
         const getDynamicTime = (offset) => {
           const now = new Date();
           now.setMinutes(now.getMinutes() + offset);
