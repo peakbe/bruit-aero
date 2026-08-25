@@ -72,7 +72,7 @@
 
   <header>
     <h1><i data-feather="radio"></i> Station Météo & Radar - EBCI / EBLG</h1>
-    <div style="color: var(--text-muted);" id="clock">--:--:-- UTC</div>
+    <div style="color: var(--text-muted);" id="clock">--:--:--</div>
   </header>
   
 <div style="display: flex; gap: 20px; margin-bottom: 12px; align-items: center; background: #0f172a; padding: 10px 15px; border-radius: 6px; border: 1px solid var(--border);">
@@ -203,8 +203,8 @@
     // Feather Icons & Horloge UTC
     feather.replace();
     setInterval(() => {
-      document.getElementById('clock').innerText = new Date().toISOString().substring(11, 19) + ' UTC';
-    }, 1000);
+  document.getElementById('clock').innerText = new Date().toLocaleTimeString('fr-BE');
+}, 1000);
 
     // Dessin dynamique des roses des vents
     function drawCompass(canvasId, windDeg, windSpeed) {
