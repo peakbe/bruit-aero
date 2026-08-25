@@ -381,6 +381,11 @@ async function loadFlightType(type, elementContainer, airport) {
 }
 
 // Récupération météo actuelle + Prévisions météo (Tendances)
+// Convertit les m/s en km/h
+function msToKmh(ms) {
+  return Math.round(ms * 3.6);
+}
+
 async function loadAirportWeather(lat, lon, station, tempElemId, metarElemId, forecastElemId) {
   try {
     const resWeather = await fetch(`${WORKER_BASE_URL}/api/weather?lat=${lat}&lon=${lon}`);
@@ -389,7 +394,18 @@ async function loadAirportWeather(lat, lon, station, tempElemId, metarElemId, fo
     if (resWeather.ok) {
       const weather = await resWeather.json();
       const tempEl = document.getElementById(tempElemId);
-      if (tempEl && weather.main) tempEl.innerText = `${Math.round(weather.main.temp)}°C`;
+      
+      if (tempEl && weather.main) {
+        // Extraction de la vitesse du vent (en m/s par défaut)
+        const windMs = weather.wind?.speed || 0;
+        const windKmh = msToKmh(windMs);
+
+        // Affichage Température + Vent (m/s et km/h)
+        tempEl.innerHTML = `
+          <strong>${Math.round(weather.main.temp)}°C</strong> 
+          <span style="font-size: 0.85em; opacity: 0.8;">| 💨 ${windMs} m/s (${windKmh} km/h)</span>
+        `;
+      }
     }
 
     if (resMetar.ok) {
@@ -398,24 +414,30 @@ async function loadAirportWeather(lat, lon, station, tempElemId, metarElemId, fo
       if (metarEl && metar.raw) metarEl.innerText = metar.raw;
     }
 
-    // Récupération des prévisions météo (OpenWeather 5 days / 3 hours ou via votre proxy)
+    // Prévisions météo avec le vent
     const forecastEl = document.getElementById(forecastElemId);
     if (forecastEl) {
       const resForecast = await fetch(`${WORKER_BASE_URL}/api/forecast?lat=${lat}&lon=${lon}`);
       if (resForecast.ok) {
         const forecastData = await resForecast.json();
-        // Récupère les 4 prochains créneaux (ex: prévisions sur 12h)
         const upcomingForecast = forecastData.list.slice(0, 4); 
 
         forecastEl.innerHTML = upcomingForecast.map(item => {
           const time = new Date(item.dt * 1000).toLocaleTimeString('fr-BE', { hour: '2-digit', minute: '2-digit' });
           const temp = Math.round(item.main.temp);
           const icon = item.weather[0].icon;
+          
+          const forecastWindMs = item.wind?.speed || 0;
+          const forecastWindKmh = msToKmh(forecastWindMs);
+
           return `
-            <div style="text-align: center; font-size: 0.8rem; padding: 4px;">
+            <div style="text-align: center; font-size: 0.8rem; padding: 4px; border-right: 1px solid rgba(255,255,255,0.1);">
               <div>${time}</div>
               <img src="https://openweathermap.org/img/wn/${icon}.png" width="30" height="30" alt="icon"/>
               <div><strong>${temp}°C</strong></div>
+              <div style="font-size: 0.75rem; color: #cbd5e1; margin-top: 2px;">
+                💨 ${forecastWindMs} m/s<br>(${forecastWindKmh} km/h)
+              </div>
             </div>
           `;
         }).join('');
