@@ -22,21 +22,21 @@ export default {
       // -------------------------------------------------------------
       // 1. ENDPOINT RADAR (OpenSky avec Fallback ADSB.lol)
       // -------------------------------------------------------------
-     if (url.pathname === "/api/opensky") {
-        // Coordonnées élargies pour capturer plus de vols
-        const openskyUrl = "https://opensky-network.org/api/states/all?lamin=49.0&lomin=2.0&lamax=52.0&lomax=7.0";
+      if (path === "/api/opensky") {
+        // Essai 1 : OpenSky Network
+        try {
+          const openskyUrl = "https://opensky-network.org/api/states/all?lamin=49.0&lomin=2.0&lamax=52.0&lomax=7.0";
 
-        // Déclaration correcte des options HTTP avec User-Agent
-        const response = await fetch(openskyUrl, {
-          headers: {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-            "Accept": "application/json"
-          }
-        });
+          const openskyRes = await fetch(openskyUrl, {
+            headers: {
+              "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+              "Accept": "application/json"
+            }
+          });
 
           if (openskyRes.ok) {
             const data = await openskyRes.json();
-            if (data && data.states && data.states.length > 0) {
+            if (data && Array.isArray(data.states) && data.states.length > 0) {
               return new Response(JSON.stringify(data), {
                 status: 200,
                 headers: { ...corsHeaders, "Content-Type": "application/json" }
@@ -47,7 +47,7 @@ export default {
           console.log("OpenSky indisponible, bascule sur ADSB.lol");
         }
 
-        // Essai 2 : Fallback sur API ADSB.lol (Zone Belgique : 100NM autour de Liège/Charleroi)
+        // Essai 2 : Fallback sur API ADSB.lol (100NM autour du centre Belgique)
         try {
           const adsbRes = await fetch("https://api.adsb.lol/v2/lat/50.55/lon/4.95/dist/100");
           if (adsbRes.ok) {
@@ -76,6 +76,7 @@ export default {
           console.error("Erreur fallback ADSB:", e);
         }
 
+        // Si aucune donnée n'est trouvée
         return new Response(JSON.stringify({ states: [] }), {
           status: 200,
           headers: { ...corsHeaders, "Content-Type": "application/json" }
@@ -87,18 +88,33 @@ export default {
       // -------------------------------------------------------------
       if (path.includes("/api/fids")) {
         const type = url.searchParams.get("type") || "departures";
+        const airport = (url.searchParams.get("airport") || "EBLG").toUpperCase();
         
-        const mockFlights = type === "departures" 
-          ? [
-              { flight: "3V801", city: "Alicante (ALC)", time: "14:30", status: "Embarquement" },
-              { flight: "XQ120", city: "Antalya (AYT)", time: "15:15", status: "Programmé" }
-            ]
-          : [
-              { flight: "3V802", city: "Madrid (MAD)", time: "14:10", status: "Atterri" },
-              { flight: "TB211", city: "Tenerife (TFS)", time: "14:55", status: "En approche" }
-            ];
+        let mockFlights = [];
 
-        return new Response(JSON.stringify({ airport: "EBLG", type, flights: mockFlights }), {
+        if (airport === "EBLG") {
+          mockFlights = type === "departures" 
+            ? [
+                { flight: "3V801", city: "Alicante (ALC)", time: "14:30", status: "Embarquement" },
+                { flight: "XQ120", city: "Antalya (AYT)", time: "15:15", status: "Programmé" }
+              ]
+            : [
+                { flight: "3V802", city: "Madrid (MAD)", time: "14:10", status: "Atterri" },
+                { flight: "TB211", city: "Tenerife (TFS)", time: "14:55", status: "En approche" }
+              ];
+        } else if (airport === "EBCI") {
+          mockFlights = type === "departures" 
+            ? [
+                { flight: "FR2104", city: "Marseille (MRS)", time: "16:20", status: "Embarquement" },
+                { flight: "W64512", city: "Bucarest (OTP)", time: "17:00", status: "Programmé" }
+              ]
+            : [
+                { flight: "FR1932", city: "Dublin (DUB)", time: "15:40", status: "Atterri" },
+                { flight: "FR6311", city: "Barcelone (BCN)", time: "16:15", status: "En approche" }
+              ];
+        }
+
+        return new Response(JSON.stringify({ airport, type, flights: mockFlights }), {
           status: 200,
           headers: { ...corsHeaders, "Content-Type": "application/json" }
         });
@@ -125,7 +141,7 @@ export default {
       }
 
       // -------------------------------------------------------------
-      // 4. ENDPOINT METAR (AVWX API)
+      // 4. ENDPOINT METAR (VATSIM API)
       // -------------------------------------------------------------
       if (path.includes("/api/metar")) {
         const station = (url.searchParams.get("station") || "EBLG").toUpperCase();
