@@ -86,7 +86,8 @@ async function fetchRadarData() {
     
     if (response.ok) {
       const data = await response.json();
-      if (data && Array.isArray(data.states) && data.states.length > 0) {
+      // On accepte Array.isArray(data.states) même s'il est vide ([])
+      if (data && Array.isArray(data.states)) {
         lastValidStates = data.states;
         updatePlaneMarkers(data.states);
         return;
