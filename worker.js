@@ -25,8 +25,7 @@ export default {
       if (path.includes("/api/opensky")) {
         try {
           // Essai 1 : OpenSky Network
-          const openskyRes = await fetch(
-            "https://opensky-network.org/api/states/all?lamin=50.0&lomin=3.5&lamax=51.5&lomax=6.5",
+          const openskyUrl = "https://opensky-network.org/api/states/all?lamin=49.0&lomin=2.0&lamax=52.0&lomax=7.0";
             {
               headers: {
                 "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
