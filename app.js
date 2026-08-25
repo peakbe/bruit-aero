@@ -168,6 +168,29 @@ function updatePlaneMarkers(states) {
 }
 
 // ==========================================
+// GESTION DES ONGLETS DE VOLS (EBCI / EBLG)
+// ==========================================
+function switchFlightTab(airport, type, btnElement) {
+  // 1. Mise à jour de la classe 'active' sur les boutons de la carte concernée
+  const parentTabContainer = btnElement.parentElement;
+  if (parentTabContainer) {
+    const buttons = parentTabContainer.querySelectorAll('.tab-btn');
+    buttons.forEach(btn => btn.classList.remove('active'));
+    btnElement.classList.add('active');
+  }
+
+  // 2. Ciblage des conteneurs HTML et chargement du type de vol
+  const targetBodyId = `${airport.toLowerCase()}-flights-body`;
+  const container = document.getElementById(targetBodyId);
+
+  if (container) {
+    // Adapter selon la structure d'appel de votre API ("departures"/"arrivals" ou "dep"/"arr")
+    const flightType = (type === 'dep') ? 'departures' : 'arrivals';
+    loadFlightType(flightType, container, airport.toUpperCase());
+  }
+}
+
+// ==========================================
 // 1. DATA DES SONOMÈTRES EBCI ET EBLG
 // ==========================================
 const sonometersEBCI = [
@@ -319,14 +342,13 @@ function setRunwayEBLG(runwayNum, map) {
 // =================================================================
 // 7. VOLS & MÉTÉO
 // =================================================================
-async function fetchFlightsData(airport = currentAirport) {
-  currentAirport = airport;
+async function fetchFlightsData() {
+  const ebciBody = document.getElementById("ebci-flights-body");
+  const eblgBody = document.getElementById("eblg-flights-body");
 
-  // Mise à jour des titres dynamiques dans le DOM s'ils existent
-  const titleDepartures = document.getElementById("departures-title");
-  const titleArrivals = document.getElementById("arrivals-title");
-  if (titleDepartures) titleDepartures.textContent = `Départs (${airport})`;
-  if (titleArrivals) titleArrivals.textContent = `Arrivées (${airport})`;
+  if (ebciBody) await loadFlightType("departures", ebciBody, "EBCI");
+  if (eblgBody) await loadFlightType("departures", eblgBody, "EBLG");
+}
 
   const containerDepartures = document.getElementById("departures-list");
   const containerArrivals = document.getElementById("arrivals-list");
