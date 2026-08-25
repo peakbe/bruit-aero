@@ -554,27 +554,28 @@ async function loadAirportWeather(lat, lon, station, tempElemId, metarElemId, fo
 // FILTRAGE DYNAMIQUE (EBLG / EBCI / TOUS)
 // =================================================================
 function filterAirportView(selectedAirport) {
-  // 1. Mise à jour de l'état actif des boutons
-  const buttons = document.querySelectorAll('.filter-bar .filter-btn');
+  // 1. Mise à jour des boutons actifs
+  const buttons = document.querySelectorAll('.filter-btn');
   buttons.forEach(btn => {
     btn.classList.remove('active');
-    if (btn.getAttribute('onclick').includes(selectedAirport)) {
+    if (btn.getAttribute('onclick').includes(`'${selectedAirport}'`)) {
       btn.classList.add('active');
     }
   });
 
-  // 2. Masquer / Afficher les cartes associées
-  const airportCards = document.querySelectorAll('[data-airport]');
-  airportCards.forEach(card => {
-    const cardAirport = card.getAttribute('data-airport');
-    if (selectedAirport === 'ALL' || cardAirport === selectedAirport) {
-      card.style.display = 'block';
+  // 2. Affichage/Masquage des cartes et des groupes de boutons
+  const elementsToFilter = document.querySelectorAll('[data-airport]');
+  elementsToFilter.forEach(el => {
+    const elAirport = el.getAttribute('data-airport');
+    if (selectedAirport === 'ALL' || elAirport === selectedAirport) {
+      // Conservation du style d'affichage d'origine (flex ou block)
+      el.style.display = el.classList.contains('control-group') ? 'flex' : 'block';
     } else {
-      card.style.display = 'none';
+      el.style.display = 'none';
     }
   });
 
-  // 3. Ajustement automatique du zoom de la carte
+  // 3. Zoom adaptatif Leaflet
   if (typeof map !== 'undefined' && map) {
     if (selectedAirport === 'EBLG') {
       map.setView([50.6374, 5.4432], 11);
