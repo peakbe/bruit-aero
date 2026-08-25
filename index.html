@@ -22,6 +22,23 @@
       --text-muted: #94a3b8;
       --border: #334155;
     }
+    .filter-btn {
+  background: #0f172a;
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  padding: 8px 16px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: 0.2s;
+  font-weight: 500;
+}
+
+.filter-btn.active {
+  background: var(--accent);
+  color: #000;
+  font-weight: bold;
+  border-color: var(--accent);
+}
 
     * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
     body { background-color: var(--bg-main); color: var(--text-light); padding: 20px; }
@@ -89,10 +106,17 @@
 </div>
   
   <div class="grid-container">
+
+    <div class="filter-bar" style="display: flex; gap: 10px; margin-bottom: 15px;">
+  <button class="filter-btn active" onclick="filterAirportView('ALL')">Tous les aéroports</button>
+  <button class="filter-btn" onclick="filterAirportView('EBLG')">Liège (EBLG)</button>
+  <button class="filter-btn" onclick="filterAirportView('EBCI')">Charleroi (EBCI)</button>
+</div>
+    
     <!-- EBCI WEATHER -->
-    <div class="card">
-      <div class="card-header">
-        <span class="card-title">Charleroi (EBCI / CRL) - Météo</span>
+   <div class="card" data-airport="EBCI">
+  <div class="card-header">
+    <span class="card-title">Charleroi (EBCI / CRL) - Météo</span>
         <span class="badge badge-dep">METAR Direct</span>
       </div>
       <div class="weather-box">
@@ -110,9 +134,9 @@
     </div>
 
     <!-- EBLG WEATHER -->
-    <div class="card">
-      <div class="card-header">
-        <span class="card-title">Liège (EBLG / LGG) - Météo</span>
+    <div class="card" data-airport="EBLG">
+  <div class="card-header">
+    <span class="card-title">Liège (EBLG / LGG) - Météo</span>
         <span class="badge badge-arr">METAR Direct</span>
       </div>
       <div class="weather-box">
@@ -142,9 +166,9 @@
   <!-- FLIGHTS TABLES SECTION -->
   <div class="grid-container">
     <!-- EBCI FLIGHTS -->
-    <div class="card">
-      <div class="card-header">
-        <span class="card-title" id="ebci-title">Vols - Charleroi (EBCI)</span>
+    <div class="card" data-airport="EBCI">
+  <div class="card-header">
+    <span class="card-title" id="ebci-title">Vols - Charleroi (EBCI)</span>
         <div class="tab-container">
           <button class="tab-btn active" onclick="switchFlightTab('ebci', 'dep', this)">Départs</button>
           <button class="tab-btn" onclick="switchFlightTab('ebci', 'arr', this)">Arrivées</button>
@@ -161,9 +185,9 @@
     </div>
 
     <!-- EBLG FLIGHTS -->
-    <div class="card">
-      <div class="card-header">
-        <span class="card-title" id="eblg-title">Vols - Liège (EBLG)</span>
+    <div class="card" data-airport="EBLG">
+  <div class="card-header">
+    <span class="card-title" id="eblg-title">Vols - Liège (EBLG)</span>
         <div class="tab-container">
           <button class="tab-btn active" onclick="switchFlightTab('eblg', 'dep', this)">Départs</button>
           <button class="tab-btn" onclick="switchFlightTab('eblg', 'arr', this)">Arrivées</button>
