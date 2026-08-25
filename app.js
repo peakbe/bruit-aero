@@ -314,6 +314,121 @@ function setRunwayEBLG(runwayNum, map) {
 // =================================================================
 // 6. VOLS & MÉTÉO (CORRIGÉS ET SÉCURISÉS)
 // =================================================================
+// =================================================================
+// AFFICHAGE DES VOLS (REAL GPS + FALLBACK DEPART/ARRIVEE)
+// =================================================================
+
+// Coordonnées exactes des pistes (Seuils de piste)
+const AIRPORT_CONFIG = {
+  EBLG: { name: "Liège Airport", lat: 50.6374, lon: 5.4432, heading: 228 },
+  EBCI: { name: "Charleroi Airport", lat: 50.4592, lon: 4.4538, heading: 242 }
+};
+
+// Icône d'avion personnalisée pour Leaflet
+const planeIcon = L.icon({
+  iconUrl: 'https://cdn-icons-png.flaticon.com/512/7893/7893979.png',
+  iconSize: [28, 28],
+  iconAnchor: [14, 14],
+  popupAnchor: [0, -10]
+});
+
+// Calcule une position GPS fictive pour les départs / arrivées non détectés sur le radar
+function calculateEstimatedCoords(airportCode, type, index) {
+  const cfg = AIRPORT_CONFIG[airportCode];
+  const offset = (index + 1) * 0.003; // Espacement entre les appareils
+
+  if (type === "departures") {
+    // Aligné sur le parking/taxiway (décalage perpendiculaire)
+    return {
+      lat: cfg.lat + (offset * 0.5),
+      lon: cfg.lon + offset,
+      heading: cfg.heading
+    };
+  } else {
+    // Positionné en finale (axe d'approche à quelques km)
+    return {
+      lat: cfg.lat + (offset * 1.5),
+      lon: cfg.lon - (offset * 2),
+      heading: cfg.heading
+    };
+  }
+}
+
+// Fonction principale : Croise le FIDS avec le Radar
+async function renderFidsPlanesOnMap(map, flightsLayerGroup) {
+  flightsLayerGroup.clearLayers();
+
+  try {
+    // 1. Récupération des données du Radar (OpenSky / ADSB)
+    const resRadar = await fetch(`${WORKER_BASE_URL}/api/opensky`);
+    const radarData = await resRadar.json();
+    const liveStates = radarData.states || [];
+
+    // Indexation des vols en l'air par leur CallSign (ex: "3V801")
+    const liveFlightsMap = new Map();
+    liveStates.forEach(state => {
+      const callsign = state[1] ? state[1].trim() : null;
+      if (callsign) {
+        liveFlightsMap.set(callsign, {
+          lat: state[6],
+          lon: state[5],
+          heading: state[10] || 0,
+          altitude: state[7],
+          speed: state[9]
+        });
+      }
+    });
+
+    // 2. Traitement des aéroports EBLG et EBCI
+    const airports = ["EBLG", "EBCI"];
+    const types = ["departures", "arrivals"];
+
+    for (const airport of airports) {
+      for (const type of types) {
+        const resFids = await fetch(`${WORKER_BASE_URL}/api/fids?airport=${airport}&type=${type}`);
+        const fidsData = await resFids.json();
+
+        (fidsData.flights || []).forEach((flight, index) => {
+          let pos = liveFlightsMap.get(flight.flight);
+          let isLiveGps = true;
+
+          // Si le vol n'est pas vu par le radar, génération de la position FIDS
+          if (!pos || !pos.lat || !pos.lon) {
+            isLiveGps = false;
+            pos = calculateEstimatedCoords(airport, type, index);
+          }
+
+          // Marker Leaflet
+          const marker = L.marker([pos.lat, pos.lon], {
+            icon: planeIcon,
+            rotationAngle: pos.heading || 0
+          });
+
+          // Contenu du Popup
+          const statusBadge = isLiveGps 
+            ? `<span style="color: #22c55e;">📡 GPS Temps Réel</span>` 
+            : `<span style="color: #eab308;">📋 Prévu (${type === 'departures' ? 'Au sol' : 'Approche'})</span>`;
+
+          marker.bindPopup(`
+            <div style="font-family: sans-serif;">
+              <h3 style="margin: 0 0 5px 0;">Vol ${flight.flight}</h3>
+              <b>Aéroport :</b> ${AIRPORT_CONFIG[airport].name}<br>
+              <b>Destination/Origine :</b> ${flight.city}<br>
+              <b>Heure :</b> ${flight.time}<br>
+              <b>Statut FIDS :</b> ${flight.status}<br>
+              <b>Source :</b> ${statusBadge}
+            </div>
+          `);
+
+          flightsLayerGroup.addLayer(marker);
+        });
+      }
+    }
+  } catch (err) {
+    console.error("Erreur lors de l'affichage des avions FIDS/Radar:", err);
+  }
+}
+
 function msToKmh(ms) {
   return Math.round(ms * 3.6);
 }
