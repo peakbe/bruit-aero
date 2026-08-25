@@ -82,63 +82,78 @@ export default {
       // -------------------------------------------------------------
       // 2. ENDPOINT FIDS (VOLS DÉPARTS / ARRIVÉES - 10 VOLS PAR CATEGORIE)
       // -------------------------------------------------------------
+     // -------------------------------------------------------------
+      // 2. ENDPOINT FIDS (VOLS DÉPARTS / ARRIVÉES - HORAIRES DYNAMIQUES)
+      // -------------------------------------------------------------
       if (path.includes("/api/fids")) {
         const type = url.searchParams.get("type") || "departures";
         const airport = (url.searchParams.get("airport") || "EBLG").toUpperCase();
         
+        // Fonction utilitaire pour générer une heure basée sur l'heure actuelle
+        const getDynamicTime = (offsetMinutes) => {
+          const now = new Date();
+          // Décalage optionnel pour adapter au fuseau horaire belge (UTC+2 / CEST)
+          now.setMinutes(now.getMinutes() + offsetMinutes);
+          return now.toLocaleTimeString('fr-BE', { 
+            hour: '2-digit', 
+            minute: '2-digit',
+            timeZone: 'Europe/Brussels'
+          });
+        };
+
         let mockFlights = [];
 
         if (airport === "EBLG") {
           mockFlights = type === "departures" 
             ? [
-                { flight: "3V801", city: "Alicante (ALC)", time: "14:30", status: "Embarquement" },
-                { flight: "XQ120", city: "Antalya (AYT)", time: "15:15", status: "Programmé" },
-                { flight: "TB2111", city: "Tenerife (TFS)", time: "16:00", status: "Programmé" },
-                { flight: "3V502", city: "Zaragoza (ZAZ)", time: "16:45", status: "Programmé" },
-                { flight: "3V991", city: "New York (JFK)", time: "17:30", status: "Programmé" },
-                { flight: "BJ512", city: "Djerba (DJE)", time: "18:10", status: "Programmé" },
-                { flight: "3V104", city: "Dubai (DWC)", time: "19:00", status: "Programmé" },
-                { flight: "XQ122", city: "Izmir (ADB)", time: "20:15", status: "Programmé" },
-                { flight: "3V303", city: "Hangzhou (HGH)", time: "21:40", status: "Programmé" },
-                { flight: "TB3012", city: "Las Palmas (LPA)", time: "22:15", status: "Programmé" }
+                { flight: "3V801", city: "Alicante (ALC)", time: getDynamicTime(10), status: "Embarquement" },
+                { flight: "XQ120", city: "Antalya (AYT)", time: getDynamicTime(35), status: "Programmé" },
+                { flight: "TB2111", city: "Tenerife (TFS)", time: getDynamicTime(65), status: "Programmé" },
+                { flight: "3V502", city: "Zaragoza (ZAZ)", time: getDynamicTime(95), status: "Programmé" },
+                { flight: "3V991", city: "New York (JFK)", time: getDynamicTime(130), status: "Programmé" },
+                { flight: "BJ512", city: "Djerba (DJE)", time: getDynamicTime(160), status: "Programmé" },
+                { flight: "3V104", city: "Dubai (DWC)", time: getDynamicTime(195), status: "Programmé" },
+                { flight: "XQ122", city: "Izmir (ADB)", time: getDynamicTime(230), status: "Programmé" },
+                { flight: "3V303", city: "Hangzhou (HGH)", time: getDynamicTime(270), status: "Programmé" },
+                { flight: "TB3012", city: "Las Palmas (LPA)", time: getDynamicTime(310), status: "Programmé" }
               ]
             : [
-                { flight: "3V802", city: "Madrid (MAD)", time: "14:10", status: "Atterri" },
-                { flight: "TB211", city: "Tenerife (TFS)", time: "14:55", status: "En approche" },
-                { flight: "3V501", city: "Cologne (CGN)", time: "15:30", status: "Programmé" },
-                { flight: "XQ121", city: "Antalya (AYT)", time: "16:20", status: "Programmé" },
-                { flight: "3V992", city: "Atlanta (ATL)", time: "17:05", status: "Programmé" },
-                { flight: "BJ513", city: "Monastir (MIR)", time: "18:00", status: "Programmé" },
-                { flight: "3V105", city: "Riyad (RUH)", time: "18:50", status: "Programmé" },
-                { flight: "3V304", city: "Liège Cargo North", time: "19:35", status: "Programmé" },
-                { flight: "TB3013", city: "Fuerteventura (FUE)", time: "20:40", status: "Programmé" },
-                { flight: "3V804", city: "Valence (VLC)", time: "21:50", status: "Programmé" }
+                { flight: "3V802", city: "Madrid (MAD)", time: getDynamicTime(-15), status: "Atterri" },
+                { flight: "TB211", city: "Tenerife (TFS)", time: getDynamicTime(5), status: "En approche" },
+                { flight: "3V501", city: "Cologne (CGN)", time: getDynamicTime(40), status: "Programmé" },
+                { flight: "XQ121", city: "Antalya (AYT)", time: getDynamicTime(75), status: "Programmé" },
+                { flight: "3V992", city: "Atlanta (ATL)", time: getDynamicTime(110), status: "Programmé" },
+                { flight: "BJ513", city: "Monastir (MIR)", time: getDynamicTime(145), status: "Programmé" },
+                { flight: "3V105", city: "Riyad (RUH)", time: getDynamicTime(180), status: "Programmé" },
+                { flight: "3V304", city: "Liège Cargo North", time: getDynamicTime(215), status: "Programmé" },
+                { flight: "TB3013", city: "Fuerteventura (FUE)", time: getDynamicTime(250), status: "Programmé" },
+                { flight: "3V804", city: "Valence (VLC)", time: getDynamicTime(290), status: "Programmé" }
               ];
         } else if (airport === "EBCI") {
           mockFlights = type === "departures" 
             ? [
-                { flight: "FR2104", city: "Marseille (MRS)", time: "16:20", status: "Embarquement" },
-                { flight: "W64512", city: "Bucarest (OTP)", time: "17:00", status: "Programmé" },
-                { flight: "FR1933", city: "Dublin (DUB)", time: "17:40", status: "Programmé" },
-                { flight: "FR6312", city: "Barcelone (BCN)", time: "18:15", status: "Programmé" },
-                { flight: "FR2952", city: "Porto (OPO)", time: "18:50", status: "Programmé" },
-                { flight: "W63001", city: "Budapest (BUD)", time: "19:25", status: "Programmé" },
-                { flight: "FR8113", city: "Rome (CIA)", time: "20:00", status: "Programmé" },
-                { flight: "FR4912", city: "Lisbonne (LIS)", time: "20:35", status: "Programmé" },
-                { flight: "FR1002", city: "Cracovie (KRK)", time: "21:10", status: "Programmé" },
-                { flight: "FR6108", city: "Milan (BGY)", time: "21:45", status: "Programmé" }
+                { flight: "FR2104", city: "Marseille (MRS)", time: getDynamicTime(15), status: "Embarquement" },
+                { flight: "W64512", city: "Bucarest (OTP)", time: getDynamicTime(45), status: "Programmé" },
+                { flight: "FR1933", city: "Dublin (DUB)", time: getDynamicTime(80), status: "Programmé" },
+                { flight: "FR6312", city: "Barcelone (BCN)", time: getDynamicTime(115), status: "Programmé" },
+                { flight: "FR2952", city: "Porto (OPO)", time: getDynamicTime(150), status: "Programmé" },
+                { flight: "W63001", city: "Budapest (BUD)", time: getDynamicTime(185), status: "Programmé" },
+                { flight: "FR8113", city: "Rome (CIA)", time: getDynamicTime(220), status: "Programmé" },
+                { flight: "FR4912", city: "Lisbonne (LIS)", time: getDynamicTime(255), status: "Programmé" },
+                { flight: "FR1002", city: "Cracovie (KRK)", time: getDynamicTime(290), status: "Programmé" },
+                { flight: "FR6108", city: "Milan (BGY)", time: getDynamicTime(325), status: "Programmé" }
               ]
             : [
-                { flight: "FR1932", city: "Dublin (DUB)", time: "15:40", status: "Atterri" },
-                { flight: "FR6311", city: "Barcelone (BCN)", time: "16:15", status: "En approche" },
-                { flight: "W64511", city: "Bucarest (OTP)", time: "16:45", status: "Programmé" },
-                { flight: "FR2103", city: "Marseille (MRS)", time: "17:15", status: "Programmé" },
-                { flight: "FR2951", city: "Porto (OPO)", time: "18:10", status: "Programmé" },
-                { flight: "W63002", city: "Budapest (BUD)", time: "18:45", status: "Programmé" },
-                { flight: "FR8112", city: "Rome (CIA)", time: "19:20", status: "Programmé" },
-                { flight: "FR4911", city: "Lisbonne (LIS)", time: "19:55", status: "Programmé" },
-                { flight: "FR1001", city: "Cracovie (KRK)", time: "20:30", status: "Programmé" },
-                { flight: "FR6107", city: "Milan (BGY)", time: "21:05", status: "Programmé" }
+                { flight: "FR1932", city: "Dublin (DUB)", time: getDynamicTime(-20), status: "Atterri" },
+                { flight: "FR6311", city: "Barcelone (BCN)", time: getDynamicTime(10), status: "En approche" },
+                { flight: "W64511", city: "Bucarest (OTP)", time: getDynamicTime(35), status: "Programmé" },
+                { flight: "FR2103", city: "Marseille (MRS)", time: getDynamicTime(70), status: "Programmé" },
+                { flight: "FR2951", city: "Porto (OPO)", time: getDynamicTime(105), status: "Programmé" },
+                { flight: "W63002", city: "Budapest (BUD)", time: getDynamicTime(140), status: "Programmé" },
+                { flight: "FR8112", city: "Rome (CIA)", time: getDynamicTime(175), status: "Programmé" },
+                { flight: "FR4911", city: "Lisbonne (LIS)", time: getDynamicTime(210), status: "Programmé" },
+                { flight: "FR1001", city: "Cracovie (KRK)", time: getDynamicTime(245), status: "Programmé" },
+                { flight: "FR6107", city: "Milan (BGY)", time: getDynamicTime(280), status: "Programmé" }
               ];
         }
 
