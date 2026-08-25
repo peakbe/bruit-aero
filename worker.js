@@ -80,22 +80,20 @@ export default {
       }
 
      // -------------------------------------------------------------
-      // 2. ENDPOINT FIDS (VOLS EN TEMPS RÉEL VIA AERODATABOX / RAPIDAPI)
+      // 2. ENDPOINT FIDS (AERODATABOX FIX)
       // -------------------------------------------------------------
       if (path.includes("/api/fids")) {
         const type = url.searchParams.get("type") || "departures";
-        const airportCode = (url.searchParams.get("airport") || "EBLG").toUpperCase(); // EBCI ou EBLG
+        const airportCode = (url.searchParams.get("airport") || "EBLG").toUpperCase();
 
-        // Inserer votre clé RapidAPI ici ou dans env.RAPIDAPI_KEY
         const apiKey = env.RAPIDAPI_KEY || "VOTRE_CLE_RAPIDAPI_ICI";
 
         try {
-          // AeroDataBox a besoin d'une plage horaire (YYYY-MM-DDTHH:mm)
+          // Formatage strict des dates au format ISO (YYYY-MM-DDTHH:mm)
           const now = new Date();
-          const from = now.toISOString().slice(0, 16); // ex: 2026-08-25T16:00
-          
-          const future = new Date(now.getTime() + 12 * 60 * 60 * 1000); // 12 heures plus tard
-          const to = future.toISOString().slice(0, 16);
+          const from = now.toISOString().substring(0, 16);
+          const future = new Date(now.getTime() + 12 * 60 * 60 * 1000);
+          const to = future.toISOString().substring(0, 16);
 
           const isDep = type === "departures";
           const direction = isDep ? "Departures" : "Arrivals";
@@ -117,17 +115,13 @@ export default {
               const flights = rawList.slice(0, 10).map((f) => {
                 const movement = isDep ? f.departure : f.arrival;
                 const airportInfo = isDep ? f.arrival?.airport : f.departure?.airport;
-                
-                // Heure prévue ou estimée
                 const timeStr = movement?.scheduledTime?.local || movement?.revisedTime?.local;
 
                 let formattedTime = "--:--";
                 if (timeStr) {
-                  // Format AeroDataBox : "2026-08-25 16:30+02:00"
-                  formattedTime = timeStr.slice(11, 16);
+                  formattedTime = timeStr.substring(11, 16);
                 }
 
-                // Statut traduisible
                 let status = "Programmé";
                 if (f.status === "EnRoute" || f.status === "Active") status = "En vol";
                 else if (f.status === "Landed") status = "Atterri";
@@ -152,13 +146,14 @@ export default {
               });
             }
           } else {
-            console.error("Erreur HTTP RapidAPI:", apiRes.status);
+            const errText = await apiRes.text();
+            console.error(`Erreur RapidAPI HTTP ${apiRes.status}:`, errText);
           }
         } catch (e) {
           console.error("Erreur de connexion à AeroDataBox:", e);
         }
 
-        // --- FALLBACK D'URGENCE (Si quota dépassé ou clé manquante) ---
+        // --- FALLBACK D'URGENCE ---
         const getDynamicTime = (offset) => {
           const now = new Date();
           now.setMinutes(now.getMinutes() + offset);
@@ -179,9 +174,7 @@ export default {
           { flight: "3V502", city: "Zaragoza (ZAZ)", time: getDynamicTime(95), status: "Programmé" }
         ];
 
-        const fallbackFlights = airportCode === "EBCI" ? mockEBCI : mockEBLG;
-
-        return new Response(JSON.stringify({ airport: airportCode, type, flights: fallbackFlights }), {
+        return new Response(JSON.stringify({ airport: airportCode, type, flights: airportCode === "EBCI" ? mockEBCI : mockEBLG }), {
           status: 200,
           headers: { ...corsHeaders, "Content-Type": "application/json" }
         });
