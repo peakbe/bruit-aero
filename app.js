@@ -34,6 +34,9 @@ function initMap() {
 
   map = L.map("map").setView([50.55, 4.95], 9);
 
+  // Initialisation du groupe de calques pour les avions FIDS/Radar
+  flightsGroup = L.layerGroup().addTo(map);
+
   L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
     maxZoom: 19,
     attribution: "© OpenStreetMap",
@@ -70,11 +73,13 @@ function initMap() {
 
   map.addControl(new RecenterControl());
 
-  fetchRadarData();
+  // Chargements initiaux
+  renderFidsPlanesOnMap(map, flightsGroup); // <--- AJOUTÉ ICI
   fetchFlightsData();
   fetchWeatherData();
 
-  setInterval(fetchRadarData, 8000);
+  // Mises à jour automatiques
+  setInterval(() => renderFidsPlanesOnMap(map, flightsGroup), 30000); // <--- AJOUTÉ ICI
   setInterval(fetchFlightsData, 120000);
   setInterval(fetchWeatherData, 300000);
 }
