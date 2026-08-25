@@ -41,12 +41,15 @@ function initMap() {
     attribution: "© OpenStreetMap",
   }).addTo(map);
 
-  // Marqueurs aéroports avec événement de clic
-  const markerEBLG = L.marker([EBLG_LAT, EBLG_LON]).addTo(map).bindPopup("<b>Liège Airport (EBLG)</b>");
-  const markerEBCI = L.marker([EBCI_LAT, EBCI_LON]).addTo(map).bindPopup("<b>Charleroi Airport (EBCI)</b>");
+ // Marqueurs aéroports avec événement de clic (Utilisation de l'objet AIRPORTS)
+  const markerEBLG = L.marker([AIRPORTS.EBLG.lat, AIRPORTS.EBLG.lon]).addTo(map).bindPopup(`<b>${AIRPORTS.EBLG.name} (EBLG)</b>`);
+  const markerEBCI = L.marker([AIRPORTS.EBCI.lat, AIRPORTS.EBCI.lon]).addTo(map).bindPopup(`<b>${AIRPORTS.EBCI.name} (EBCI)</b>`);
 
   markerEBLG.on('click', () => fetchFlightsData('EBLG'));
   markerEBCI.on('click', () => fetchFlightsData('EBCI'));
+
+  // Affichage initial des sonomètres sur la carte
+  renderSonometersOnMap(map);
 
   // Bouton Recentrer
   const RecenterControl = L.Control.extend({
@@ -360,8 +363,8 @@ async function loadFlightType(type, elementContainer, airport) {
 }
 
 async function fetchWeatherData() {
-  loadAirportWeather(EBLG_LAT, EBLG_LON, "EBLG", "eblg-temp", "eblg-metar");
-  loadAirportWeather(EBCI_LAT, EBCI_LON, "EBCI", "ebci-temp", "ebci-metar");
+  loadAirportWeather(AIRPORTS.EBLG.lat, AIRPORTS.EBLG.lon, "EBLG", "eblg-temp", "eblg-metar");
+  loadAirportWeather(AIRPORTS.EBCI.lat, AIRPORTS.EBCI.lon, "EBCI", "ebci-temp", "ebci-metar");
 }
 
 async function loadAirportWeather(lat, lon, station, tempElemId, metarElemId) {
