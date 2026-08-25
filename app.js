@@ -1,15 +1,19 @@
 // =================================================================
-// 1. CONFIGURATION & VARIABLES GLOBALES
+// 1. CONFIGURATION ET VARIABLES GLOBALES SÉCURISÉES
 // =================================================================
-const WORKER_BASE_URL = "https://bruit-aero-proxy.pnyr682w7f.workers.dev";
+var WORKER_BASE_URL = "https://bruit-aero-proxy.pnyr682w7f.workers.dev";
 
-var map;
-var planeMarkers = {}; 
-var lastValidStates = [];
-var currentAirport = "EBLG";t
+// Utilisation de var pour éviter les conflits 'let/const' au rechargement
+var map = map || null;
+var planeMarkers = planeMarkers || {}; 
+var lastValidStates = lastValidStates || [];
+var currentAirport = currentAirport || "EBLG";
 
-const EBLG_LAT = 50.6374, EBLG_LON = 5.4432;
-const EBCI_LAT = 50.4592, EBCI_LON = 4.4538;
+// Coordonnées des aéroports
+var AIRPORTS = {
+  EBLG: { lat: 50.6374, lon: 5.4432, name: "Liège Airport" },
+  EBCI: { lat: 50.4592, lon: 4.4538, name: "Charleroi Airport" }
+};
 
 const yellowPlaneIcon = L.divIcon({
   className: "custom-plane-icon",
