@@ -41,7 +41,7 @@ function initMap() {
     attribution: "© OpenStreetMap",
   }).addTo(map);
 
- // Marqueurs aéroports avec événement de clic (Utilisation de l'objet AIRPORTS)
+  // Marqueurs aéroports avec événement de clic
   const markerEBLG = L.marker([AIRPORTS.EBLG.lat, AIRPORTS.EBLG.lon]).addTo(map).bindPopup(`<b>${AIRPORTS.EBLG.name} (EBLG)</b>`);
   const markerEBCI = L.marker([AIRPORTS.EBCI.lat, AIRPORTS.EBCI.lon]).addTo(map).bindPopup(`<b>${AIRPORTS.EBCI.name} (EBCI)</b>`);
 
@@ -76,11 +76,11 @@ function initMap() {
   map.addControl(new RecenterControl());
 
   fetchRadarData();
-  fetchFlightsData(currentAirport);
+  fetchFlightsData();
   fetchWeatherData();
 
   setInterval(fetchRadarData, 8000);
-  setInterval(() => fetchFlightsData(currentAirport), 120000);
+  setInterval(fetchFlightsData, 120000);
   setInterval(fetchWeatherData, 300000);
 }
 
@@ -93,7 +93,6 @@ async function fetchRadarData() {
     
     if (response.ok) {
       const data = await response.json();
-      // On accepte Array.isArray(data.states) même s'il est vide ([])
       if (data && Array.isArray(data.states)) {
         lastValidStates = data.states;
         updatePlaneMarkers(data.states);
@@ -113,7 +112,6 @@ function updatePlaneMarkers(states) {
   if (!map) return;
   const currentIcaos = new Set();
 
-  // Vérification si le plugin de rotation est disponible
   const hasRotationPlugin = typeof L.Marker.prototype.setRotationAngle === "function";
 
   states.forEach((flight) => {
@@ -158,7 +156,6 @@ function updatePlaneMarkers(states) {
     }
   });
 
-  // Nettoyage des avions hors de portée
   Object.keys(planeMarkers).forEach((icao) => {
     if (!currentIcaos.has(icao)) {
       map.removeLayer(planeMarkers[icao]);
@@ -171,7 +168,6 @@ function updatePlaneMarkers(states) {
 // GESTION DES ONGLETS DE VOLS (EBCI / EBLG)
 // ==========================================
 function switchFlightTab(airport, type, btnElement) {
-  // 1. Mise à jour de la classe 'active' sur les boutons de la carte concernée
   const parentTabContainer = btnElement.parentElement;
   if (parentTabContainer) {
     const buttons = parentTabContainer.querySelectorAll('.tab-btn');
@@ -179,19 +175,17 @@ function switchFlightTab(airport, type, btnElement) {
     btnElement.classList.add('active');
   }
 
-  // 2. Ciblage des conteneurs HTML et chargement du type de vol
   const targetBodyId = `${airport.toLowerCase()}-flights-body`;
   const container = document.getElementById(targetBodyId);
 
   if (container) {
-    // Adapter selon la structure d'appel de votre API ("departures"/"arrivals" ou "dep"/"arr")
     const flightType = (type === 'dep') ? 'departures' : 'arrivals';
     loadFlightType(flightType, container, airport.toUpperCase());
   }
 }
 
 // ==========================================
-// 1. DATA DES SONOMÈTRES EBCI ET EBLG
+// 4. DATA DES SONOMÈTRES EBCI ET EBLG
 // ==========================================
 const sonometersEBCI = [
   { id: "F118", address: "Rue Piconette 1, Sombreffe", latDMS: "50 30 18.96 N", lonDMS: "4 36 40.25 E" },
@@ -234,13 +228,13 @@ const sonometersEBLG = [
 ];
 
 // ==========================================
-// 2. ÉTAT DES PISTES EN SERVICE
+// 5. ÉTAT DES PISTES EN SERVICE
 // ==========================================
-let currentRunwayEBCI = "24"; // Valeur par défaut : "24" ou "06"
-let currentRunwayEBLG = "22"; // Valeur par défaut : "22" ou "04"
+let currentRunwayEBCI = "24"; 
+let currentRunwayEBLG = "22"; 
 
 // ==========================================
-// 3. CONVERTISSEUR COORDONNÉES DMS -> DD
+// 6. CONVERTISSEUR COORDONNÉES DMS -> DD
 // ==========================================
 function dmsToDecimal(dmsStr) {
   const parts = dmsStr.trim().split(/\s+/);
@@ -257,12 +251,12 @@ function dmsToDecimal(dmsStr) {
 }
 
 // ==========================================
-// 4. LOGIQUE DES COULEURS PAR PISTE
+// 7. LOGIQUE DES COULEURS PAR PISTE
 // ==========================================
 function getSonometerColor(id, airport) {
   if (airport === "EBLG") {
     if (currentRunwayEBLG === "22") {
-      return "#10b981"; // Vert pour toutes en piste 22
+      return "#10b981"; 
     } else if (currentRunwayEBLG === "04") {
       const redListEBLG = ["F004", "F005", "F006", "F010", "F012", "F016", "F017"];
       return redListEBLG.includes(id) ? "#ef4444" : "#10b981";
@@ -271,7 +265,7 @@ function getSonometerColor(id, airport) {
 
   if (airport === "EBCI") {
     if (currentRunwayEBCI === "24") {
-      return "#10b981"; // Vert pour toutes en piste 24
+      return "#10b981"; 
     } else if (currentRunwayEBCI === "06") {
       const redListEBCI = ["F114", "F116", "F117", "F118"];
       return redListEBCI.includes(id) ? "#ef4444" : "#10b981";
@@ -282,12 +276,11 @@ function getSonometerColor(id, airport) {
 }
 
 // ==========================================
-// 5. AFFICHAGE SUR LA CARTE LEAFLET
+// 8. AFFICHAGE SUR LA CARTE LEAFLET
 // ==========================================
 const sonometerMarkers = [];
 
 function renderSonometersOnMap(map) {
-  // Purge des marqueurs existants lors du changement de piste
   sonometerMarkers.forEach(m => map.removeLayer(m));
   sonometerMarkers.length = 0;
 
@@ -327,7 +320,7 @@ function renderSonometersOnMap(map) {
 }
 
 // ==========================================
-// 6. FONCTIONS POUR BASCULER LES PISTES (UI)
+// 9. BASCULEMENT DES PISTES (UI)
 // ==========================================
 function setRunwayEBCI(runwayNum, map) {
   currentRunwayEBCI = runwayNum;
@@ -340,21 +333,20 @@ function setRunwayEBLG(runwayNum, map) {
 }
 
 // =================================================================
-// 7. VOLS & MÉTÉO
+// 10. VOLS & MÉTÉO
 // =================================================================
-async function fetchFlightsData() {
+async function fetchFlightsData(specificAirport = null) {
   const ebciBody = document.getElementById("ebci-flights-body");
   const eblgBody = document.getElementById("eblg-flights-body");
 
+  if (specificAirport) {
+    const targetBody = specificAirport === "EBCI" ? ebciBody : eblgBody;
+    if (targetBody) await loadFlightType("departures", targetBody, specificAirport);
+    return;
+  }
+
   if (ebciBody) await loadFlightType("departures", ebciBody, "EBCI");
   if (eblgBody) await loadFlightType("departures", eblgBody, "EBLG");
-}
-
-  const containerDepartures = document.getElementById("departures-list");
-  const containerArrivals = document.getElementById("arrivals-list");
-  
-  if (containerDepartures) await loadFlightType("departures", containerDepartures, airport);
-  if (containerArrivals) await loadFlightType("arrivals", containerArrivals, airport);
 }
 
 async function loadFlightType(type, elementContainer, airport) {
