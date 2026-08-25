@@ -550,6 +550,42 @@ async function loadAirportWeather(lat, lon, station, tempElemId, metarElemId, fo
   }
 }
 
+// =================================================================
+// FILTRAGE DYNAMIQUE (EBLG / EBCI / TOUS)
+// =================================================================
+function filterAirportView(selectedAirport) {
+  // 1. Mise à jour de l'état actif des boutons
+  const buttons = document.querySelectorAll('.filter-bar .filter-btn');
+  buttons.forEach(btn => {
+    btn.classList.remove('active');
+    if (btn.getAttribute('onclick').includes(selectedAirport)) {
+      btn.classList.add('active');
+    }
+  });
+
+  // 2. Masquer / Afficher les cartes associées
+  const airportCards = document.querySelectorAll('[data-airport]');
+  airportCards.forEach(card => {
+    const cardAirport = card.getAttribute('data-airport');
+    if (selectedAirport === 'ALL' || cardAirport === selectedAirport) {
+      card.style.display = 'block';
+    } else {
+      card.style.display = 'none';
+    }
+  });
+
+  // 3. Ajustement automatique du zoom de la carte
+  if (typeof map !== 'undefined' && map) {
+    if (selectedAirport === 'EBLG') {
+      map.setView([50.6374, 5.4432], 11);
+    } else if (selectedAirport === 'EBCI') {
+      map.setView([50.4592, 4.4538], 11);
+    } else {
+      map.setView([50.55, 4.95], 9);
+    }
+  }
+}
+
 // Initialisation au chargement
 if (document.readyState === "loading") {
   document.addEventListener("DOMContentLoaded", initMap);
