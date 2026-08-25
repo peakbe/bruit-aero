@@ -349,6 +349,7 @@ async function fetchFlightsData(specificAirport = null) {
   if (eblgBody) await loadFlightType("departures", eblgBody, "EBLG");
 }
 
+// Limit à 10 vols (Départs et Arrivées)
 async function loadFlightType(type, elementContainer, airport) {
   try {
     const response = await fetch(`${WORKER_BASE_URL}/api/fids?airport=${airport}&type=${type}`);
@@ -356,7 +357,10 @@ async function loadFlightType(type, elementContainer, airport) {
 
     const data = await response.json();
     if (data && Array.isArray(data.flights) && data.flights.length > 0) {
-      elementContainer.innerHTML = data.flights
+      // Conservation des 10 premiers vols uniquement
+      const next10Flights = data.flights.slice(0, 10);
+
+      elementContainer.innerHTML = next10Flights
         .map(
           (f) => `
             <tr>
@@ -376,9 +380,56 @@ async function loadFlightType(type, elementContainer, airport) {
   }
 }
 
+// Récupération météo actuelle + Prévisions météo (Tendances)
+async function loadAirportWeather(lat, lon, station, tempElemId, metarElemId, forecastElemId) {
+  try {
+    const resWeather = await fetch(`${WORKER_BASE_URL}/api/weather?lat=${lat}&lon=${lon}`);
+    const resMetar = await fetch(`${WORKER_BASE_URL}/api/metar?station=${station}`);
+
+    if (resWeather.ok) {
+      const weather = await resWeather.json();
+      const tempEl = document.getElementById(tempElemId);
+      if (tempEl && weather.main) tempEl.innerText = `${Math.round(weather.main.temp)}°C`;
+    }
+
+    if (resMetar.ok) {
+      const metar = await resMetar.json();
+      const metarEl = document.getElementById(metarElemId);
+      if (metarEl && metar.raw) metarEl.innerText = metar.raw;
+    }
+
+    // Récupération des prévisions météo (OpenWeather 5 days / 3 hours ou via votre proxy)
+    const forecastEl = document.getElementById(forecastElemId);
+    if (forecastEl) {
+      const resForecast = await fetch(`${WORKER_BASE_URL}/api/forecast?lat=${lat}&lon=${lon}`);
+      if (resForecast.ok) {
+        const forecastData = await resForecast.json();
+        // Récupère les 4 prochains créneaux (ex: prévisions sur 12h)
+        const upcomingForecast = forecastData.list.slice(0, 4); 
+
+        forecastEl.innerHTML = upcomingForecast.map(item => {
+          const time = new Date(item.dt * 1000).toLocaleTimeString('fr-BE', { hour: '2-digit', minute: '2-digit' });
+          const temp = Math.round(item.main.temp);
+          const icon = item.weather[0].icon;
+          return `
+            <div style="text-align: center; font-size: 0.8rem; padding: 4px;">
+              <div>${time}</div>
+              <img src="https://openweathermap.org/img/wn/${icon}.png" width="30" height="30" alt="icon"/>
+              <div><strong>${temp}°C</strong></div>
+            </div>
+          `;
+        }).join('');
+      }
+    }
+  } catch (err) {
+    console.error(`Erreur météo ${station} :`, err);
+  }
+}
+
+// Mise à jour de l'appel global météo avec l'élément forecast
 async function fetchWeatherData() {
-  loadAirportWeather(AIRPORTS.EBLG.lat, AIRPORTS.EBLG.lon, "EBLG", "eblg-temp", "eblg-metar");
-  loadAirportWeather(AIRPORTS.EBCI.lat, AIRPORTS.EBCI.lon, "EBCI", "ebci-temp", "ebci-metar");
+  loadAirportWeather(AIRPORTS.EBLG.lat, AIRPORTS.EBLG.lon, "EBLG", "eblg-temp", "eblg-metar", "eblg-forecast");
+  loadAirportWeather(AIRPORTS.EBCI.lat, AIRPORTS.EBCI.lon, "EBCI", "ebci-temp", "ebci-metar", "ebci-forecast");
 }
 
 async function loadAirportWeather(lat, lon, station, tempElemId, metarElemId) {
