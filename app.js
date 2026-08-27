@@ -7,6 +7,7 @@ var map = map || null;
 var planeMarkers = planeMarkers || {}; 
 var lastValidStates = lastValidStates || [];
 var currentAirport = currentAirport || "EBLG";
+var flightsGroup = flightsGroup || null;
 
 var AIRPORTS = {
   EBLG: { lat: 50.6374, lon: 5.4432, name: "Liège Airport" },
@@ -74,12 +75,12 @@ function initMap() {
   map.addControl(new RecenterControl());
 
   // Chargements initiaux
-  renderFidsPlanesOnMap(map, flightsGroup); // <--- AJOUTÉ ICI
+  renderFidsPlanesOnMap(map, flightsGroup);
   fetchFlightsData();
   fetchWeatherData();
 
-  // Mises à jour automatiques
-  setInterval(() => renderFidsPlanesOnMap(map, flightsGroup), 30000); // <--- AJOUTÉ ICI
+  // Mises à jour automatiques (Intervalle porté à 60s pour éviter le Rate Limit API)
+  setInterval(() => renderFidsPlanesOnMap(map, flightsGroup), 60000);
   setInterval(fetchFlightsData, 120000);
   setInterval(fetchWeatherData, 300000);
 }
@@ -175,7 +176,8 @@ function switchFlightTab(airport, type, btnElement) {
   const container = document.getElementById(targetBodyId);
 
   if (container) {
-    const flightType = (type === 'dep') ? 'departures' : 'arrivals';
+    // Normalisation du type de vol
+    const flightType = (type === 'dep' || type === 'departures') ? 'departures' : 'arrivals';
     loadFlightType(flightType, container, airport.toUpperCase());
   }
 }
@@ -317,19 +319,14 @@ function setRunwayEBLG(runwayNum, map) {
 }
 
 // =================================================================
-// 6. VOLS & MÉTÉO (CORRIGÉS ET SÉCURISÉS)
-// =================================================================
-// =================================================================
-// AFFICHAGE DES VOLS (REAL GPS + FALLBACK DEPART/ARRIVEE)
+// 6. VOLS & MÉTÉO (CORRIGÉS ET PARALLÉLISÉS)
 // =================================================================
 
-// Coordonnées exactes des pistes (Seuils de piste)
 const AIRPORT_CONFIG = {
   EBLG: { name: "Liège Airport", lat: 50.6374, lon: 5.4432, heading: 228 },
   EBCI: { name: "Charleroi Airport", lat: 50.4592, lon: 4.4538, heading: 242 }
 };
 
-// Icône d'avion personnalisée pour Leaflet
 const planeIcon = L.icon({
   iconUrl: 'https://cdn-icons-png.flaticon.com/512/7893/7893979.png',
   iconSize: [28, 28],
@@ -337,20 +334,17 @@ const planeIcon = L.icon({
   popupAnchor: [0, -10]
 });
 
-// Calcule une position GPS fictive pour les départs / arrivées non détectés sur le radar
 function calculateEstimatedCoords(airportCode, type, index) {
   const cfg = AIRPORT_CONFIG[airportCode];
-  const offset = (index + 1) * 0.003; // Espacement entre les appareils
+  const offset = (index + 1) * 0.003;
 
   if (type === "departures") {
-    // Aligné sur le parking/taxiway (décalage perpendiculaire)
     return {
       lat: cfg.lat + (offset * 0.5),
       lon: cfg.lon + offset,
       heading: cfg.heading
     };
   } else {
-    // Positionné en finale (axe d'approche à quelques km)
     return {
       lat: cfg.lat + (offset * 1.5),
       lon: cfg.lon - (offset * 2),
@@ -359,17 +353,17 @@ function calculateEstimatedCoords(airportCode, type, index) {
   }
 }
 
-// Fonction principale : Croise le FIDS avec le Radar
+// Fonction optimisée pour éviter les blocages API
 async function renderFidsPlanesOnMap(map, flightsLayerGroup) {
+  if (!flightsLayerGroup) return;
   flightsLayerGroup.clearLayers();
 
   try {
-    // 1. Récupération des données du Radar (OpenSky / ADSB)
-    const resRadar = await fetch(`${WORKER_BASE_URL}/api/opensky`);
-    const radarData = await resRadar.json();
+    // 1. Fetch Radar
+    const resRadar = await fetch(`${WORKER_BASE_URL}/api/opensky`).catch(() => null);
+    const radarData = resRadar && resRadar.ok ? await resRadar.json() : { states: [] };
     const liveStates = radarData.states || [];
 
-    // Indexation des vols en l'air par leur CallSign (ex: "3V801")
     const liveFlightsMap = new Map();
     liveStates.forEach(state => {
       const callsign = state[1] ? state[1].trim() : null;
@@ -384,32 +378,41 @@ async function renderFidsPlanesOnMap(map, flightsLayerGroup) {
       }
     });
 
-    // 2. Traitement des aéroports EBLG et EBCI
-    const airports = ["EBLG", "EBCI"];
-    const types = ["departures", "arrivals"];
+    // 2. Fetch des 4 combinaisons en parallèle au lieu de séquentiel
+    const combinations = [
+      { airport: 'EBLG', type: 'departures' },
+      { airport: 'EBLG', type: 'arrivals' },
+      { airport: 'EBCI', type: 'departures' },
+      { airport: 'EBCI', type: 'arrivals' }
+    ];
 
-    for (const airport of airports) {
-      for (const type of types) {
-        const resFids = await fetch(`${WORKER_BASE_URL}/api/fids?airport=${airport}&type=${type}`);
-        const fidsData = await resFids.json();
+    const results = await Promise.allSettled(
+      combinations.map(c => 
+        fetch(`${WORKER_BASE_URL}/api/fids?airport=${c.airport}&type=${c.type}`)
+          .then(r => r.json())
+          .then(data => ({ ...c, flights: data.flights || [] }))
+      )
+    );
 
-        (fidsData.flights || []).forEach((flight, index) => {
+    // 3. Rendu sur la carte
+    results.forEach(res => {
+      if (res.status === 'fulfilled') {
+        const { airport, type, flights } = res.value;
+
+        flights.forEach((flight, index) => {
           let pos = liveFlightsMap.get(flight.flight);
           let isLiveGps = true;
 
-          // Si le vol n'est pas vu par le radar, génération de la position FIDS
           if (!pos || !pos.lat || !pos.lon) {
             isLiveGps = false;
             pos = calculateEstimatedCoords(airport, type, index);
           }
 
-          // Marker Leaflet
           const marker = L.marker([pos.lat, pos.lon], {
             icon: planeIcon,
             rotationAngle: pos.heading || 0
           });
 
-          // Contenu du Popup
           const statusBadge = isLiveGps 
             ? `<span style="color: #22c55e;">📡 GPS Temps Réel</span>` 
             : `<span style="color: #eab308;">📋 Prévu (${type === 'departures' ? 'Au sol' : 'Approche'})</span>`;
@@ -428,7 +431,8 @@ async function renderFidsPlanesOnMap(map, flightsLayerGroup) {
           flightsLayerGroup.addLayer(marker);
         });
       }
-    }
+    });
+
   } catch (err) {
     console.error("Erreur lors de l'affichage des avions FIDS/Radar:", err);
   }
@@ -454,14 +458,15 @@ async function fetchFlightsData(specificAirport = null) {
 
 async function loadFlightType(type, elementContainer, airport) {
   try {
-    const response = await fetch(`${WORKER_BASE_URL}/api/fids?airport=${airport}&type=${type}`);
+    // Sécurisation du type de vol
+    const cleanType = (type === 'dep' || type === 'departures') ? 'departures' : 'arrivals';
+    
+    const response = await fetch(`${WORKER_BASE_URL}/api/fids?airport=${airport}&type=${cleanType}`);
     if (!response.ok) return;
 
     const data = await response.json();
     if (data && Array.isArray(data.flights) && data.flights.length > 0) {
-      const next10Flights = data.flights.slice(0, 10);
-
-      elementContainer.innerHTML = next10Flights
+      elementContainer.innerHTML = data.flights
         .map(
           (f) => `
             <tr>
@@ -510,7 +515,6 @@ async function loadAirportWeather(lat, lon, station, tempElemId, metarElemId, fo
       const metar = await resMetar.json();
       const metarEl = document.getElementById(metarElemId);
       if (metarEl) {
-        // Fallback pour couvrir plusieurs formats JSON renvoyés par l'API Proxy
         const rawText = metar.raw || metar.sanitized || metar.metar || (typeof metar === 'string' ? metar : null);
         if (rawText) metarEl.innerText = rawText;
       }
@@ -554,7 +558,6 @@ async function loadAirportWeather(lat, lon, station, tempElemId, metarElemId, fo
 // FILTRAGE DYNAMIQUE (EBLG / EBCI / TOUS)
 // =================================================================
 function filterAirportView(selectedAirport) {
-  // 1. Mise à jour des boutons actifs
   const buttons = document.querySelectorAll('.filter-btn');
   buttons.forEach(btn => {
     btn.classList.remove('active');
@@ -563,19 +566,16 @@ function filterAirportView(selectedAirport) {
     }
   });
 
-  // 2. Affichage/Masquage des cartes et des groupes de boutons
   const elementsToFilter = document.querySelectorAll('[data-airport]');
   elementsToFilter.forEach(el => {
     const elAirport = el.getAttribute('data-airport');
     if (selectedAirport === 'ALL' || elAirport === selectedAirport) {
-      // Conservation du style d'affichage d'origine (flex ou block)
       el.style.display = el.classList.contains('control-group') ? 'flex' : 'block';
     } else {
       el.style.display = 'none';
     }
   });
 
-  // 3. Zoom adaptatif Leaflet
   if (typeof map !== 'undefined' && map) {
     if (selectedAirport === 'EBLG') {
       map.setView([50.6374, 5.4432], 11);
