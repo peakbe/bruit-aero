@@ -23,6 +23,9 @@ const yellowPlaneIcon = L.divIcon({
   iconAnchor: [14, 14],
 });
 
+// Helper pour temporiser les requêtes (évite HTTP 429)
+const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
 // =================================================================
 // 2. INITIALISATION CARTE
 // =================================================================
@@ -79,7 +82,7 @@ function initMap() {
   fetchFlightsData();
   fetchWeatherData();
 
-  // Mises à jour automatiques (Intervalle porté à 60s pour éviter le Rate Limit API)
+  // Mises à jour automatiques temporisées
   setInterval(() => renderFidsPlanesOnMap(map, flightsGroup), 60000);
   setInterval(fetchFlightsData, 120000);
   setInterval(fetchWeatherData, 300000);
@@ -176,7 +179,6 @@ function switchFlightTab(airport, type, btnElement) {
   const container = document.getElementById(targetBodyId);
 
   if (container) {
-    // Normalisation du type de vol
     const flightType = (type === 'dep' || type === 'departures') ? 'departures' : 'arrivals';
     loadFlightType(flightType, container, airport.toUpperCase());
   }
@@ -319,7 +321,7 @@ function setRunwayEBLG(runwayNum, map) {
 }
 
 // =================================================================
-// 6. VOLS & MÉTÉO (CORRIGÉS ET PARALLÉLISÉS)
+// 6. VOLS & MÉTÉO (CORRIGÉS ET SÉQUENCÉS ANTI-429)
 // =================================================================
 
 const AIRPORT_CONFIG = {
@@ -353,13 +355,12 @@ function calculateEstimatedCoords(airportCode, type, index) {
   }
 }
 
-// Fonction optimisée pour éviter les blocages API
 async function renderFidsPlanesOnMap(map, flightsLayerGroup) {
   if (!flightsLayerGroup) return;
   flightsLayerGroup.clearLayers();
 
   try {
-    // 1. Fetch Radar
+    // 1. Fetch Radar (OpenSky)
     const resRadar = await fetch(`${WORKER_BASE_URL}/api/opensky`).catch(() => null);
     const radarData = resRadar && resRadar.ok ? await resRadar.json() : { states: [] };
     const liveStates = radarData.states || [];
@@ -378,7 +379,7 @@ async function renderFidsPlanesOnMap(map, flightsLayerGroup) {
       }
     });
 
-    // 2. Fetch des 4 combinaisons en parallèle au lieu de séquentiel
+    // 2. Fetch des combinaisons de façon séquentielle avec temporisation (évite le HTTP 429)
     const combinations = [
       { airport: 'EBLG', type: 'departures' },
       { airport: 'EBLG', type: 'arrivals' },
@@ -386,55 +387,55 @@ async function renderFidsPlanesOnMap(map, flightsLayerGroup) {
       { airport: 'EBCI', type: 'arrivals' }
     ];
 
-    const results = await Promise.allSettled(
-      combinations.map(c => 
-        fetch(`${WORKER_BASE_URL}/api/fids?airport=${c.airport}&type=${c.type}`)
-          .then(r => r.json())
-          .then(data => ({ ...c, flights: data.flights || [] }))
-      )
-    );
+    for (const c of combinations) {
+      try {
+        const res = await fetch(`${WORKER_BASE_URL}/api/fids?airport=${c.airport}&type=${c.type}`);
+        if (res.ok) {
+          const data = await res.json();
+          const flights = data.flights || [];
 
-    // 3. Rendu sur la carte
-    results.forEach(res => {
-      if (res.status === 'fulfilled') {
-        const { airport, type, flights } = res.value;
+          flights.forEach((flight, index) => {
+            let pos = liveFlightsMap.get(flight.flight);
+            let isLiveGps = true;
 
-        flights.forEach((flight, index) => {
-          let pos = liveFlightsMap.get(flight.flight);
-          let isLiveGps = true;
+            if (!pos || !pos.lat || !pos.lon) {
+              isLiveGps = false;
+              pos = calculateEstimatedCoords(c.airport, c.type, index);
+            }
 
-          if (!pos || !pos.lat || !pos.lon) {
-            isLiveGps = false;
-            pos = calculateEstimatedCoords(airport, type, index);
-          }
+            const marker = L.marker([pos.lat, pos.lon], {
+              icon: planeIcon,
+              rotationAngle: pos.heading || 0
+            });
 
-          const marker = L.marker([pos.lat, pos.lon], {
-            icon: planeIcon,
-            rotationAngle: pos.heading || 0
+            const statusBadge = isLiveGps 
+              ? `<span style="color: #22c55e;">📡 GPS Temps Réel</span>` 
+              : `<span style="color: #eab308;">📋 Prévu (${c.type === 'departures' ? 'Au sol' : 'Approche'})</span>`;
+
+            marker.bindPopup(`
+              <div style="font-family: sans-serif;">
+                <h3 style="margin: 0 0 5px 0;">Vol ${flight.flight}</h3>
+                <b>Aéroport :</b> ${AIRPORT_CONFIG[c.airport].name}<br>
+                <b>Destination/Origine :</b> ${flight.city}<br>
+                <b>Heure :</b> ${flight.time}<br>
+                <b>Statut FIDS :</b> ${flight.status}<br>
+                <b>Source :</b> ${statusBadge}
+              </div>
+            `);
+
+            flightsLayerGroup.addLayer(marker);
           });
-
-          const statusBadge = isLiveGps 
-            ? `<span style="color: #22c55e;">📡 GPS Temps Réel</span>` 
-            : `<span style="color: #eab308;">📋 Prévu (${type === 'departures' ? 'Au sol' : 'Approche'})</span>`;
-
-          marker.bindPopup(`
-            <div style="font-family: sans-serif;">
-              <h3 style="margin: 0 0 5px 0;">Vol ${flight.flight}</h3>
-              <b>Aéroport :</b> ${AIRPORT_CONFIG[airport].name}<br>
-              <b>Destination/Origine :</b> ${flight.city}<br>
-              <b>Heure :</b> ${flight.time}<br>
-              <b>Statut FIDS :</b> ${flight.status}<br>
-              <b>Source :</b> ${statusBadge}
-            </div>
-          `);
-
-          flightsLayerGroup.addLayer(marker);
-        });
+        }
+      } catch (e) {
+        console.error("Erreur FIDS pour", c.airport, c.type, e);
       }
-    });
+      
+      // Pause de 500ms entre chaque requête pour respecter la limite RapidAPI
+      await sleep(500);
+    }
 
   } catch (err) {
-    console.error("Erreur lors de l'affichage des avions FIDS/Radar:", err);
+    console.error("Erreur globale lors de l'affichage des avions:", err);
   }
 }
 
@@ -452,13 +453,17 @@ async function fetchFlightsData(specificAirport = null) {
     return;
   }
 
-  if (ebciBody) await loadFlightType("departures", ebciBody, "EBCI");
-  if (eblgBody) await loadFlightType("departures", eblgBody, "EBLG");
+  if (ebciBody) {
+    await loadFlightType("departures", ebciBody, "EBCI");
+    await sleep(300);
+  }
+  if (eblgBody) {
+    await loadFlightType("departures", eblgBody, "EBLG");
+  }
 }
 
 async function loadFlightType(type, elementContainer, airport) {
   try {
-    // Sécurisation du type de vol
     const cleanType = (type === 'dep' || type === 'departures') ? 'departures' : 'arrivals';
     
     const response = await fetch(`${WORKER_BASE_URL}/api/fids?airport=${airport}&type=${cleanType}`);
@@ -488,6 +493,7 @@ async function loadFlightType(type, elementContainer, airport) {
 
 async function fetchWeatherData() {
   loadAirportWeather(AIRPORTS.EBLG.lat, AIRPORTS.EBLG.lon, "EBLG", "eblg-temp", "eblg-metar", "eblg-forecast");
+  await sleep(300);
   loadAirportWeather(AIRPORTS.EBCI.lat, AIRPORTS.EBCI.lon, "EBCI", "ebci-temp", "ebci-metar", "ebci-forecast");
 }
 
