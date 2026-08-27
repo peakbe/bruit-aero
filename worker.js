@@ -143,29 +143,6 @@ if (path.includes("/api/opensky")) {
   }
 }
 
-        // --- NIVEAU 2 : OPENSKY NETWORK ---
-        try {
-          const openskyUrl = "https://opensky-network.org/api/states/all?lamin=49.0&lomin=2.0&lamax=52.0&lomax=7.0";
-          const openskyRes = await fetch(openskyUrl, {
-            headers: {
-              "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-              "Accept": "application/json"
-            }
-          });
-
-          if (openskyRes.ok) {
-            const data = await openskyRes.json();
-            if (data && Array.isArray(data.states) && data.states.length > 0) {
-              return new Response(JSON.stringify(data), {
-                status: 200,
-                headers: { ...corsHeaders, "Content-Type": "application/json" }
-              });
-            }
-          }
-        } catch (e) {
-          console.log("OpenSky indisponible, bascule sur ADSB.lol...");
-        }
-
         // --- NIVEAU 3 : ADSB.LOL ---
         try {
           const adsbRes = await fetch("https://api.adsb.lol/v2/lat/50.55/lon/4.95/dist/100");
