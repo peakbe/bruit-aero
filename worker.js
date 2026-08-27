@@ -154,7 +154,7 @@ export default {
           if (resAirLabs.ok) {
             const data = await resAirLabs.json();
             if (data && Array.isArray(data.response) && data.response.length > 0) {
-              const flights = data.response.slice(0, 15).map(f => {
+              const flights = data.response.slice(0, 10).map(f => {
                 const targetCode = isDep ? (f.arr_iata || f.arr_icao || "Inconnu") : (f.dep_iata || f.dep_icao || "Inconnu");
                 const timeRaw = isDep ? (f.dep_time || f.dep_estimated) : (f.arr_time || f.arr_estimated);
                 
@@ -193,7 +193,7 @@ export default {
         // --- SOURCE 2 : AVIATIONSTACK (100 REQUÊTES/MOIS GRATUIT) ---
         try {
           const paramName = isDep ? "dep_icao" : "arr_icao";
-          const aviationUrl = `http://api.aviationstack.com/v1/flights?access_key=${aviationstackKey}&${paramName}=${airportCode}&limit=15`;
+          const aviationUrl = `http://api.aviationstack.com/v1/flights?access_key=${aviationstackKey}&${paramName}=${airportCode}&limit=10`;
 
           const resAviation = await fetch(aviationUrl);
           if (resAviation.ok) {
@@ -258,7 +258,7 @@ export default {
             const rawList = isDep ? data.departures : data.arrivals;
 
             if (rawList && Array.isArray(rawList) && rawList.length > 0) {
-              const flights = rawList.slice(0, 15).map((f) => {
+              const flights = rawList.slice(0, 10).map((f) => {
                 const movement = isDep ? f.departure : f.arrival;
                 const destAirport = isDep ? f.arrival?.airport : f.departure?.airport;
 
