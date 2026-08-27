@@ -1,5 +1,5 @@
 // =================================================================
-// WORKER CLOUDFLARE - PROXY AÉRO
+// WORKER CLOUDFLARE - PROXY AÉRO (AIRLABS & AVIATIONSTACK EN EN-TÊTE)
 // =================================================================
 
 const corsHeaders = {
@@ -19,12 +19,57 @@ export default {
 
     try {
       // -------------------------------------------------------------
-      // 1. ENDPOINT RADAR (OpenSky avec Fallback ADSB.lol)
+      // 1. ENDPOINT RADAR (Flightradar24 -> OpenSky -> ADSB.lol)
       // -------------------------------------------------------------
       if (path === "/api/opensky") {
+        
+        // --- NIVEAU 1 : FLIGHTRADAR24 ---
+        try {
+          const fr24Url = "https://data-cloud.flightradar24.com/zones/fcgi/feed.json?bounds=52.0,49.0,2.0,7.0&faa=1&satellite=1&mlat=1&flarm=1&adsb=1&gnd=1&air=1&vehicles=0&estimated=1";
+          const fr24Res = await fetch(fr24Url, {
+            headers: {
+              "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+              "Accept": "application/json"
+            }
+          });
+
+          if (fr24Res.ok) {
+            const data = await fr24Res.json();
+            const mappedStates = [];
+
+            Object.keys(data).forEach(key => {
+              if (Array.isArray(data[key])) {
+                const f = data[key];
+                mappedStates.push([
+                  key,                          // 0: ICAO / ID
+                  f[16] || f[13] || "Inconnu",  // 1: Callsign
+                  "BE",                         // 2: Pays
+                  f[10] || 0,                   // 3: Horodatage
+                  f[10] || 0,                   // 4: Dernier contact
+                  f[2],                         // 5: Longitude
+                  f[1],                         // 6: Latitude
+                  f[4] ? f[4] * 0.3048 : null,  // 7: Altitude (Feet -> Mètres)
+                  Boolean(f[8]),                // 8: Au sol
+                  f[5] ? f[5] * 0.514444 : null,// 9: Vitesse (Kts -> m/s)
+                  f[3] || 0                     // 10: Cap / Heading
+                ]);
+              }
+            });
+
+            if (mappedStates.length > 0) {
+              return new Response(JSON.stringify({ states: mappedStates }), {
+                status: 200,
+                headers: { ...corsHeaders, "Content-Type": "application/json" }
+              });
+            }
+          }
+        } catch (e) {
+          console.log("FR24 Radar indisponible, bascule sur OpenSky...");
+        }
+
+        // --- NIVEAU 2 : OPENSKY NETWORK ---
         try {
           const openskyUrl = "https://opensky-network.org/api/states/all?lamin=49.0&lomin=2.0&lamax=52.0&lomax=7.0";
-
           const openskyRes = await fetch(openskyUrl, {
             headers: {
               "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
@@ -42,26 +87,26 @@ export default {
             }
           }
         } catch (e) {
-          console.log("OpenSky indisponible, bascule sur ADSB.lol");
+          console.log("OpenSky indisponible, bascule sur ADSB.lol...");
         }
 
+        // --- NIVEAU 3 : ADSB.LOL ---
         try {
           const adsbRes = await fetch("https://api.adsb.lol/v2/lat/50.55/lon/4.95/dist/100");
           if (adsbRes.ok) {
             const adsbData = await adsbRes.json();
-            
             const mappedStates = (adsbData.ac || []).map((ac) => [
-              ac.hex,                            // 0: ICAO24
-              ac.flight || "Inconnu",            // 1: Callsign
-              "BE",                              // 2: Country
-              ac.seen,                           // 3: Time
-              ac.seen,                           // 4: Last contact
-              ac.lon,                            // 5: Longitude
-              ac.lat,                            // 6: Latitude
-              ac.alt_geom ? ac.alt_geom * 0.3048 : null, // 7: Altitude (mètres)
-              false,                             // 8: On ground
-              ac.gs ? ac.gs * 0.514444 : null,   // 9: Speed (m/s)
-              ac.track || 0                      // 10: Cap / Heading
+              ac.hex,
+              ac.flight || "Inconnu",
+              "BE",
+              ac.seen,
+              ac.seen,
+              ac.lon,
+              ac.lat,
+              ac.alt_geom ? ac.alt_geom * 0.3048 : null,
+              false,
+              ac.gs ? ac.gs * 0.514444 : null,
+              ac.track || 0
             ]);
 
             return new Response(JSON.stringify({ states: mappedStates }), {
@@ -79,15 +124,17 @@ export default {
         });
       }
 
-    // -------------------------------------------------------------
-      // 2. ENDPOINT FIDS (AERODATABOX - AVEC CACHE ANTI-429)
+      // -------------------------------------------------------------
+      // 2. ENDPOINT FIDS (AirLabs -> Aviationstack -> AeroDataBox -> FR24 -> Mock)
       // -------------------------------------------------------------
       if (path.includes("/api/fids")) {
         const type = url.searchParams.get("type") || "departures";
         const airportCode = (url.searchParams.get("airport") || "EBLG").toUpperCase();
-        const apiKey = env.RAPIDAPI_KEY || "VOTRE_CLE_RAPIDAPI_ICI";
+        
+        const airlabsKey = env.AIRLABS_KEY || "VOTRE_CLE_AIRLABS";
+        const aviationstackKey = env.AVIATIONSTACK_KEY || "VOTRE_CLE_AVIATIONSTACK";
+        const rapidapiKey = env.RAPIDAPI_KEY || "VOTRE_CLE_RAPIDAPI";
 
-        // Utilisation du cache de Cloudflare Workers pour éviter l'erreur 429
         const cache = caches.default;
         const cacheKey = new Request(url.toString(), request);
         let cachedResponse = await cache.match(cacheKey);
@@ -96,20 +143,112 @@ export default {
           return cachedResponse;
         }
 
+        const isDep = type === "departures";
+
+        // --- SOURCE 1 : AIRLABS.CO (1000 REQUÊTES/MOIS GRATUIT) ---
+        try {
+          const paramName = isDep ? "dep_icao" : "arr_icao";
+          const airlabsUrl = `https://airlabs.co/api/v9/schedules?${paramName}=${airportCode}&api_key=${airlabsKey}`;
+
+          const resAirLabs = await fetch(airlabsUrl);
+          if (resAirLabs.ok) {
+            const data = await resAirLabs.json();
+            if (data && Array.isArray(data.response) && data.response.length > 0) {
+              const flights = data.response.slice(0, 15).map(f => {
+                const targetCode = isDep ? (f.arr_iata || f.arr_icao || "Inconnu") : (f.dep_iata || f.dep_icao || "Inconnu");
+                const timeRaw = isDep ? (f.dep_time || f.dep_estimated) : (f.arr_time || f.arr_estimated);
+                
+                let formattedTime = "--:--";
+                if (timeRaw) {
+                  const match = timeRaw.match(/\d{2}:\d{2}/);
+                  if (match) formattedTime = match[0];
+                }
+
+                let status = "Programmé";
+                const rawStatus = (f.status || "").toLowerCase();
+                if (rawStatus.includes("active") || rawStatus.includes("en-route")) status = "En vol / Parti";
+                else if (rawStatus.includes("landed")) status = "Atterri";
+                else if (rawStatus.includes("cancelled")) status = "Annulé";
+
+                return {
+                  flight: f.flight_number || f.flight_iata || f.flight_icao || "N/C",
+                  city: targetCode,
+                  time: formattedTime,
+                  status: status
+                };
+              });
+
+              const responseToCache = new Response(JSON.stringify({ airport: airportCode, type, flights }), {
+                status: 200,
+                headers: { ...corsHeaders, "Content-Type": "application/json", "Cache-Control": "public, max-age=300" }
+              });
+              ctx.waitUntil(cache.put(cacheKey, responseToCache.clone()));
+              return responseToCache;
+            }
+          }
+        } catch (e) {
+          console.error("Échec AirLabs, bascule sur Aviationstack...", e);
+        }
+
+        // --- SOURCE 2 : AVIATIONSTACK (100 REQUÊTES/MOIS GRATUIT) ---
+        try {
+          const paramName = isDep ? "dep_icao" : "arr_icao";
+          const aviationUrl = `http://api.aviationstack.com/v1/flights?access_key=${aviationstackKey}&${paramName}=${airportCode}&limit=15`;
+
+          const resAviation = await fetch(aviationUrl);
+          if (resAviation.ok) {
+            const data = await resAviation.json();
+            if (data && Array.isArray(data.data) && data.data.length > 0) {
+              const flights = data.data.map(f => {
+                const airportData = isDep ? f.arrival : f.departure;
+                const flightInfo = f.flight;
+
+                const timeRaw = isDep ? f.departure?.scheduled : f.arrival?.scheduled;
+                let formattedTime = "--:--";
+                if (timeRaw) {
+                  const match = timeRaw.match(/T(\d{2}:\d{2})/);
+                  if (match) formattedTime = match[1];
+                }
+
+                let status = "Programmé";
+                const rawStatus = (f.flight_status || "").toLowerCase();
+                if (rawStatus.includes("active")) status = "En vol / Parti";
+                else if (rawStatus.includes("landed")) status = "Atterri";
+                else if (rawStatus.includes("cancelled")) status = "Annulé";
+
+                return {
+                  flight: flightInfo?.iata || flightInfo?.number || "N/C",
+                  city: `${airportData?.airport || 'Inconnu'} (${airportData?.iata || ''})`,
+                  time: formattedTime,
+                  status: status
+                };
+              });
+
+              const responseToCache = new Response(JSON.stringify({ airport: airportCode, type, flights }), {
+                status: 200,
+                headers: { ...corsHeaders, "Content-Type": "application/json", "Cache-Control": "public, max-age=300" }
+              });
+              ctx.waitUntil(cache.put(cacheKey, responseToCache.clone()));
+              return responseToCache;
+            }
+          }
+        } catch (e) {
+          console.error("Échec Aviationstack, bascule sur AeroDataBox...", e);
+        }
+
+        // --- SOURCE 3 : AERODATABOX (RAPIDAPI) ---
         try {
           const now = new Date();
           const fromLocal = now.toISOString().substring(0, 16);
           const future = new Date(now.getTime() + 12 * 60 * 60 * 1000);
           const toLocal = future.toISOString().substring(0, 16);
 
-          const isDep = type === "departures";
           const direction = isDep ? "Departures" : "Arrivals";
-
           const targetUrl = `https://aerodatabox.p.rapidapi.com/flights/airports/icao/${airportCode}/${fromLocal}/${toLocal}?direction=${direction}&withLeg=true&withCancelled=true&withCodeshares=false&withCargo=true&withPrivate=true`;
 
           const apiRes = await fetch(targetUrl, {
             headers: {
-              "x-rapidapi-key": apiKey,
+              "x-rapidapi-key": rapidapiKey,
               "x-rapidapi-host": "aerodatabox.p.rapidapi.com"
             }
           });
@@ -136,15 +275,9 @@ export default {
 
                 let status = "Programmé";
                 const rawStatus = (f.status || "").toLowerCase();
-                if (rawStatus.includes("enroute") || rawStatus.includes("active") || rawStatus.includes("departed")) {
-                  status = "En vol / Parti";
-                } else if (rawStatus.includes("landed")) {
-                  status = "Atterri";
-                } else if (rawStatus.includes("boarding")) {
-                  status = "Embarquement";
-                } else if (rawStatus.includes("canceled") || rawStatus.includes("cancelled")) {
-                  status = "Annulé";
-                }
+                if (rawStatus.includes("enroute") || rawStatus.includes("active") || rawStatus.includes("departed")) status = "En vol / Parti";
+                else if (rawStatus.includes("landed")) status = "Atterri";
+                else if (rawStatus.includes("canceled") || rawStatus.includes("cancelled")) status = "Annulé";
 
                 return {
                   flight: flightNum,
@@ -154,31 +287,64 @@ export default {
                 };
               });
 
-              // Création de la réponse avec Cache-Control (5 minutes)
-              const responseToCache = new Response(
-                JSON.stringify({ airport: airportCode, type, flights }), 
-                {
-                  status: 200,
-                  headers: { 
-                    ...corsHeaders, 
-                    "Content-Type": "application/json",
-                    "Cache-Control": "public, max-age=300" 
-                  }
-                }
-              );
-
-              // Sauvegarde en cache
+              const responseToCache = new Response(JSON.stringify({ airport: airportCode, type, flights }), {
+                status: 200,
+                headers: { ...corsHeaders, "Content-Type": "application/json", "Cache-Control": "public, max-age=300" }
+              });
               ctx.waitUntil(cache.put(cacheKey, responseToCache.clone()));
               return responseToCache;
             }
-          } else {
-            console.error(`AeroDataBox ERREUR HTTP ${apiRes.status}:`, await apiRes.text());
           }
         } catch (e) {
-          console.error("Erreur connexion AeroDataBox:", e);
+          console.error("Échec AeroDataBox, bascule sur FR24 FIDS...", e);
         }
 
-        // Fallback si indisponible
+        // --- SOURCE 4 : FLIGHTRADAR24 FIDS ---
+        try {
+          const fr24FidsUrl = `https://api.flightradar24.com/common/v1/airport.json?code=${airportCode.toLowerCase()}&plugin[]=&plugin-setting[schedule][mode]=${type}&plugin-setting[schedule][timestamp]=${Math.floor(Date.now() / 1000)}&page=1&limit=15`;
+          
+          const fr24FidsRes = await fetch(fr24FidsUrl, {
+            headers: {
+              "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+              "Accept": "application/json"
+            }
+          });
+
+          if (fr24FidsRes.ok) {
+            const fr24Data = await fr24FidsRes.json();
+            const listData = fr24Data?.result?.response?.airport?.pluginData?.schedule?.[type]?.data || [];
+
+            if (listData.length > 0) {
+              const flights = listData.map(item => {
+                const f = item.flight;
+                const dest = isDep ? f?.airport?.destination : f?.airport?.origin;
+                const timestamp = isDep ? f?.time?.scheduled?.departure : f?.time?.scheduled?.arrival;
+                
+                let formattedTime = "--:--";
+                if (timestamp) {
+                  const date = new Date(timestamp * 1000);
+                  formattedTime = date.toLocaleTimeString("fr-BE", { hour: "2-digit", minute: "2-digit", timeZone: "Europe/Brussels" });
+                }
+
+                return {
+                  flight: f?.identification?.number?.default || f?.identification?.callsign || "N/C",
+                  city: dest ? `${dest.position?.region?.city || dest.name} (${dest.code?.iata || ''})` : "Inconnu",
+                  time: formattedTime,
+                  status: f?.status?.text || "Programmé"
+                };
+              });
+
+              return new Response(JSON.stringify({ airport: airportCode, type, flights }), {
+                status: 200,
+                headers: { ...corsHeaders, "Content-Type": "application/json" }
+              });
+            }
+          }
+        } catch (e) {
+          console.error("Échec FR24 FIDS, bascule sur Mock...", e);
+        }
+
+        // --- SOURCE 5 : DONNÉES FICTIVES DE SECOURS (MOCK) ---
         const getDynamicTime = (offset) => {
           const now = new Date();
           now.setMinutes(now.getMinutes() + offset);
@@ -201,7 +367,7 @@ export default {
       }
 
       // -------------------------------------------------------------
-      // 3. ENDPOINT MÉTÉO ACTUELLE (Open-Meteo API)
+      // 3. ENDPOINT MÉTÉO ACTUELLE (Open-Meteo)
       // -------------------------------------------------------------
       if (path.includes("/api/weather")) {
         const lat = url.searchParams.get("lat") || "50.6374";
@@ -212,7 +378,7 @@ export default {
           const data = await res.json();
           const responseData = {
             main: { temp: data.current_weather ? data.current_weather.temperature : 20 },
-            wind: { speed: data.current_weather ? Math.round(data.current_weather.windspeed / 3.6 * 10) / 10 : 0 } // Conversion km/h -> m/s
+            wind: { speed: data.current_weather ? Math.round(data.current_weather.windspeed / 3.6 * 10) / 10 : 0 }
           };
           return new Response(JSON.stringify(responseData), {
             status: 200,
@@ -222,7 +388,7 @@ export default {
       }
 
       // -------------------------------------------------------------
-      // 4. ENDPOINT TENDANCE MÉTÉO (Open-Meteo Hourly API)
+      // 4. ENDPOINT TENDANCE MÉTÉO (Open-Meteo)
       // -------------------------------------------------------------
       if (path.includes("/api/forecast")) {
         const lat = url.searchParams.get("lat") || "50.6374";
@@ -232,8 +398,6 @@ export default {
         
         if (res.ok) {
           const data = await res.json();
-          
-          // Formatage des données hourly pour correspondre à la structure demandée par app.js
           const list = [];
           const nowHour = new Date().getHours();
 
