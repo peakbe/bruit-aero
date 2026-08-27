@@ -301,7 +301,7 @@ export default {
 
         // --- SOURCE 4 : FLIGHTRADAR24 FIDS ---
         try {
-          const fr24FidsUrl = `https://api.flightradar24.com/common/v1/airport.json?code=${airportCode.toLowerCase()}&plugin[]=&plugin-setting[schedule][mode]=${type}&plugin-setting[schedule][timestamp]=${Math.floor(Date.now() / 1000)}&page=1&limit=15`;
+          const fr24FidsUrl = `https://api.flightradar24.com/common/v1/airport.json?code=${airportCode.toLowerCase()}&plugin[]=&plugin-setting[schedule][mode]=${type}&plugin-setting[schedule][timestamp]=${Math.floor(Date.now() / 1000)}&page=1&limit=10`;
           
           const fr24FidsRes = await fetch(fr24FidsUrl, {
             headers: {
