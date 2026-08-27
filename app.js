@@ -122,43 +122,54 @@ function updatePlaneMarkers(states) {
     const callsign = (flight[1] || "Inconnu").trim();
     const longitude = flight[5];
     const latitude = flight[6];
+    const isGround = flight[8]; // Booleen 'au sol'
     const altitude = flight[7] !== null ? `${Math.round(flight[7])} m` : "N/C";
     const speed = flight[9] !== null ? `${Math.round(flight[9] * 3.6)} km/h` : "N/C";
     const heading = flight[10] || 0;
 
-    if (latitude !== null && longitude !== null) {
-      currentIcaos.add(icao24);
+    // --- CORRECTION BUG D'AFFICHAGE ---
+    // Ignore les coordonnées absentes, à (0,0) ou les avions au sol
+    if (
+      latitude === null || 
+      longitude === null || 
+      (latitude === 0 && longitude === 0) || 
+      isGround === true
+    ) {
+      return; 
+    }
 
-      const popupContent = `
-        <div style="font-family: sans-serif; font-size: 13px;">
-          <strong>Vol : ${callsign}</strong><br/>
-          ICAO : ${icao24.toUpperCase()}<br/>
-          Altitude : ${altitude}<br/>
-          Vitesse : ${speed}<br/>
-          Cap : ${Math.round(heading)}°
-        </div>
-      `;
+    currentIcaos.add(icao24);
 
-      if (planeMarkers[icao24]) {
-        planeMarkers[icao24].setLatLng([latitude, longitude]);
-        if (hasRotationPlugin) {
-          planeMarkers[icao24].setRotationAngle(heading);
-        }
-        planeMarkers[icao24].getPopup().setContent(popupContent);
-      } else {
-        const markerOptions = { icon: yellowPlaneIcon };
-        if (hasRotationPlugin) {
-          markerOptions.rotationAngle = heading;
-          markerOptions.rotationOrigin = "center center";
-        }
+    const popupContent = `
+      <div style="font-family: sans-serif; font-size: 13px;">
+        <strong>Vol : ${callsign}</strong><br/>
+        ICAO : ${icao24.toUpperCase()}<br/>
+        Altitude : ${altitude}<br/>
+        Vitesse : ${speed}<br/>
+        Cap : ${Math.round(heading)}°
+      </div>
+    `;
 
-        const marker = L.marker([latitude, longitude], markerOptions).bindPopup(popupContent);
-        marker.addTo(map);
-        planeMarkers[icao24] = marker;
+    if (planeMarkers[icao24]) {
+      planeMarkers[icao24].setLatLng([latitude, longitude]);
+      if (hasRotationPlugin) {
+        planeMarkers[icao24].setRotationAngle(heading);
       }
+      planeMarkers[icao24].getPopup().setContent(popupContent);
+    } else {
+      const markerOptions = { icon: yellowPlaneIcon };
+      if (hasRotationPlugin) {
+        markerOptions.rotationAngle = heading;
+        markerOptions.rotationOrigin = "center center";
+      }
+
+      const marker = L.marker([latitude, longitude], markerOptions).bindPopup(popupContent);
+      marker.addTo(map);
+      planeMarkers[icao24] = marker;
     }
   });
 
+  // --- NETTOYAGE DES AVIONS DISPARUS OU AU SOL ---
   Object.keys(planeMarkers).forEach((icao) => {
     if (!currentIcaos.has(icao)) {
       map.removeLayer(planeMarkers[icao]);
