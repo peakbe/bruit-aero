@@ -23,49 +23,58 @@ export default {
       // -------------------------------------------------------------
       if (path === "/api/opensky") {
         
-        // --- NIVEAU 1 : FLIGHTRADAR24 ---
-        try {
-          const fr24Url = "https://data-cloud.flightradar24.com/zones/fcgi/feed.json?bounds=52.0,49.0,2.0,7.0&faa=1&satellite=1&mlat=1&flarm=1&adsb=1&gnd=1&air=1&vehicles=0&estimated=1";
-          const fr24Res = await fetch(fr24Url, {
-            headers: {
-              "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-              "Accept": "application/json"
-            }
-          });
+       // --- NIVEAU 1 : FLIGHTRADAR24 (SCRAPING EN DIRECT) ---
+try {
+  const fr24Url = "https://data-cloud.flightradar24.com/zones/fcgi/feed.json?bounds=52.0,49.0,2.0,7.0&faa=1&satellite=1&mlat=1&flarm=1&adsb=1&gnd=0&air=1&vehicles=0&estimated=0";
+  
+  const fr24Res = await fetch(fr24Url, {
+    headers: {
+      "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+      "Accept": "application/json"
+    }
+  });
 
-          if (fr24Res.ok) {
-            const data = await fr24Res.json();
-            const mappedStates = [];
+  if (fr24Res.ok) {
+    const data = await fr24Res.json();
+    const mappedStates = [];
 
-            Object.keys(data).forEach(key => {
-              if (Array.isArray(data[key])) {
-                const f = data[key];
-                mappedStates.push([
-                  key,                          // 0: ICAO / ID
-                  f[16] || f[13] || "Inconnu",  // 1: Callsign
-                  "BE",                         // 2: Pays
-                  f[10] || 0,                   // 3: Horodatage
-                  f[10] || 0,                   // 4: Dernier contact
-                  f[2],                         // 5: Longitude
-                  f[1],                         // 6: Latitude
-                  f[4] ? f[4] * 0.3048 : null,  // 7: Altitude (Feet -> Mètres)
-                  Boolean(f[8]),                // 8: Au sol
-                  f[5] ? f[5] * 0.514444 : null,// 9: Vitesse (Kts -> m/s)
-                  f[3] || 0                     // 10: Cap / Heading
-                ]);
-              }
-            });
+    Object.keys(data).forEach(key => {
+      if (Array.isArray(data[key])) {
+        const f = data[key];
+        
+        const altitudeMeters = f[4] ? f[4] * 0.3048 : 0; // Feet -> Mètres
+        const speedKmh = f[5] ? f[5] * 1.852 : 0;        // Kts -> Km/h
+        const isGround = Boolean(f[8]) || speedKmh < 50 || altitudeMeters < 100; // Filtre strict au sol
 
-            if (mappedStates.length > 0) {
-              return new Response(JSON.stringify({ states: mappedStates }), {
-                status: 200,
-                headers: { ...corsHeaders, "Content-Type": "application/json" }
-              });
-            }
-          }
-        } catch (e) {
-          console.log("FR24 Radar indisponible, bascule sur OpenSky...");
+        // On ignore les avions au sol ou qui roulent au sol (< 50 km/h ou < 100m d'alt)
+        if (!isGround) {
+          mappedStates.push([
+            key,                          // 0: ICAO / ID
+            f[16] || f[13] || "Inconnu",  // 1: Callsign
+            "BE",                         // 2: Pays
+            f[10] || 0,                   // 3: Horodatage
+            f[10] || 0,                   // 4: Dernier contact
+            f[2],                         // 5: Longitude
+            f[1],                         // 6: Latitude
+            altitudeMeters,               // 7: Altitude (m)
+            false,                        // 8: Au sol (forcé à false car déjà filtré)
+            f[5] ? f[5] * 0.514444 : 0,   // 9: Vitesse (m/s)
+            f[3] || 0                     // 10: Cap / Heading
+          ]);
         }
+      }
+    });
+
+    if (mappedStates.length > 0) {
+      return new Response(JSON.stringify({ states: mappedStates }), {
+        status: 200,
+        headers: { ...corsHeaders, "Content-Type": "application/json" }
+      });
+    }
+  }
+} catch (e) {
+  console.log("Flightradar24 indisponible, bascule sur OpenSky...");
+}
 
         // --- NIVEAU 2 : OPENSKY NETWORK ---
         try {
