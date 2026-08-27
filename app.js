@@ -122,20 +122,23 @@ function updatePlaneMarkers(states) {
     const callsign = (flight[1] || "Inconnu").trim();
     const longitude = flight[5];
     const latitude = flight[6];
-    const isGround = flight[8]; // Booleen 'au sol'
-    const altitude = flight[7] !== null ? `${Math.round(flight[7])} m` : "N/C";
-    const speed = flight[9] !== null ? `${Math.round(flight[9] * 3.6)} km/h` : "N/C";
+    const altRaw = flight[7];
+    const speedRaw = flight[9];
     const heading = flight[10] || 0;
 
-    // --- CORRECTION BUG D'AFFICHAGE ---
-    // Ignore les coordonnées absentes, à (0,0) ou les avions au sol
+    const altMeters = altRaw !== null ? Math.round(altRaw) : 0;
+    const speedKmh = speedRaw !== null ? Math.round(speedRaw * 3.6) : 0;
+
+    // --- FILTRAGE ANTI-EMPILLEMENT ---
+    // Exclut : coordonnées invalides/zéro, vitesse < 40 km/h, altitude < 50 m
     if (
-      latitude === null || 
-      longitude === null || 
-      (latitude === 0 && longitude === 0) || 
-      isGround === true
+      !latitude || 
+      !longitude || 
+      (latitude === 0 && longitude === 0) ||
+      speedKmh < 40 ||
+      altMeters < 50
     ) {
-      return; 
+      return;
     }
 
     currentIcaos.add(icao24);
@@ -144,8 +147,8 @@ function updatePlaneMarkers(states) {
       <div style="font-family: sans-serif; font-size: 13px;">
         <strong>Vol : ${callsign}</strong><br/>
         ICAO : ${icao24.toUpperCase()}<br/>
-        Altitude : ${altitude}<br/>
-        Vitesse : ${speed}<br/>
+        Altitude : ${altMeters} m<br/>
+        Vitesse : ${speedKmh} km/h<br/>
         Cap : ${Math.round(heading)}°
       </div>
     `;
@@ -169,7 +172,7 @@ function updatePlaneMarkers(states) {
     }
   });
 
-  // --- NETTOYAGE DES AVIONS DISPARUS OU AU SOL ---
+  // Nettoyage des marqueurs obsolètes
   Object.keys(planeMarkers).forEach((icao) => {
     if (!currentIcaos.has(icao)) {
       map.removeLayer(planeMarkers[icao]);
