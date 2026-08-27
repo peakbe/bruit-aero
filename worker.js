@@ -80,25 +80,31 @@ export default {
       }
 
     // -------------------------------------------------------------
-      // 2. ENDPOINT FIDS (AERODATABOX REAL-TIME BOARD)
+      // 2. ENDPOINT FIDS (AERODATABOX - AVEC CACHE ANTI-429)
       // -------------------------------------------------------------
       if (path.includes("/api/fids")) {
         const type = url.searchParams.get("type") || "departures";
         const airportCode = (url.searchParams.get("airport") || "EBLG").toUpperCase();
-
         const apiKey = env.RAPIDAPI_KEY || "VOTRE_CLE_RAPIDAPI_ICI";
 
+        // Utilisation du cache de Cloudflare Workers pour éviter l'erreur 429
+        const cache = caches.default;
+        const cacheKey = new Request(url.toString(), request);
+        let cachedResponse = await cache.match(cacheKey);
+
+        if (cachedResponse) {
+          return cachedResponse;
+        }
+
         try {
-          // Format strict : YYYY-MM-DDTHH:mm
           const now = new Date();
           const fromLocal = now.toISOString().substring(0, 16);
-          const future = new Date(now.getTime() + 12 * 60 * 60 * 1000); // 12h de données
+          const future = new Date(now.getTime() + 12 * 60 * 60 * 1000);
           const toLocal = future.toISOString().substring(0, 16);
 
           const isDep = type === "departures";
           const direction = isDep ? "Departures" : "Arrivals";
 
-          // Construction de la requête selon les paramètres réels de RapidAPI
           const targetUrl = `https://aerodatabox.p.rapidapi.com/flights/airports/icao/${airportCode}/${fromLocal}/${toLocal}?direction=${direction}&withLeg=true&withCancelled=true&withCodeshares=false&withCargo=true&withPrivate=true`;
 
           const apiRes = await fetch(targetUrl, {
@@ -110,36 +116,24 @@ export default {
 
           if (apiRes.ok) {
             const data = await apiRes.json();
-            
-            // AeroDataBox retourne { departures: [...] } ou { arrivals: [...] }
             const rawList = isDep ? data.departures : data.arrivals;
 
             if (rawList && Array.isArray(rawList) && rawList.length > 0) {
-              const flights = rawList.slice(0, 20).map((f) => {
+              const flights = rawList.slice(0, 15).map((f) => {
                 const movement = isDep ? f.departure : f.arrival;
                 const destAirport = isDep ? f.arrival?.airport : f.departure?.airport;
 
-                // Récupération de l'heure
                 const timeRaw = movement?.scheduledTime?.local || movement?.revisedTime?.local || "";
                 let formattedTime = "--:--";
                 if (timeRaw) {
-                  // Extrait "06:33" depuis "2026-08-27 06:33+02:00" ou format ISO
                   const match = timeRaw.match(/\d{2}:\d{2}/);
                   if (match) formattedTime = match[0];
                 }
 
-                // Récupération du numéro de vol (number, callSign, ou airline+number)
-                let flightNum = f.number || f.callSign;
-                if (!flightNum && f.airline) {
-                  flightNum = `${f.airline.name || 'Vol'}`;
-                }
-                if (!flightNum) flightNum = "N/A";
-
-                // Nom de la destination
+                let flightNum = f.number || f.callSign || (f.airline ? f.airline.name : "N/A");
                 const cityName = destAirport?.municipalityName || destAirport?.name || "Inconnu";
                 const iata = destAirport?.iata ? ` (${destAirport.iata})` : "";
 
-                // Statut du vol
                 let status = "Programmé";
                 const rawStatus = (f.status || "").toLowerCase();
                 if (rawStatus.includes("enroute") || rawStatus.includes("active") || rawStatus.includes("departed")) {
@@ -160,19 +154,31 @@ export default {
                 };
               });
 
-              return new Response(JSON.stringify({ airport: airportCode, type, flights }), {
-                status: 200,
-                headers: { ...corsHeaders, "Content-Type": "application/json" }
-              });
+              // Création de la réponse avec Cache-Control (5 minutes)
+              const responseToCache = new Response(
+                JSON.stringify({ airport: airportCode, type, flights }), 
+                {
+                  status: 200,
+                  headers: { 
+                    ...corsHeaders, 
+                    "Content-Type": "application/json",
+                    "Cache-Control": "public, max-age=300" 
+                  }
+                }
+              );
+
+              // Sauvegarde en cache
+              ctx.waitUntil(cache.put(cacheKey, responseToCache.clone()));
+              return responseToCache;
             }
           } else {
             console.error(`AeroDataBox ERREUR HTTP ${apiRes.status}:`, await apiRes.text());
           }
         } catch (e) {
-          console.error("Erreur de connexion AeroDataBox:", e);
+          console.error("Erreur connexion AeroDataBox:", e);
         }
 
-        // --- FALLBACK SI INDISPINIBLE ---
+        // Fallback si indisponible
         const getDynamicTime = (offset) => {
           const now = new Date();
           now.setMinutes(now.getMinutes() + offset);
@@ -183,7 +189,6 @@ export default {
           { flight: "FR2104", city: "Marseille (MRS)", time: getDynamicTime(15), status: "Embarquement" },
           { flight: "W64512", city: "Bucarest (OTP)", time: getDynamicTime(45), status: "Programmé" }
         ];
-
         const mockEBLG = [
           { flight: "3V801", city: "Alicante (ALC)", time: getDynamicTime(10), status: "Embarquement" },
           { flight: "XQ120", city: "Antalya (AYT)", time: getDynamicTime(35), status: "Programmé" }
