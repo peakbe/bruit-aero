@@ -80,7 +80,7 @@ export default {
       }
 
      // -------------------------------------------------------------
-      // 2. ENDPOINT FIDS (AERODATABOX FIX)
+      // 2. ENDPOINT FIDS (AERODATABOX - PARSING FIXÉ)
       // -------------------------------------------------------------
       if (path.includes("/api/fids")) {
         const type = url.searchParams.get("type") || "departures";
@@ -89,7 +89,7 @@ export default {
         const apiKey = env.RAPIDAPI_KEY || "VOTRE_CLE_RAPIDAPI_ICI";
 
         try {
-          // Formatage strict des dates au format ISO (YYYY-MM-DDTHH:mm)
+          // Format strict exigé par AeroDataBox : YYYY-MM-DDTHH:mm
           const now = new Date();
           const from = now.toISOString().substring(0, 16);
           const future = new Date(now.getTime() + 12 * 60 * 60 * 1000);
@@ -109,32 +109,50 @@ export default {
 
           if (apiRes.ok) {
             const data = await apiRes.json();
+            
+            // AeroDataBox sépare en data.departures et data.arrivals
             const rawList = isDep ? data.departures : data.arrivals;
 
             if (rawList && Array.isArray(rawList) && rawList.length > 0) {
               const flights = rawList.slice(0, 10).map((f) => {
                 const movement = isDep ? f.departure : f.arrival;
-                const airportInfo = isDep ? f.arrival?.airport : f.departure?.airport;
-                const timeStr = movement?.scheduledTime?.local || movement?.revisedTime?.local;
+                const destinationAirport = isDep ? f.arrival?.airport : f.departure?.airport;
+                
+                // Récupération de l'heure (Scheduled ou Revised)
+                const timeStr = movement?.scheduledTime?.local || movement?.revisedTime?.local || movement?.scheduledTime?.utc;
 
                 let formattedTime = "--:--";
                 if (timeStr) {
-                  formattedTime = timeStr.substring(11, 16);
+                  // Extraction de "HH:mm" à partir de "2026-08-27 06:33+02:00" ou ISO
+                  const timeMatch = timeStr.match(/\d{2}:\d{2}/);
+                  if (timeMatch) {
+                    formattedTime = timeMatch[0];
+                  }
                 }
 
-                let status = "Programmé";
-                if (f.status === "EnRoute" || f.status === "Active") status = "En vol";
-                else if (f.status === "Landed") status = "Atterri";
-                else if (f.status === "Boarding") status = "Embarquement";
-                else if (f.status === "Canceled") status = "Annulé";
+                // Récupération du numéro de vol (priorité : number > callSign > airline)
+                const flightNum = f.number || f.callSign || (f.airline?.iata ? `${f.airline.iata}---` : "N/A");
 
-                const flightNum = f.number || f.callSign || "N/A";
-                const cityName = airportInfo?.municipalityName || airportInfo?.name || "Inconnu";
-                const iata = airportInfo?.iata ? ` (${airportInfo.iata})` : "";
+                // Nom de la destination / provenance
+                const cityName = destinationAirport?.municipalityName || destinationAirport?.name || "Inconnu";
+                const iataCode = destinationAirport?.iata ? ` (${destinationAirport.iata})` : "";
+
+                // Traduction des statuts AeroDataBox
+                let status = "Programmé";
+                const rawStatus = (f.status || "").toLowerCase();
+                if (rawStatus.includes("enroute") || rawStatus.includes("active") || rawStatus.includes("departed")) {
+                  status = "En vol / Parti";
+                } else if (rawStatus.includes("landed")) {
+                  status = "Atterri";
+                } else if (rawStatus.includes("boarding")) {
+                  status = "Embarquement";
+                } else if (rawStatus.includes("canceled") || rawStatus.includes("cancelled")) {
+                  status = "Annulé";
+                }
 
                 return {
                   flight: flightNum,
-                  city: `${cityName}${iata}`,
+                  city: `${cityName}${iataCode}`,
                   time: formattedTime,
                   status: status
                 };
@@ -145,15 +163,12 @@ export default {
                 headers: { ...corsHeaders, "Content-Type": "application/json" }
               });
             }
-          } else {
-            const errText = await apiRes.text();
-            console.error(`Erreur RapidAPI HTTP ${apiRes.status}:`, errText);
           }
         } catch (e) {
-          console.error("Erreur de connexion à AeroDataBox:", e);
+          console.error("Erreur de parsing AeroDataBox:", e);
         }
 
-        // --- FALLBACK D'URGENCE ---
+        // --- FALLBACK DE SECOURS ---
         const getDynamicTime = (offset) => {
           const now = new Date();
           now.setMinutes(now.getMinutes() + offset);
@@ -162,16 +177,11 @@ export default {
 
         const mockEBCI = [
           { flight: "FR2104", city: "Marseille (MRS)", time: getDynamicTime(15), status: "Embarquement" },
-          { flight: "W64512", city: "Bucarest (OTP)", time: getDynamicTime(45), status: "Programmé" },
-          { flight: "FR1933", city: "Dublin (DUB)", time: getDynamicTime(80), status: "Programmé" },
-          { flight: "FR6312", city: "Barcelone (BCN)", time: getDynamicTime(115), status: "Programmé" }
+          { flight: "W64512", city: "Bucarest (OTP)", time: getDynamicTime(45), status: "Programmé" }
         ];
-
         const mockEBLG = [
           { flight: "3V801", city: "Alicante (ALC)", time: getDynamicTime(10), status: "Embarquement" },
-          { flight: "XQ120", city: "Antalya (AYT)", time: getDynamicTime(35), status: "Programmé" },
-          { flight: "TB2111", city: "Tenerife (TFS)", time: getDynamicTime(65), status: "Programmé" },
-          { flight: "3V502", city: "Zaragoza (ZAZ)", time: getDynamicTime(95), status: "Programmé" }
+          { flight: "XQ120", city: "Antalya (AYT)", time: getDynamicTime(35), status: "Programmé" }
         ];
 
         return new Response(JSON.stringify({ airport: airportCode, type, flights: airportCode === "EBCI" ? mockEBCI : mockEBLG }), {
