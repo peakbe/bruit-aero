@@ -115,7 +115,7 @@ export default {
             const rawList = isDep ? data.departures : data.arrivals;
 
             if (rawList && Array.isArray(rawList) && rawList.length > 0) {
-              const flights = rawList.slice(0, 10).map((f) => {
+              const flights = rawList.slice(0, 20).map((f) => {
                 const movement = isDep ? f.departure : f.arrival;
                 const destAirport = isDep ? f.arrival?.airport : f.departure?.airport;
 
