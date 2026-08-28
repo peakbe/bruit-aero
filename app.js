@@ -510,7 +510,7 @@ async function loadFlightType(type, elementContainer, airport) {
       elementContainer.innerHTML = data.flights
         .map(
           (f) => `
-            <tr>
+            <tr onclick="selectFlightOnMap('${f.flight}')" style="cursor: pointer;">
               <td><strong>${f.flight}</strong></td>
               <td>${f.city}</td>
               <td>${f.time}</td>
@@ -524,6 +524,21 @@ async function loadFlightType(type, elementContainer, airport) {
     }
   } catch (error) {
     console.error(`Erreur vols (${type}) pour ${airport}:`, error);
+  }
+}
+
+function selectFlightOnMap(flightNum) {
+  const marker = planeMarkers[flightNum];
+
+  if (marker) {
+    // 1. Centrer la carte sur les coordonnées du marqueur avec un zoom rapproché
+    const latLng = marker.getLatLng();
+    map.setView(latLng, 11, { animate: true });
+
+    // 2. Ouvrir la bulle d'information du marqueur
+    marker.openPopup();
+  } else {
+    alert(`Le vol ${flightNum} n'est pas détecté actuellement sur la carte radar.`);
   }
 }
 
