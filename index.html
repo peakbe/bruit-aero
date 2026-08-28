@@ -137,7 +137,15 @@ header, .radar-header {
     font-size: 12px;
   }
 }
+    /* Effet visuel au survol du tableau */
+.fids-table tbody tr {
+  transition: background-color 0.2s ease;
+}
 
+.fids-table tbody tr:hover {
+  background-color: rgba(255, 255, 255, 0.15);
+  cursor: pointer;
+}
     * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
     body { background-color: var(--bg-main); color: var(--text-light); padding: 20px; }
 
