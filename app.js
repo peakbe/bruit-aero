@@ -25,14 +25,17 @@ const yellowPlaneIcon = L.divIcon({
 
 const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
+// Dictionnaire étendu IATA -> ICAO pour la correspondance des indicatifs
 const IATA_TO_ICAO = {
-  "FR": "RYR",
-  "TB": "TUI",
-  "SN": "BEL",
-  "LH": "DLH",
-  "HV": "TRA",
-  "W6": "WZZ",
-  "3V": "TAY"
+  "FR": "RYR", // Ryanair
+  "TB": "TUI", // TUI fly Belgium
+  "SN": "BEL", // Brussels Airlines
+  "LH": "DLH", // Lufthansa
+  "HV": "TRA", // Transavia
+  "W6": "WZZ", // Wizz Air
+  "3V": "TAY", // ASL Airlines Belgium
+  "FQ": "BAW", // British Airways
+  "VY": "VLG"  // Vueling
 };
 
 // =================================================================
@@ -133,11 +136,9 @@ function calculateEstimatedCoords(airportCode, type, index) {
     };
   } else {
     // Arrivées : Placées EN AMONT de l'aéroport (éloignées sur l'axe d'approche)
-    // Le premier avion à l'atterrissage est le plus proche (index 0), les suivants sont plus loin
     const approachHeading = (cfg.heading + 180) % 360; // Cap orienté vers la piste
     
     return {
-      // Soustraction pour placer les avions en amont (Sud-Ouest / Ouest selon l'axe)
       lat: cfg.lat - (step * 0.5) - 0.01, 
       lon: cfg.lon - step - 0.02,
       heading: approachHeading
@@ -148,19 +149,6 @@ function calculateEstimatedCoords(airportCode, type, index) {
 // =================================================================
 // 4. AFFICHAGE ET CORRÉLATION DU RADAR
 // =================================================================
-// Dictionnaire étendu IATA -> ICAO pour la correspondance des indicatifs
-const IATA_TO_ICAO = {
-  "FR": "RYR", // Ryanair
-  "TB": "TUI", // TUI fly Belgium
-  "SN": "BEL", // Brussels Airlines
-  "LH": "DLH", // Lufthansa
-  "HV": "TRA", // Transavia
-  "W6": "WZZ", // Wizz Air
-  "3V": "TAY", // ASL Airlines Belgium
-  "FQ": "BAW", // British Airways
-  "VY": "VLG"  // Vueling
-};
-
 async function renderFidsPlanesOnMap(map, flightsLayerGroup) {
   if (!flightsLayerGroup) return;
   flightsLayerGroup.clearLayers();
@@ -168,7 +156,6 @@ async function renderFidsPlanesOnMap(map, flightsLayerGroup) {
 
   try {
     // 1. Récupération des données OpenSky (Zone élargie Belgique + frontières)
-    // lamin=49.0, lomin=2.0, lamax=51.8, lomax=7.0
     const resRadar = await fetch(`${WORKER_BASE_URL}/api/opensky?lamin=49.0&lomin=2.0&lamax=51.8&lomax=7.0`).catch(() => null);
     const radarData = resRadar && resRadar.ok ? await resRadar.json() : { states: [] };
     const liveStates = radarData.states || [];
@@ -231,10 +218,7 @@ async function renderFidsPlanesOnMap(map, flightsLayerGroup) {
       const icaoPrefix = IATA_TO_ICAO[fids.parsed.prefix] || fids.parsed.prefix;
       const targetIcaoCallsign = `${icaoPrefix}${fids.parsed.number}`;
 
-      // Recherche du vol réel sur le radar :
-      // 1. Correspondance exacte de l'indicatif ICAO (ex: RYR9053)
-      // 2. Correspondance brute IATA (ex: FR9053)
-      // 3. Correspondance du numéro seul si en approche proche
+      // Recherche du vol réel sur le radar
       const matchLive = livePlanes.find(p => 
         p.callsign === targetIcaoCallsign ||
         p.callsign === fids.parsed.raw ||
@@ -253,7 +237,7 @@ async function renderFidsPlanesOnMap(map, flightsLayerGroup) {
         speedText = `${matchLive.speed ? Math.round(matchLive.speed * 3.6) : 0} km/h`;
         processedFlights.add(matchLive.icao24);
       } else {
-        // POSITION ESTIMÉE (Si hors de portée radar ou transpondeur éteint au sol)
+        // POSITION ESTIMÉE
         const est = calculateEstimatedCoords(fids.airport, fids.type, fids.index_by_type);
         lat = est.lat;
         lon = est.lon;
@@ -328,7 +312,6 @@ function selectFlightOnMap(flightNum) {
   const cleanKey = flightNum.replace(/\s+/g, '').toUpperCase();
   const parsed = parseCallsign(cleanKey);
   
-  // Recherche par nom brut, par numéro ou par équivalent ICAO
   let marker = planeMarkers[cleanKey] || planeMarkers[parsed.number];
   if (!marker && IATA_TO_ICAO[parsed.prefix]) {
     marker = planeMarkers[IATA_TO_ICAO[parsed.prefix] + parsed.number];
