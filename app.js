@@ -8,6 +8,7 @@ var planeMarkers = planeMarkers || {};
 var lastValidStates = lastValidStates || [];
 var currentAirport = currentAirport || "EBLG";
 var flightsGroup = flightsGroup || null;
+planeMarkers = {};
 
 var AIRPORTS = {
   EBLG: { lat: 50.6374, lon: 5.4432, name: "Liège Airport" },
@@ -39,7 +40,7 @@ function initMap() {
   map = L.map("map").setView([50.55, 4.95], 9);
 
   // Initialisation du groupe de calques pour les avions FIDS/Radar
-  flightsGroup = L.layerGroup().addTo(map);
+   = L.layerGroup().addTo(map);
 
   L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
     maxZoom: 19,
@@ -94,6 +95,20 @@ function initMap() {
     }
   });
 }
+
+// Réinitialiser le stockage des marqueurs avant chaque rafraîchissement
+planeMarkers = {}; 
+
+// Exemple de boucle de création des marqueurs Leaflet
+planesData.forEach(plane => {
+  const flightNum = plane.flight; // ex: "FR2104"
+  const marker = L.marker([plane.lat, plane.lon], { icon: planeIcon })
+    .bindPopup(`<b>Vol : ${flightNum}</b><br>Destination : ${plane.city}`)
+    .addTo(flightsGroup);
+
+  // Sauvegarder la référence du marqueur
+  planeMarkers[flightNum] = marker;
+});
 
 // =================================================================
 // 3. GESTION DU RADAR VOLS
