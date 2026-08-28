@@ -120,19 +120,23 @@ const AIRPORT_CONFIG = {
 
 function calculateEstimatedCoords(airportCode, type, index) {
   const cfg = AIRPORT_CONFIG[airportCode] || AIRPORT_CONFIG.EBCI;
-  const offset = (index + 1) * 0.005;
+  
+  // Espacement plus grand entre chaque avion estimé
+  const step = (index + 1) * 0.015; 
 
   if (type === "departures") {
+    // Départs : alignés sur l'axe d'envol
     return {
-      lat: cfg.lat + (offset * 0.5),
-      lon: cfg.lon + offset,
+      lat: cfg.lat + (step * 0.5),
+      lon: cfg.lon + step,
       heading: cfg.heading
     };
   } else {
+    // Arrivées : axe d'approche décalé + cap inversé (+180°) pour orienter le nez vers la piste
     return {
-      lat: cfg.lat + (offset * 1.5),
-      lon: cfg.lon - (offset * 2),
-      heading: cfg.heading
+      lat: cfg.lat + (step * 0.7) + 0.02, 
+      lon: cfg.lon - step,
+      heading: (cfg.heading + 180) % 360
     };
   }
 }
@@ -175,8 +179,6 @@ async function renderFidsPlanesOnMap(map, flightsLayerGroup) {
     ];
 
     const fidsList = [];
-    const processedFlights = new Set();
-
     for (const c of combinations) {
       try {
         const res = await fetch(`${WORKER_BASE_URL}/api/fids?airport=${c.airport}&type=${c.type}`);
@@ -184,7 +186,13 @@ async function renderFidsPlanesOnMap(map, flightsLayerGroup) {
           const data = await res.json();
           (data.flights || []).forEach((f, idx) => {
             const parsed = parseCallsign(f.flight);
-            fidsList.push({ ...f, airport: c.airport, type: c.type, parsed, index: idx });
+            fidsList.push({ 
+              ...f, 
+              airport: c.airport, 
+              type: c.type, 
+              parsed, 
+              index_by_type: idx 
+            });
           });
         }
       } catch (e) {
@@ -196,6 +204,7 @@ async function renderFidsPlanesOnMap(map, flightsLayerGroup) {
     const hasRotationPlugin = typeof L.Marker.prototype.setRotationAngle === "function";
 
     // A. Traitement des avions FIDS (avec correspondance GPS si disponible)
+    // Remplacer le bloc de boucle FIDS dans renderFidsPlanesOnMap par ceci :
     fidsList.forEach(fids => {
       const matchLive = livePlanes.find(p => 
         p.callsign === fids.parsed.raw || 
@@ -213,18 +222,19 @@ async function renderFidsPlanesOnMap(map, flightsLayerGroup) {
         speedText = `${matchLive.speed ? Math.round(matchLive.speed * 3.6) : 0} km/h`;
         processedFlights.add(matchLive.icao24);
       } else {
-        const est = calculateEstimatedCoords(fids.airport, fids.type, fids.index);
+        // Utilisation de fids.index_by_type pour garantir l'espacement régulier
+        const est = calculateEstimatedCoords(fids.airport, fids.type, fids.index_by_type);
         lat = est.lat;
         lon = est.lon;
         heading = est.heading;
-        sourceText = `<span style="color: #f59e0b; font-weight: bold;">⏱️ Position Estimée (Au sol / Horaire)</span>`;
-        altText = "0 m (Au sol)";
+        sourceText = `<span style="color: #f59e0b; font-weight: bold;">⏱️ Position Estimée</span>`;
+        altText = fids.type === "departures" ? "Au sol (Départ)" : "En approche";
         speedText = "0 km/h";
       }
 
       const popupContent = `
         <div style="font-family: sans-serif; font-size: 13px;">
-          <h3 style="margin: 0 0 5px 0; color: #1e293b;">Vol ${fids.flight}</h3>
+          <h3 style="margin: 0 0 5px 0; color: #1e293b;">Vol ${fids.flight} (${fids.type === 'departures' ? 'Départ' : 'Arrivée'})</h3>
           <b>Aéroport :</b> ${AIRPORT_CONFIG[fids.airport]?.name || fids.airport}<br>
           <b>Destination/Origine :</b> ${fids.city}<br>
           <b>Heure :</b> ${fids.time}<br>
@@ -243,7 +253,6 @@ async function renderFidsPlanesOnMap(map, flightsLayerGroup) {
       const marker = L.marker([lat, lon], markerOptions).bindPopup(popupContent);
       flightsLayerGroup.addLayer(marker);
 
-      // Enregistrement multi-clés pour garantir le clic depuis le tableau
       planeMarkers[fids.flight] = marker;
       planeMarkers[fids.parsed.raw] = marker;
       if (fids.parsed.number) planeMarkers[fids.parsed.number] = marker;
