@@ -86,14 +86,15 @@ function initMap() {
   setInterval(() => renderFidsPlanesOnMap(map, flightsGroup), 60000);
   setInterval(fetchFlightsData, 120000);
   setInterval(fetchWeatherData, 300000);
+
+  // --- GESTION DU REDIMENSIONNEMENT MOBILE / ROTATION ÉCRAN ---
+  window.addEventListener("resize", () => {
+    if (map) {
+      map.invalidateSize();
+    }
+  });
 }
 
-// Après la création de votre objet 'map'
-window.addEventListener("resize", () => {
-  if (map) {
-    map.invalidateSize();
-  }
-});
 // =================================================================
 // 3. GESTION DU RADAR VOLS
 // =================================================================
