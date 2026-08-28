@@ -8,7 +8,6 @@ var planeMarkers = planeMarkers || {};
 var lastValidStates = lastValidStates || [];
 var currentAirport = currentAirport || "EBLG";
 var flightsGroup = flightsGroup || null;
-planeMarkers = {};
 
 var AIRPORTS = {
   EBLG: { lat: 50.6374, lon: 5.4432, name: "Liège Airport" },
@@ -40,7 +39,7 @@ function initMap() {
   map = L.map("map").setView([50.55, 4.95], 9);
 
   // Initialisation du groupe de calques pour les avions FIDS/Radar
-   = L.layerGroup().addTo(map);
+  flightsGroup = L.layerGroup().addTo(map);
 
   L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
     maxZoom: 19,
@@ -96,20 +95,6 @@ function initMap() {
   });
 }
 
-// Réinitialiser le stockage des marqueurs avant chaque rafraîchissement
-planeMarkers = {}; 
-
-// Exemple de boucle de création des marqueurs Leaflet
-planesData.forEach(plane => {
-  const flightNum = plane.flight; // ex: "FR2104"
-  const marker = L.marker([plane.lat, plane.lon], { icon: planeIcon })
-    .bindPopup(`<b>Vol : ${flightNum}</b><br>Destination : ${plane.city}`)
-    .addTo(flightsGroup);
-
-  // Sauvegarder la référence du marqueur
-  planeMarkers[flightNum] = marker;
-});
-
 // =================================================================
 // 3. GESTION DU RADAR VOLS
 // =================================================================
@@ -151,8 +136,6 @@ function updatePlaneMarkers(states) {
     const altMeters = altRaw !== null ? Math.round(altRaw) : 0;
     const speedKmh = speedRaw !== null ? Math.round(speedRaw * 3.6) : 0;
 
-    // --- FILTRAGE ANTI-EMPILLEMENT ---
-    // Exclut : coordonnées invalides/zéro, vitesse < 40 km/h, altitude < 50 m
     if (
       !latitude || 
       !longitude || 
@@ -194,7 +177,6 @@ function updatePlaneMarkers(states) {
     }
   });
 
-  // Nettoyage des marqueurs obsolètes
   Object.keys(planeMarkers).forEach((icao) => {
     if (!currentIcaos.has(icao)) {
       map.removeLayer(planeMarkers[icao]);
@@ -394,9 +376,9 @@ function calculateEstimatedCoords(airportCode, type, index) {
 async function renderFidsPlanesOnMap(map, flightsLayerGroup) {
   if (!flightsLayerGroup) return;
   flightsLayerGroup.clearLayers();
+  planeMarkers = {}; // Réinitialise l'indexation des marqueurs
 
   try {
-    // 1. Fetch Radar (OpenSky)
     const resRadar = await fetch(`${WORKER_BASE_URL}/api/opensky`).catch(() => null);
     const radarData = resRadar && resRadar.ok ? await resRadar.json() : { states: [] };
     const liveStates = radarData.states || [];
@@ -415,7 +397,6 @@ async function renderFidsPlanesOnMap(map, flightsLayerGroup) {
       }
     });
 
-    // 2. Fetch des combinaisons de façon séquentielle avec temporisation (évite le HTTP 429)
     const combinations = [
       { airport: 'EBLG', type: 'departures' },
       { airport: 'EBLG', type: 'arrivals' },
@@ -460,13 +441,15 @@ async function renderFidsPlanesOnMap(map, flightsLayerGroup) {
             `);
 
             flightsLayerGroup.addLayer(marker);
+
+            // Indexation du marqueur par son numéro de vol
+            planeMarkers[flight.flight] = marker;
           });
         }
       } catch (e) {
         console.error("Erreur FIDS pour", c.airport, c.type, e);
       }
       
-      // Pause de 500ms entre chaque requête pour respecter la limite RapidAPI
       await sleep(500);
     }
 
@@ -531,11 +514,8 @@ function selectFlightOnMap(flightNum) {
   const marker = planeMarkers[flightNum];
 
   if (marker) {
-    // 1. Centrer la carte sur les coordonnées du marqueur avec un zoom rapproché
     const latLng = marker.getLatLng();
     map.setView(latLng, 11, { animate: true });
-
-    // 2. Ouvrir la bulle d'information du marqueur
     marker.openPopup();
   } else {
     alert(`Le vol ${flightNum} n'est pas détecté actuellement sur la carte radar.`);
