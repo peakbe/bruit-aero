@@ -373,29 +373,59 @@ function calculateEstimatedCoords(airportCode, type, index) {
   }
 }
 
+// Table de conversion des préfixes IATA vers ICAO courants
+const IATA_TO_ICAO = {
+  "FR": "RYR", // Ryanair
+  "TB": "TUI", // TUI fly Belgium
+  "SN": "BEL", // Brussels Airlines
+  "LH": "DLH", // Lufthansa
+  "HV": "TRA", // Transavia
+  "W6": "WZZ"  // Wizz Air
+};
+
+// Utilitaire : Convertit "FR8024" en "RYR8024" ou extrait les chiffres ("8024")
+function getMatchingCallsigns(fidsFlight) {
+  const clean = fidsFlight.replace(/\s+/g, '').toUpperCase();
+  const match = clean.match(/^([A-Z0-9]{2,3})?(\d+)$/);
+  
+  if (!match) return [clean];
+  
+  const prefix = match[1] || "";
+  const number = match[2];
+  
+  const possible = [clean, number];
+  
+  if (IATA_TO_ICAO[prefix]) {
+    possible.push(IATA_TO_ICAO[prefix] + number);
+  }
+  
+  return possible;
+}
+
 async function renderFidsPlanesOnMap(map, flightsLayerGroup) {
   if (!flightsLayerGroup) return;
   flightsLayerGroup.clearLayers();
-  planeMarkers = {}; // Réinitialise l'indexation des marqueurs
+  planeMarkers = {};
 
   try {
     const resRadar = await fetch(`${WORKER_BASE_URL}/api/opensky`).catch(() => null);
     const radarData = resRadar && resRadar.ok ? await resRadar.json() : { states: [] };
     const liveStates = radarData.states || [];
 
-    const liveFlightsMap = new Map();
-    liveStates.forEach(state => {
-      const callsign = state[1] ? state[1].trim() : null;
-      if (callsign) {
-        liveFlightsMap.set(callsign, {
-          lat: state[6],
-          lon: state[5],
-          heading: state[10] || 0,
-          altitude: state[7],
-          speed: state[9]
-        });
-      }
-    });
+    // Indexation enrichie des vols radar
+    const liveFlightsList = liveStates.map(state => {
+      const callsign = (state[1] || "").trim().toUpperCase();
+      const numberOnly = callsign.replace(/\D/g, ''); // garde seulement les chiffres
+      return {
+        callsign,
+        numberOnly,
+        lat: state[6],
+        lon: state[5],
+        heading: state[10] || 0,
+        altitude: state[7],
+        speed: state[9]
+      };
+    }).filter(p => p.lat && p.lon);
 
     const combinations = [
       { airport: 'EBLG', type: 'departures' },
@@ -412,10 +442,18 @@ async function renderFidsPlanesOnMap(map, flightsLayerGroup) {
           const flights = data.flights || [];
 
           flights.forEach((flight, index) => {
-            let pos = liveFlightsMap.get(flight.flight);
+            const candidates = getMatchingCallsigns(flight.flight);
+            const fidsNumber = flight.flight.replace(/\D/g, '');
+
+            // 1. Recherche par indicatif direct (ex: RYR8024)
+            // 2. Recherche fallback par numéro de vol (ex: 8024)
+            let pos = liveFlightsList.find(p => candidates.includes(p.callsign)) ||
+                      (fidsNumber ? liveFlightsList.find(p => p.numberOnly === fidsNumber) : null);
+
             let isLiveGps = true;
 
-            if (!pos || !pos.lat || !pos.lon) {
+            // Si aucune correspondance live n'est trouvée, on passe en estimation près de l'aéroport
+            if (!pos) {
               isLiveGps = false;
               pos = calculateEstimatedCoords(c.airport, c.type, index);
             }
@@ -441,8 +479,6 @@ async function renderFidsPlanesOnMap(map, flightsLayerGroup) {
             `);
 
             flightsLayerGroup.addLayer(marker);
-
-            // Indexation du marqueur par son numéro de vol
             planeMarkers[flight.flight] = marker;
           });
         }
@@ -450,7 +486,7 @@ async function renderFidsPlanesOnMap(map, flightsLayerGroup) {
         console.error("Erreur FIDS pour", c.airport, c.type, e);
       }
       
-      await sleep(500);
+      await sleep(300);
     }
 
   } catch (err) {
