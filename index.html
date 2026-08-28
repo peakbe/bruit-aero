@@ -2,7 +2,7 @@
 <html lang="fr">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
   <title>Dashboard Aéroports - EBCI & EBLG</title>
 
   <!-- CSS Leaflet -->
@@ -76,6 +76,66 @@
 
 .filter-btn, .tab-btn {
   white-space: nowrap;
+}
+    /* --- REGLES DE BASE RESPONSIVES --- */
+html, body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  width: 100%;
+  overflow-x: hidden;
+}
+
+/* Container de la carte Leaflet */
+#map {
+  width: 100%;
+  height: 70vh; /* Par défaut sur PC */
+  min-height: 350px;
+  border-radius: 8px;
+}
+
+/* En-tête / Barre de titre */
+header, .radar-header {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 15px;
+  gap: 10px;
+}
+
+/* --- ADAPTATION MOBILE ET TABLETTE (Écrans < 768px) --- */
+@media (max-width: 768px) {
+  #map {
+    height: 60vh; /* Ajuste la hauteur de carte sur mobile */
+  }
+
+  /* Ajuster la taille des popups sur petit écran */
+  .leaflet-popup-content-wrapper {
+    font-size: 12px;
+    padding: 4px;
+  }
+
+  .leaflet-popup-content {
+    margin: 8px 10px;
+    line-height: 1.4;
+  }
+
+  /* Repositionner ou réduire le bouton Recentrer / Zoom */
+  .leaflet-control-zoom {
+    display: none; /* Optionnel : masque les boutons +/- sur mobile (le pinch-to-zoom tactile suffit) */
+  }
+
+  /* Adapter les panneaux d'informations / tableaux FIDS */
+  .fids-container, .weather-container {
+    width: 100%;
+    overflow-x: auto; /* Défilement horizontal si le tableau dépasse */
+  }
+
+  table {
+    width: 100%;
+    font-size: 12px;
+  }
 }
 
     * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
