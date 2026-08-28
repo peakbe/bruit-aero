@@ -88,6 +88,12 @@ function initMap() {
   setInterval(fetchWeatherData, 300000);
 }
 
+// Après la création de votre objet 'map'
+window.addEventListener("resize", () => {
+  if (map) {
+    map.invalidateSize();
+  }
+});
 // =================================================================
 // 3. GESTION DU RADAR VOLS
 // =================================================================
