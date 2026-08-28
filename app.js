@@ -121,22 +121,26 @@ const AIRPORT_CONFIG = {
 function calculateEstimatedCoords(airportCode, type, index) {
   const cfg = AIRPORT_CONFIG[airportCode] || AIRPORT_CONFIG.EBCI;
   
-  // Espacement plus grand entre chaque avion estimé
-  const step = (index + 1) * 0.015; 
+  // Distance entre chaque avion sur la ligne d'attente/approche
+  const step = (index + 1) * 0.018; 
 
   if (type === "departures") {
-    // Départs : alignés sur l'axe d'envol
+    // Départs : Partent de l'aéroport et s'éloignent dans l'axe de décollage
     return {
       lat: cfg.lat + (step * 0.5),
       lon: cfg.lon + step,
       heading: cfg.heading
     };
   } else {
-    // Arrivées : axe d'approche décalé + cap inversé (+180°) pour orienter le nez vers la piste
+    // Arrivées : Placées EN AMONT de l'aéroport (éloignées sur l'axe d'approche)
+    // Le premier avion à l'atterrissage est le plus proche (index 0), les suivants sont plus loin
+    const approachHeading = (cfg.heading + 180) % 360; // Cap orienté vers la piste
+    
     return {
-      lat: cfg.lat + (step * 0.7) + 0.02, 
-      lon: cfg.lon - step,
-      heading: (cfg.heading + 180) % 360
+      // Soustraction pour placer les avions en amont (Sud-Ouest / Ouest selon l'axe)
+      lat: cfg.lat - (step * 0.5) - 0.01, 
+      lon: cfg.lon - step - 0.02,
+      heading: approachHeading
     };
   }
 }
