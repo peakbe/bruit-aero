@@ -1,5 +1,5 @@
 // =================================================================
-// WORKER CLOUDFLARE - PROXY AÉRO (AIRLABS & AVIATIONSTACK EN EN-TÊTE)
+// WORKER CLOUDFLARE - PROXY AÉRO
 // =================================================================
 
 const corsHeaders = {
@@ -18,130 +18,91 @@ export default {
     const path = url.pathname;
 
     try {
-   
-     // -------------------------------------------------------------
-// 1. ENDPOINT RADAR AÉRIEN (FR24 -> OpenSky -> ADSB.lol)
-// -------------------------------------------------------------
-if (path.includes("/api/opensky")) {
-  try {
-    // --- NIVEAU 1 : FLIGHTRADAR24 ---
-    try {
-      const fr24Url = "https://data-cloud.flightradar24.com/zones/fcgi/feed.json?bounds=52.0,49.0,2.0,7.0&faa=1&satellite=1&mlat=1&flarm=1&adsb=1&gnd=0&air=1&vehicles=0&estimated=0";
-      
-      const fr24Res = await fetch(fr24Url, {
-        headers: {
-          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-          "Accept": "application/json"
-        }
-      });
-
-      if (fr24Res.ok) {
-        const data = await fr24Res.json();
-        const mappedStates = [];
-        const systemKeys = ["full_count", "version", "stats"];
-
-        Object.keys(data).forEach(key => {
-          if (systemKeys.includes(key) || !Array.isArray(data[key])) return;
-
-          const f = data[key];
-          const lat = f[1];
-          const lon = f[2];
-          if (!lat || !lon || (lat === 0 && lon === 0)) return;
-
-          const altitudeFeet = typeof f[4] === "number" ? f[4] : 0;
-          const speedKts = typeof f[5] === "number" ? f[5] : 0;
+      // -------------------------------------------------------------
+      // 1. ENDPOINT RADAR AÉRIEN (FR24 -> OpenSky -> ADSB.lol)
+      // -------------------------------------------------------------
+      if (path.includes("/api/opensky")) {
+        // --- NIVEAU 1 : FLIGHTRADAR24 ---
+        try {
+          const fr24Url = "https://data-cloud.flightradar24.com/zones/fcgi/feed.json?bounds=52.0,49.0,2.0,7.0&faa=1&satellite=1&mlat=1&flarm=1&adsb=1&gnd=0&air=1&vehicles=0&estimated=0";
           
-          const altitudeMeters = altitudeFeet * 0.3048;
-          const speedKmh = speedKts * 1.852;
-          const isGroundFlag = Boolean(f[8]);
-
-          if (isGroundFlag || speedKmh < 60 || altitudeMeters < 150) return;
-
-          mappedStates.push([
-            key,
-            f[16] || f[13] || "Inconnu",
-            "BE",
-            f[10] || 0,
-            f[10] || 0,
-            lon,
-            lat,
-            altitudeMeters,
-            false,
-            speedKts * 0.514444,
-            f[3] || 0
-          ]);
-        });
-
-        if (mappedStates.length > 0) {
-          return new Response(JSON.stringify({ states: mappedStates }), {
-            status: 200,
-            headers: { ...corsHeaders, "Content-Type": "application/json" }
+          const fr24Res = await fetch(fr24Url, {
+            headers: {
+              "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+              "Accept": "application/json"
+            }
           });
-        }
-      }
-    } catch (e) {
-      console.log("FR24 indisponible, bascule sur OpenSky...", e);
-    }
 
-    // --- NIVEAU 2 : OPENSKY NETWORK ---
-    try {
-      const openskyUrl = "https://opensky-network.org/api/states/all?lamin=49.0&lomin=2.0&lamax=52.0&lomax=7.0";
-      const openskyRes = await fetch(openskyUrl, {
-        headers: {
-          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-          "Accept": "application/json"
-        }
-      });
+          if (fr24Res.ok) {
+            const data = await fr24Res.json();
+            const mappedStates = [];
+            const systemKeys = ["full_count", "version", "stats"];
 
-      if (openskyRes.ok) {
-        const data = await openskyRes.json();
-        if (data && Array.isArray(data.states) && data.states.length > 0) {
-          return new Response(JSON.stringify(data), {
-            status: 200,
-            headers: { ...corsHeaders, "Content-Type": "application/json" }
+            Object.keys(data).forEach(key => {
+              if (systemKeys.includes(key) || !Array.isArray(data[key])) return;
+
+              const f = data[key];
+              const lat = f[1];
+              const lon = f[2];
+              if (!lat || !lon || (lat === 0 && lon === 0)) return;
+
+              const altitudeFeet = typeof f[4] === "number" ? f[4] : 0;
+              const speedKts = typeof f[5] === "number" ? f[5] : 0;
+              
+              const altitudeMeters = altitudeFeet * 0.3048;
+              const speedKmh = speedKts * 1.852;
+              const isGroundFlag = Boolean(f[8]);
+
+              if (isGroundFlag || speedKmh < 60 || altitudeMeters < 150) return;
+
+              mappedStates.push([
+                key,
+                f[16] || f[13] || "Inconnu",
+                "BE",
+                f[10] || 0,
+                f[10] || 0,
+                lon,
+                lat,
+                altitudeMeters,
+                false,
+                speedKts * 0.514444,
+                f[3] || 0
+              ]);
+            });
+
+            if (mappedStates.length > 0) {
+              return new Response(JSON.stringify({ states: mappedStates }), {
+                status: 200,
+                headers: { ...corsHeaders, "Content-Type": "application/json" }
+              });
+            }
+          }
+        } catch (e) {
+          console.log("FR24 indisponible, bascule sur OpenSky...", e);
+        }
+
+        // --- NIVEAU 2 : OPENSKY NETWORK ---
+        try {
+          const openskyUrl = "https://opensky-network.org/api/states/all?lamin=49.0&lomin=2.0&lamax=52.0&lomax=7.0";
+          const openskyRes = await fetch(openskyUrl, {
+            headers: {
+              "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+              "Accept": "application/json"
+            }
           });
+
+          if (openskyRes.ok) {
+            const data = await openskyRes.json();
+            if (data && Array.isArray(data.states) && data.states.length > 0) {
+              return new Response(JSON.stringify(data), {
+                status: 200,
+                headers: { ...corsHeaders, "Content-Type": "application/json" }
+              });
+            }
+          }
+        } catch (e) {
+          console.log("OpenSky indisponible, bascule sur ADSB.lol...", e);
         }
-      }
-    } catch (e) {
-      console.log("OpenSky indisponible, bascule sur ADSB.lol...");
-    }
-
-    // --- NIVEAU 3 : ADSB.LOL ---
-    try {
-      const adsbRes = await fetch("https://api.adsb.lol/v2/lat/50.55/lon/4.95/dist/100");
-      if (adsbRes.ok) {
-        const adsbData = await adsbRes.json();
-        const mappedStates = (adsbData.ac || []).map((ac) => [
-          ac.hex,
-          ac.flight || "Inconnu",
-          "BE",
-          ac.seen,
-          ac.seen,
-          ac.lon,
-          ac.lat,
-          ac.alt_geom ? ac.alt_geom * 0.3048 : null,
-          false,
-          ac.gs ? ac.gs * 0.514444 : null,
-          ac.track || 0
-        ]);
-
-        return new Response(JSON.stringify({ states: mappedStates }), {
-          status: 200,
-          headers: { ...corsHeaders, "Content-Type": "application/json" }
-        });
-      }
-    } catch (e) {
-      console.error("Erreur fallback ADSB:", e);
-    }
-
-    return new Response(JSON.stringify({ states: [] }), {
-      status: 200,
-      headers: { ...corsHeaders, "Content-Type": "application/json" }
-    });
-  } catch (err) {
-    console.error("Erreur générale radar:", err);
-  }
-}
 
         // --- NIVEAU 3 : ADSB.LOL ---
         try {
@@ -198,7 +159,7 @@ if (path.includes("/api/opensky")) {
 
         const isDep = type === "departures";
 
-        // --- SOURCE 1 : AIRLABS.CO (1000 REQUÊTES/MOIS GRATUIT) ---
+        // --- SOURCE 1 : AIRLABS.CO ---
         try {
           const paramName = isDep ? "dep_icao" : "arr_icao";
           const airlabsUrl = `https://airlabs.co/api/v9/schedules?${paramName}=${airportCode}&api_key=${airlabsKey}`;
@@ -243,7 +204,7 @@ if (path.includes("/api/opensky")) {
           console.error("Échec AirLabs, bascule sur Aviationstack...", e);
         }
 
-        // --- SOURCE 2 : AVIATIONSTACK (100 REQUÊTES/MOIS GRATUIT) ---
+        // --- SOURCE 2 : AVIATIONSTACK ---
         try {
           const paramName = isDep ? "dep_icao" : "arr_icao";
           const aviationUrl = `http://api.aviationstack.com/v1/flights?access_key=${aviationstackKey}&${paramName}=${airportCode}&limit=10`;
@@ -289,7 +250,7 @@ if (path.includes("/api/opensky")) {
           console.error("Échec Aviationstack, bascule sur AeroDataBox...", e);
         }
 
-        // --- SOURCE 3 : AERODATABOX (RAPIDAPI) ---
+        // --- SOURCE 3 : AERODATABOX ---
         try {
           const now = new Date();
           const fromLocal = now.toISOString().substring(0, 16);
