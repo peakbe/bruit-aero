@@ -315,14 +315,55 @@ function renderSonometersOnMap(map) {
     const activeRunway = s.airport === "EBCI" ? currentRunwayEBCI : currentRunwayEBLG;
     const statusText = color === "#10b981" ? "Actif (Vert)" : "Inactif/Alerte (Rouge)";
 
-    marker.bindPopup(`
-      <div style="color: #0f172a; font-family: sans-serif;">
+    // Contenu initial du popup avant le chargement de la météo
+    const basePopupHTML = `
+      <div style="color: #0f172a; font-family: sans-serif; min-width: 200px;">
         <b style="font-size: 1.05rem;">Sonomètre ${s.id} (${s.airport})</b><br>
-        <span style="font-size:0.85rem; color: #475569;">${s.address}</span><hr style="margin:6px 0; border:0; border-top:1px solid #cbd5e1;">
+        <span style="font-size:0.85rem; color: #475569;">${s.address}</span>
+        <hr style="margin:6px 0; border:0; border-top:1px solid #cbd5e1;">
         <b>Piste active :</b> Piste ${activeRunway}<br>
         <b>Statut :</b> <span style="color:${color}; font-weight:bold;">${statusText}</span>
+        <hr style="margin:6px 0; border:0; border-top:1px solid #cbd5e1;">
+        <div id="weather-sono-${s.id}" style="font-size:0.85rem; color: #64748b;">
+          ⏳ Chargement de la météo locale...
+        </div>
       </div>
-    `);
+    `;
+
+    marker.bindPopup(basePopupHTML);
+
+    // Événement déclenché au clic sur le marqueur
+    marker.on('click', async () => {
+      try {
+        const res = await fetch(`${WORKER_BASE_URL}/api/weather?lat=${lat}&lon=${lng}`);
+        const weatherDiv = document.getElementById(`weather-sono-${s.id}`);
+        
+        if (res.ok && weatherDiv) {
+          const weather = await res.json();
+          const temp = Math.round(weather.main?.temp ?? 0);
+          const windMs = weather.wind?.speed ?? 0;
+          const windKmh = msToKmh(windMs);
+          const city = weather.name || "Localité";
+          const icon = weather.weather?.[0]?.icon || "01d";
+          const desc = weather.weather?.[0]?.description || "";
+
+          weatherDiv.innerHTML = `
+            <b>🌤️ Météo (${city}) :</b><br>
+            <div style="display: flex; align-items: center; gap: 8px; margin-top: 4px;">
+              <img src="https://openweathermap.org/img/wn/${icon}.png" width="32" height="32" alt="${desc}"/>
+              <div>
+                <strong>${temp}°C</strong> — ${desc}<br>
+                <span style="font-size: 0.75rem; color: #475569;">💨 Vent : ${windKmh} km/h (${windMs} m/s)</span>
+              </div>
+            </div>
+          `;
+        } else if (weatherDiv) {
+          weatherDiv.innerHTML = `<span style="color:#ef4444;">Météo indisponible</span>`;
+        }
+      } catch (err) {
+        console.error("Erreur météo sonomètre :", err);
+      }
+    });
 
     sonometerMarkers.push(marker);
   });
