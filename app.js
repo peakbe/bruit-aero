@@ -26,6 +26,17 @@ const yellowPlaneIcon = L.divIcon({
 // Helper pour temporiser les requêtes (évite HTTP 429)
 const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
+// Table de conversion des préfixes IATA vers ICAO courants
+const IATA_TO_ICAO = {
+  "FR": "RYR", // Ryanair
+  "TB": "TUI", // TUI fly Belgium
+  "SN": "BEL", // Brussels Airlines
+  "LH": "DLH", // Lufthansa
+  "HV": "TRA", // Transavia
+  "W6": "WZZ", // Wizz Air
+  "3V": "TAY"  // ASL Airlines Belgium
+};
+
 // =================================================================
 // 2. INITIALISATION CARTE
 // =================================================================
@@ -315,7 +326,6 @@ function renderSonometersOnMap(map) {
     const activeRunway = s.airport === "EBCI" ? currentRunwayEBCI : currentRunwayEBLG;
     const statusText = color === "#10b981" ? "Actif (Vert)" : "Inactif/Alerte (Rouge)";
 
-    // Contenu initial du popup avant le chargement de la météo
     const basePopupHTML = `
       <div style="color: #0f172a; font-family: sans-serif; min-width: 200px;">
         <b style="font-size: 1.05rem;">Sonomètre ${s.id} (${s.airport})</b><br>
@@ -332,7 +342,6 @@ function renderSonometersOnMap(map) {
 
     marker.bindPopup(basePopupHTML);
 
-    // Événement déclenché au clic sur le marqueur
     marker.on('click', async () => {
       try {
         const res = await fetch(`${WORKER_BASE_URL}/api/weather?lat=${lat}&lon=${lng}`);
@@ -414,17 +423,6 @@ function calculateEstimatedCoords(airportCode, type, index) {
   }
 }
 
-// Table de conversion des préfixes IATA vers ICAO courants
-const IATA_TO_ICAO = {
-  "FR": "RYR", // Ryanair
-  "TB": "TUI", // TUI fly Belgium
-  "SN": "BEL", // Brussels Airlines
-  "LH": "DLH", // Lufthansa
-  "HV": "TRA", // Transavia
-  "W6": "WZZ"  // Wizz Air
-};
-
-// Utilitaire : Convertit "FR8024" en "RYR8024" ou extrait les chiffres ("8024")
 function getMatchingCallsigns(fidsFlight) {
   const clean = fidsFlight.replace(/\s+/g, '').toUpperCase();
   const match = clean.match(/^([A-Z0-9]{2,3})?(\d+)$/);
@@ -443,18 +441,6 @@ function getMatchingCallsigns(fidsFlight) {
   return possible;
 }
 
-// Table de conversion d'icônes/vols IATA (ex: FR3223) -> ICAO (ex: RYR3223)
-const IATA_TO_ICAO = {
-  "FR": "RYR", // Ryanair
-  "TB": "TUI", // TUI Fly
-  "SN": "BEL", // Brussels Airlines
-  "LH": "DLH", // Lufthansa
-  "HV": "TRA", // Transavia
-  "W6": "WZZ", // Wizz Air
-  "3V": "TAY"  // ASL Airlines Belgium (Liège)
-};
-
-// Utilitaire pour extraire l'indicatif ATC potentiel et le numéro de vol
 function parseCallsign(flightStr) {
   if (!flightStr) return { raw: "", prefix: "", number: "" };
   const clean = flightStr.replace(/\s+/g, '').toUpperCase();
@@ -479,7 +465,6 @@ async function renderFidsPlanesOnMap(map, flightsLayerGroup) {
     const radarData = resRadar && resRadar.ok ? await resRadar.json() : { states: [] };
     const liveStates = radarData.states || [];
 
-    // Liste des avions réellement en vol détectés
     const livePlanes = liveStates.map(state => {
       const callsign = (state[1] || "").trim().toUpperCase();
       const parsed = parseCallsign(callsign);
@@ -493,7 +478,7 @@ async function renderFidsPlanesOnMap(map, flightsLayerGroup) {
         altitude: state[7],
         speed: state[9]
       };
-    }).filter(p => p.lat && p.lon && p.speed > 30); // Filtre les avions à l'arrêt ou invalides
+    }).filter(p => p.lat && p.lon && p.speed > 30);
 
     // 2. Récupération des données FIDS (Horaires)
     const combinations = [
@@ -512,7 +497,6 @@ async function renderFidsPlanesOnMap(map, flightsLayerGroup) {
           const data = await res.json();
           (data.flights || []).forEach(f => {
             const parsed = parseCallsign(f.flight);
-            // Stocke par numéro brut (ex: FR3223) et par numéro seul (ex: 3223)
             if (parsed.raw) fidsMap.set(parsed.raw, { ...f, airport: c.airport });
             if (parsed.number) fidsMap.set(parsed.number, { ...f, airport: c.airport });
             
@@ -527,11 +511,10 @@ async function renderFidsPlanesOnMap(map, flightsLayerGroup) {
       await sleep(150);
     }
 
-    // 3. Affichage exclusif des avions en temps réel (GPS) avec enrichissement FIDS
+    // 3. Affichage des avions en temps réel (GPS)
     const hasRotationPlugin = typeof L.Marker.prototype.setRotationAngle === "function";
 
     livePlanes.forEach(plane => {
-      // Tente de faire correspondre avec le tableau FIDS (via Callsign ou Numéro)
       const fidsInfo = fidsMap.get(plane.callsign) || fidsMap.get(plane.numberOnly);
 
       const flightTitle = fidsInfo ? fidsInfo.flight : plane.callsign;
@@ -562,21 +545,12 @@ async function renderFidsPlanesOnMap(map, flightsLayerGroup) {
       const marker = L.marker([plane.lat, plane.lon], markerOptions).bindPopup(popupContent);
       flightsLayerGroup.addLayer(marker);
 
-      // Mémorise les références pour le clic depuis le tableau
       planeMarkers[flightTitle] = marker;
       if (plane.callsign) planeMarkers[plane.callsign] = marker;
     });
 
   } catch (err) {
     console.error("Erreur d'affichage du radar :", err);
-  }
-}
-      
-      await sleep(300);
-    }
-
-  } catch (err) {
-    console.error("Erreur globale lors de l'affichage des avions:", err);
   }
 }
 
