@@ -148,23 +148,39 @@ function calculateEstimatedCoords(airportCode, type, index) {
 // =================================================================
 // 4. AFFICHAGE ET CORRÉLATION DU RADAR
 // =================================================================
+// Dictionnaire étendu IATA -> ICAO pour la correspondance des indicatifs
+const IATA_TO_ICAO = {
+  "FR": "RYR", // Ryanair
+  "TB": "TUI", // TUI fly Belgium
+  "SN": "BEL", // Brussels Airlines
+  "LH": "DLH", // Lufthansa
+  "HV": "TRA", // Transavia
+  "W6": "WZZ", // Wizz Air
+  "3V": "TAY", // ASL Airlines Belgium
+  "FQ": "BAW", // British Airways
+  "VY": "VLG"  // Vueling
+};
+
 async function renderFidsPlanesOnMap(map, flightsLayerGroup) {
   if (!flightsLayerGroup) return;
   flightsLayerGroup.clearLayers();
   planeMarkers = {};
 
   try {
-    // 1. OpenSky Radar (GPS Live)
-    const resRadar = await fetch(`${WORKER_BASE_URL}/api/opensky`).catch(() => null);
+    // 1. Récupération des données OpenSky (Zone élargie Belgique + frontières)
+    // lamin=49.0, lomin=2.0, lamax=51.8, lomax=7.0
+    const resRadar = await fetch(`${WORKER_BASE_URL}/api/opensky?lamin=49.0&lomin=2.0&lamax=51.8&lomax=7.0`).catch(() => null);
     const radarData = resRadar && resRadar.ok ? await resRadar.json() : { states: [] };
     const liveStates = radarData.states || [];
 
+    // Formater la liste des avions captés en direct par le radar GPS
     const livePlanes = liveStates.map(state => {
       const callsign = (state[1] || "").trim().toUpperCase();
       const parsed = parseCallsign(callsign);
       return {
         icao24: state[0],
         callsign: callsign,
+        prefix: parsed.prefix,
         numberOnly: parsed.number,
         lat: state[6],
         lon: state[5],
@@ -172,9 +188,9 @@ async function renderFidsPlanesOnMap(map, flightsLayerGroup) {
         altitude: state[7],
         speed: state[9]
       };
-    }).filter(p => p.lat && p.lon && p.speed > 30);
+    }).filter(p => p.lat && p.lon);
 
-    // 2. FIDS Data
+    // 2. Récupération des tableaux FIDS (Départs et Arrivées)
     const combinations = [
       { airport: 'EBLG', type: 'departures' },
       { airport: 'EBLG', type: 'arrivals' },
@@ -183,6 +199,8 @@ async function renderFidsPlanesOnMap(map, flightsLayerGroup) {
     ];
 
     const fidsList = [];
+    const processedFlights = new Set();
+
     for (const c of combinations) {
       try {
         const res = await fetch(`${WORKER_BASE_URL}/api/fids?airport=${c.airport}&type=${c.type}`);
@@ -207,32 +225,41 @@ async function renderFidsPlanesOnMap(map, flightsLayerGroup) {
 
     const hasRotationPlugin = typeof L.Marker.prototype.setRotationAngle === "function";
 
-    // A. Traitement des avions FIDS (avec correspondance GPS si disponible)
-    // Remplacer le bloc de boucle FIDS dans renderFidsPlanesOnMap par ceci :
+    // 3. Associer le vol FIDS au signal GPS en direct
     fidsList.forEach(fids => {
+      // Calcul du callsign ICAO théorique (ex: FR9053 -> RYR9053)
+      const icaoPrefix = IATA_TO_ICAO[fids.parsed.prefix] || fids.parsed.prefix;
+      const targetIcaoCallsign = `${icaoPrefix}${fids.parsed.number}`;
+
+      // Recherche du vol réel sur le radar :
+      // 1. Correspondance exacte de l'indicatif ICAO (ex: RYR9053)
+      // 2. Correspondance brute IATA (ex: FR9053)
+      // 3. Correspondance du numéro seul si en approche proche
       const matchLive = livePlanes.find(p => 
-        p.callsign === fids.parsed.raw || 
-        (p.numberOnly && p.numberOnly === fids.parsed.number)
+        p.callsign === targetIcaoCallsign ||
+        p.callsign === fids.parsed.raw ||
+        (p.numberOnly && p.numberOnly === fids.parsed.number && p.numberOnly.length >= 3)
       );
 
       let lat, lon, heading, sourceText, altText, speedText;
 
       if (matchLive) {
+        // POSITION RÉELLE GPS TROUVÉE
         lat = matchLive.lat;
         lon = matchLive.lon;
         heading = matchLive.heading;
-        sourceText = `<span style="color: #22c55e; font-weight: bold;">📡 GPS Temps Réel</span>`;
+        sourceText = `<span style="color: #22c55e; font-weight: bold;">📡 Radar GPS Temps Réel (${matchLive.callsign})</span>`;
         altText = `${matchLive.altitude ? Math.round(matchLive.altitude) : 0} m`;
         speedText = `${matchLive.speed ? Math.round(matchLive.speed * 3.6) : 0} km/h`;
         processedFlights.add(matchLive.icao24);
       } else {
-        // Utilisation de fids.index_by_type pour garantir l'espacement régulier
+        // POSITION ESTIMÉE (Si hors de portée radar ou transpondeur éteint au sol)
         const est = calculateEstimatedCoords(fids.airport, fids.type, fids.index_by_type);
         lat = est.lat;
         lon = est.lon;
         heading = est.heading;
-        sourceText = `<span style="color: #f59e0b; font-weight: bold;">⏱️ Position Estimée</span>`;
-        altText = fids.type === "departures" ? "Au sol (Départ)" : "En approche";
+        sourceText = `<span style="color: #f59e0b; font-weight: bold;">⏱️ Position Estimée (Horaire FIDS)</span>`;
+        altText = fids.type === "departures" ? "Au sol (Départ)" : "En approche hors zone";
         speedText = "0 km/h";
       }
 
@@ -257,15 +284,14 @@ async function renderFidsPlanesOnMap(map, flightsLayerGroup) {
       const marker = L.marker([lat, lon], markerOptions).bindPopup(popupContent);
       flightsLayerGroup.addLayer(marker);
 
+      // Indexation multi-clés pour le clic depuis la table
       planeMarkers[fids.flight] = marker;
       planeMarkers[fids.parsed.raw] = marker;
+      planeMarkers[targetIcaoCallsign] = marker;
       if (fids.parsed.number) planeMarkers[fids.parsed.number] = marker;
-      if (IATA_TO_ICAO[fids.parsed.prefix]) {
-        planeMarkers[IATA_TO_ICAO[fids.parsed.prefix] + fids.parsed.number] = marker;
-      }
     });
 
-    // B. Ajout des vols OpenSky restants (Vols en transit non répertoriés dans FIDS)
+    // 4. Affichage des autres vols détectés par le radar en transit dans la zone
     livePlanes.forEach(plane => {
       if (processedFlights.has(plane.icao24)) return;
 
@@ -274,7 +300,7 @@ async function renderFidsPlanesOnMap(map, flightsLayerGroup) {
           <h3 style="margin: 0 0 5px 0; color: #1e293b;">Vol ${plane.callsign || "Inconnu"}</h3>
           <b>Altitude :</b> ${plane.altitude ? Math.round(plane.altitude) : 0} m<br>
           <b>Vitesse :</b> ${plane.speed ? Math.round(plane.speed * 3.6) : 0} km/h<br>
-          <b>Source :</b> <span style="color: #22c55e; font-weight: bold;">📡 GPS Radar Transit</span>
+          <b>Source :</b> <span style="color: #22c55e; font-weight: bold;">📡 Radar GPS Direct</span>
         </div>
       `;
 
@@ -291,7 +317,7 @@ async function renderFidsPlanesOnMap(map, flightsLayerGroup) {
     });
 
   } catch (err) {
-    console.error("Erreur globale d'affichage des vols :", err);
+    console.error("Erreur d'affichage radar :", err);
   }
 }
 
