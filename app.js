@@ -23,18 +23,16 @@ const yellowPlaneIcon = L.divIcon({
   iconAnchor: [14, 14],
 });
 
-// Helper pour temporiser les requêtes (évite HTTP 429)
 const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
-// Table de conversion des préfixes IATA vers ICAO courants
 const IATA_TO_ICAO = {
-  "FR": "RYR", // Ryanair
-  "TB": "TUI", // TUI fly Belgium
-  "SN": "BEL", // Brussels Airlines
-  "LH": "DLH", // Lufthansa
-  "HV": "TRA", // Transavia
-  "W6": "WZZ", // Wizz Air
-  "3V": "TAY"  // ASL Airlines Belgium
+  "FR": "RYR",
+  "TB": "TUI",
+  "SN": "BEL",
+  "LH": "DLH",
+  "HV": "TRA",
+  "W6": "WZZ",
+  "3V": "TAY"
 };
 
 // =================================================================
@@ -48,8 +46,6 @@ function initMap() {
   }
 
   map = L.map("map").setView([50.55, 4.95], 9);
-
-  // Initialisation du groupe de calques pour les avions FIDS/Radar
   flightsGroup = L.layerGroup().addTo(map);
 
   L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
@@ -88,134 +84,229 @@ function initMap() {
 
   map.addControl(new RecenterControl());
 
-  // Chargements initiaux
   renderFidsPlanesOnMap(map, flightsGroup);
   fetchFlightsData();
   fetchWeatherData();
 
-  // Mises à jour automatiques temporisées
   setInterval(() => renderFidsPlanesOnMap(map, flightsGroup), 60000);
   setInterval(fetchFlightsData, 120000);
   setInterval(fetchWeatherData, 300000);
 
-  // --- GESTION DU REDIMENSIONNEMENT MOBILE / ROTATION ÉCRAN ---
   window.addEventListener("resize", () => {
-    if (map) {
-      map.invalidateSize();
-    }
+    if (map) map.invalidateSize();
   });
 }
 
 // =================================================================
-// 3. GESTION DU RADAR VOLS
+// 3. UTILITAIRES ET PARSING
 // =================================================================
-async function fetchRadarData() {
-  try {
-    const response = await fetch(`${WORKER_BASE_URL}/api/opensky`);
-    
-    if (response.ok) {
-      const data = await response.json();
-      if (data && Array.isArray(data.states)) {
-        lastValidStates = data.states;
-        updatePlaneMarkers(data.states);
-        return;
-      }
-    }
-  } catch (error) {
-    console.warn("Erreur temporaire radar, utilisation du cache :", error);
-  }
+function parseCallsign(flightStr) {
+  if (!flightStr) return { raw: "", prefix: "", number: "" };
+  const clean = flightStr.replace(/\s+/g, '').toUpperCase();
+  const match = clean.match(/^([A-Z0-9]{2,3})?(\d+)$/);
+  
+  if (!match) return { raw: clean, prefix: "", number: "" };
+  return {
+    raw: clean,
+    prefix: match[1] || "",
+    number: match[2]
+  };
+}
 
-  if (lastValidStates.length > 0) {
-    updatePlaneMarkers(lastValidStates);
+const AIRPORT_CONFIG = {
+  EBLG: { name: "Liège Airport", lat: 50.6374, lon: 5.4432, heading: 228 },
+  EBCI: { name: "Charleroi Airport", lat: 50.4592, lon: 4.4538, heading: 242 }
+};
+
+function calculateEstimatedCoords(airportCode, type, index) {
+  const cfg = AIRPORT_CONFIG[airportCode] || AIRPORT_CONFIG.EBCI;
+  const offset = (index + 1) * 0.005;
+
+  if (type === "departures") {
+    return {
+      lat: cfg.lat + (offset * 0.5),
+      lon: cfg.lon + offset,
+      heading: cfg.heading
+    };
+  } else {
+    return {
+      lat: cfg.lat + (offset * 1.5),
+      lon: cfg.lon - (offset * 2),
+      heading: cfg.heading
+    };
   }
 }
 
-function updatePlaneMarkers(states) {
-  if (!map) return;
-  const currentIcaos = new Set();
-  const hasRotationPlugin = typeof L.Marker.prototype.setRotationAngle === "function";
+// =================================================================
+// 4. AFFICHAGE ET CORRÉLATION DU RADAR
+// =================================================================
+async function renderFidsPlanesOnMap(map, flightsLayerGroup) {
+  if (!flightsLayerGroup) return;
+  flightsLayerGroup.clearLayers();
+  planeMarkers = {};
 
-  states.forEach((flight) => {
-    const icao24 = flight[0];
-    const callsign = (flight[1] || "Inconnu").trim();
-    const longitude = flight[5];
-    const latitude = flight[6];
-    const altRaw = flight[7];
-    const speedRaw = flight[9];
-    const heading = flight[10] || 0;
+  try {
+    // 1. OpenSky Radar (GPS Live)
+    const resRadar = await fetch(`${WORKER_BASE_URL}/api/opensky`).catch(() => null);
+    const radarData = resRadar && resRadar.ok ? await resRadar.json() : { states: [] };
+    const liveStates = radarData.states || [];
 
-    const altMeters = altRaw !== null ? Math.round(altRaw) : 0;
-    const speedKmh = speedRaw !== null ? Math.round(speedRaw * 3.6) : 0;
+    const livePlanes = liveStates.map(state => {
+      const callsign = (state[1] || "").trim().toUpperCase();
+      const parsed = parseCallsign(callsign);
+      return {
+        icao24: state[0],
+        callsign: callsign,
+        numberOnly: parsed.number,
+        lat: state[6],
+        lon: state[5],
+        heading: state[10] || 0,
+        altitude: state[7],
+        speed: state[9]
+      };
+    }).filter(p => p.lat && p.lon && p.speed > 30);
 
-    if (
-      !latitude || 
-      !longitude || 
-      (latitude === 0 && longitude === 0) ||
-      speedKmh < 40 ||
-      altMeters < 50
-    ) {
-      return;
+    // 2. FIDS Data
+    const combinations = [
+      { airport: 'EBLG', type: 'departures' },
+      { airport: 'EBLG', type: 'arrivals' },
+      { airport: 'EBCI', type: 'departures' },
+      { airport: 'EBCI', type: 'arrivals' }
+    ];
+
+    const fidsList = [];
+    const processedFlights = new Set();
+
+    for (const c of combinations) {
+      try {
+        const res = await fetch(`${WORKER_BASE_URL}/api/fids?airport=${c.airport}&type=${c.type}`);
+        if (res.ok) {
+          const data = await res.json();
+          (data.flights || []).forEach((f, idx) => {
+            const parsed = parseCallsign(f.flight);
+            fidsList.push({ ...f, airport: c.airport, type: c.type, parsed, index: idx });
+          });
+        }
+      } catch (e) {
+        console.error("Erreur FIDS :", e);
+      }
+      await sleep(100);
     }
 
-    currentIcaos.add(icao24);
+    const hasRotationPlugin = typeof L.Marker.prototype.setRotationAngle === "function";
 
-    const popupContent = `
-      <div style="font-family: sans-serif; font-size: 13px;">
-        <strong>Vol : ${callsign}</strong><br/>
-        ICAO : ${icao24.toUpperCase()}<br/>
-        Altitude : ${altMeters} m<br/>
-        Vitesse : ${speedKmh} km/h<br/>
-        Cap : ${Math.round(heading)}°
-      </div>
-    `;
+    // A. Traitement des avions FIDS (avec correspondance GPS si disponible)
+    fidsList.forEach(fids => {
+      const matchLive = livePlanes.find(p => 
+        p.callsign === fids.parsed.raw || 
+        (p.numberOnly && p.numberOnly === fids.parsed.number)
+      );
 
-    if (planeMarkers[icao24]) {
-      planeMarkers[icao24].setLatLng([latitude, longitude]);
-      if (hasRotationPlugin) {
-        planeMarkers[icao24].setRotationAngle(heading);
+      let lat, lon, heading, sourceText, altText, speedText;
+
+      if (matchLive) {
+        lat = matchLive.lat;
+        lon = matchLive.lon;
+        heading = matchLive.heading;
+        sourceText = `<span style="color: #22c55e; font-weight: bold;">📡 GPS Temps Réel</span>`;
+        altText = `${matchLive.altitude ? Math.round(matchLive.altitude) : 0} m`;
+        speedText = `${matchLive.speed ? Math.round(matchLive.speed * 3.6) : 0} km/h`;
+        processedFlights.add(matchLive.icao24);
+      } else {
+        const est = calculateEstimatedCoords(fids.airport, fids.type, fids.index);
+        lat = est.lat;
+        lon = est.lon;
+        heading = est.heading;
+        sourceText = `<span style="color: #f59e0b; font-weight: bold;">⏱️ Position Estimée (Au sol / Horaire)</span>`;
+        altText = "0 m (Au sol)";
+        speedText = "0 km/h";
       }
-      planeMarkers[icao24].getPopup().setContent(popupContent);
-    } else {
+
+      const popupContent = `
+        <div style="font-family: sans-serif; font-size: 13px;">
+          <h3 style="margin: 0 0 5px 0; color: #1e293b;">Vol ${fids.flight}</h3>
+          <b>Aéroport :</b> ${AIRPORT_CONFIG[fids.airport]?.name || fids.airport}<br>
+          <b>Destination/Origine :</b> ${fids.city}<br>
+          <b>Heure :</b> ${fids.time}<br>
+          <b>Altitude :</b> ${altText} | <b>Vitesse :</b> ${speedText}<br>
+          <b>Statut :</b> ${fids.status}<br>
+          <b>Source :</b> ${sourceText}
+        </div>
+      `;
+
       const markerOptions = { icon: yellowPlaneIcon };
       if (hasRotationPlugin) {
         markerOptions.rotationAngle = heading;
         markerOptions.rotationOrigin = "center center";
       }
 
-      const marker = L.marker([latitude, longitude], markerOptions).bindPopup(popupContent);
-      marker.addTo(map);
-      planeMarkers[icao24] = marker;
-    }
-  });
+      const marker = L.marker([lat, lon], markerOptions).bindPopup(popupContent);
+      flightsLayerGroup.addLayer(marker);
 
-  Object.keys(planeMarkers).forEach((icao) => {
-    if (!currentIcaos.has(icao)) {
-      map.removeLayer(planeMarkers[icao]);
-      delete planeMarkers[icao];
-    }
-  });
+      // Enregistrement multi-clés pour garantir le clic depuis le tableau
+      planeMarkers[fids.flight] = marker;
+      planeMarkers[fids.parsed.raw] = marker;
+      if (fids.parsed.number) planeMarkers[fids.parsed.number] = marker;
+      if (IATA_TO_ICAO[fids.parsed.prefix]) {
+        planeMarkers[IATA_TO_ICAO[fids.parsed.prefix] + fids.parsed.number] = marker;
+      }
+    });
+
+    // B. Ajout des vols OpenSky restants (Vols en transit non répertoriés dans FIDS)
+    livePlanes.forEach(plane => {
+      if (processedFlights.has(plane.icao24)) return;
+
+      const popupContent = `
+        <div style="font-family: sans-serif; font-size: 13px;">
+          <h3 style="margin: 0 0 5px 0; color: #1e293b;">Vol ${plane.callsign || "Inconnu"}</h3>
+          <b>Altitude :</b> ${plane.altitude ? Math.round(plane.altitude) : 0} m<br>
+          <b>Vitesse :</b> ${plane.speed ? Math.round(plane.speed * 3.6) : 0} km/h<br>
+          <b>Source :</b> <span style="color: #22c55e; font-weight: bold;">📡 GPS Radar Transit</span>
+        </div>
+      `;
+
+      const markerOptions = { icon: yellowPlaneIcon };
+      if (hasRotationPlugin) {
+        markerOptions.rotationAngle = plane.heading;
+        markerOptions.rotationOrigin = "center center";
+      }
+
+      const marker = L.marker([plane.lat, plane.lon], markerOptions).bindPopup(popupContent);
+      flightsLayerGroup.addLayer(marker);
+
+      if (plane.callsign) planeMarkers[plane.callsign] = marker;
+    });
+
+  } catch (err) {
+    console.error("Erreur globale d'affichage des vols :", err);
+  }
 }
 
-function switchFlightTab(airport, type, btnElement) {
-  const parentTabContainer = btnElement.parentElement;
-  if (parentTabContainer) {
-    const buttons = parentTabContainer.querySelectorAll('.tab-btn');
-    buttons.forEach(btn => btn.classList.remove('active'));
-    btnElement.classList.add('active');
+// =================================================================
+// 5. SELECTION DU VOL DEPUIS LE TABLEAU
+// =================================================================
+function selectFlightOnMap(flightNum) {
+  const cleanKey = flightNum.replace(/\s+/g, '').toUpperCase();
+  const parsed = parseCallsign(cleanKey);
+  
+  // Recherche par nom brut, par numéro ou par équivalent ICAO
+  let marker = planeMarkers[cleanKey] || planeMarkers[parsed.number];
+  if (!marker && IATA_TO_ICAO[parsed.prefix]) {
+    marker = planeMarkers[IATA_TO_ICAO[parsed.prefix] + parsed.number];
   }
 
-  const targetBodyId = `${airport.toLowerCase()}-flights-body`;
-  const container = document.getElementById(targetBodyId);
-
-  if (container) {
-    const flightType = (type === 'dep' || type === 'departures') ? 'departures' : 'arrivals';
-    loadFlightType(flightType, container, airport.toUpperCase());
+  if (marker) {
+    const latLng = marker.getLatLng();
+    map.setView(latLng, 11, { animate: true });
+    marker.openPopup();
+  } else {
+    alert(`Le vol ${flightNum} n'a pas pu être localisé sur la carte.`);
   }
 }
 
-// ==========================================
-// 4. DATA DES SONOMÈTRES
-// ==========================================
+// =================================================================
+// 6. DONNÉES SONOMÈTRES & PISTES
+// =================================================================
 const sonometersEBCI = [
   { id: "F118", address: "Rue Piconette 1, Sombreffe", latDMS: "50 30 18.96 N", lonDMS: "4 36 40.25 E" },
   { id: "F109", address: "Chaussée de Charleroi 265, Sombreffe", latDMS: "50 29 25.27 N", lonDMS: "4 33 44.6 E" },
@@ -256,9 +347,6 @@ const sonometersEBLG = [
   { id: "F012", address: "Rue Barbe d'Or 13, 4317 Aineffe", latDMS: "50 37 18.9 N", lonDMS: "5 15 17.09 E" }
 ];
 
-// ==========================================
-// 5. ÉTAT DES PISTES EN SERVICE
-// ==========================================
 let currentRunwayEBCI = "24"; 
 let currentRunwayEBLG = "22"; 
 
@@ -270,31 +358,25 @@ function dmsToDecimal(dmsStr) {
   const direction = parts[3];
 
   let dd = degrees + minutes / 60 + seconds / 3600;
-  if (direction === "S" || direction === "W") {
-    dd = -dd;
-  }
+  if (direction === "S" || direction === "W") dd = -dd;
   return dd;
 }
 
 function getSonometerColor(id, airport) {
   if (airport === "EBLG") {
-    if (currentRunwayEBLG === "22") {
-      return "#10b981"; 
-    } else if (currentRunwayEBLG === "04") {
+    if (currentRunwayEBLG === "22") return "#10b981"; 
+    if (currentRunwayEBLG === "04") {
       const redListEBLG = ["F004", "F005", "F006", "F010", "F012", "F016", "F017"];
       return redListEBLG.includes(id) ? "#ef4444" : "#10b981";
     }
   }
-
   if (airport === "EBCI") {
-    if (currentRunwayEBCI === "24") {
-      return "#10b981"; 
-    } else if (currentRunwayEBCI === "06") {
+    if (currentRunwayEBCI === "24") return "#10b981"; 
+    if (currentRunwayEBCI === "06") {
       const redListEBCI = ["F114", "F116", "F117", "F118"];
       return redListEBCI.includes(id) ? "#ef4444" : "#10b981";
     }
   }
-
   return "#10b981";
 }
 
@@ -389,171 +471,8 @@ function setRunwayEBLG(runwayNum, map) {
 }
 
 // =================================================================
-// 6. VOLS & MÉTÉO (CORRIGÉS ET SÉQUENCÉS ANTI-429)
+// 7. CHARGEMENT TABLEAUX ET MÉTÉO
 // =================================================================
-
-const AIRPORT_CONFIG = {
-  EBLG: { name: "Liège Airport", lat: 50.6374, lon: 5.4432, heading: 228 },
-  EBCI: { name: "Charleroi Airport", lat: 50.4592, lon: 4.4538, heading: 242 }
-};
-
-const planeIcon = L.icon({
-  iconUrl: 'https://cdn-icons-png.flaticon.com/512/7893/7893979.png',
-  iconSize: [28, 28],
-  iconAnchor: [14, 14],
-  popupAnchor: [0, -10]
-});
-
-function calculateEstimatedCoords(airportCode, type, index) {
-  const cfg = AIRPORT_CONFIG[airportCode];
-  const offset = (index + 1) * 0.003;
-
-  if (type === "departures") {
-    return {
-      lat: cfg.lat + (offset * 0.5),
-      lon: cfg.lon + offset,
-      heading: cfg.heading
-    };
-  } else {
-    return {
-      lat: cfg.lat + (offset * 1.5),
-      lon: cfg.lon - (offset * 2),
-      heading: cfg.heading
-    };
-  }
-}
-
-function getMatchingCallsigns(fidsFlight) {
-  const clean = fidsFlight.replace(/\s+/g, '').toUpperCase();
-  const match = clean.match(/^([A-Z0-9]{2,3})?(\d+)$/);
-  
-  if (!match) return [clean];
-  
-  const prefix = match[1] || "";
-  const number = match[2];
-  
-  const possible = [clean, number];
-  
-  if (IATA_TO_ICAO[prefix]) {
-    possible.push(IATA_TO_ICAO[prefix] + number);
-  }
-  
-  return possible;
-}
-
-function parseCallsign(flightStr) {
-  if (!flightStr) return { raw: "", prefix: "", number: "" };
-  const clean = flightStr.replace(/\s+/g, '').toUpperCase();
-  const match = clean.match(/^([A-Z0-9]{2,3})?(\d+)$/);
-  
-  if (!match) return { raw: clean, prefix: "", number: "" };
-  return {
-    raw: clean,
-    prefix: match[1] || "",
-    number: match[2]
-  };
-}
-
-async function renderFidsPlanesOnMap(map, flightsLayerGroup) {
-  if (!flightsLayerGroup) return;
-  flightsLayerGroup.clearLayers();
-  planeMarkers = {};
-
-  try {
-    // 1. Récupération des données ADS-B OpenSky (Temps réel)
-    const resRadar = await fetch(`${WORKER_BASE_URL}/api/opensky`).catch(() => null);
-    const radarData = resRadar && resRadar.ok ? await resRadar.json() : { states: [] };
-    const liveStates = radarData.states || [];
-
-    const livePlanes = liveStates.map(state => {
-      const callsign = (state[1] || "").trim().toUpperCase();
-      const parsed = parseCallsign(callsign);
-      return {
-        icao24: state[0],
-        callsign: callsign,
-        numberOnly: parsed.number,
-        lat: state[6],
-        lon: state[5],
-        heading: state[10] || 0,
-        altitude: state[7],
-        speed: state[9]
-      };
-    }).filter(p => p.lat && p.lon && p.speed > 30);
-
-    // 2. Récupération des données FIDS (Horaires)
-    const combinations = [
-      { airport: 'EBLG', type: 'departures' },
-      { airport: 'EBLG', type: 'arrivals' },
-      { airport: 'EBCI', type: 'departures' },
-      { airport: 'EBCI', type: 'arrivals' }
-    ];
-
-    const fidsMap = new Map();
-
-    for (const c of combinations) {
-      try {
-        const res = await fetch(`${WORKER_BASE_URL}/api/fids?airport=${c.airport}&type=${c.type}`);
-        if (res.ok) {
-          const data = await res.json();
-          (data.flights || []).forEach(f => {
-            const parsed = parseCallsign(f.flight);
-            if (parsed.raw) fidsMap.set(parsed.raw, { ...f, airport: c.airport });
-            if (parsed.number) fidsMap.set(parsed.number, { ...f, airport: c.airport });
-            
-            if (IATA_TO_ICAO[parsed.prefix]) {
-              fidsMap.set(IATA_TO_ICAO[parsed.prefix] + parsed.number, { ...f, airport: c.airport });
-            }
-          });
-        }
-      } catch (e) {
-        console.error("Erreur FIDS :", e);
-      }
-      await sleep(150);
-    }
-
-    // 3. Affichage des avions en temps réel (GPS)
-    const hasRotationPlugin = typeof L.Marker.prototype.setRotationAngle === "function";
-
-    livePlanes.forEach(plane => {
-      const fidsInfo = fidsMap.get(plane.callsign) || fidsMap.get(plane.numberOnly);
-
-      const flightTitle = fidsInfo ? fidsInfo.flight : plane.callsign;
-      const airportName = fidsInfo ? AIRPORT_CONFIG[fidsInfo.airport]?.name : "En transit";
-      const destination = fidsInfo ? fidsInfo.city : "Non spécifiée";
-      const statusText = fidsInfo ? fidsInfo.status : "En vol (ADS-B)";
-      
-      const altMeters = plane.altitude ? Math.round(plane.altitude) : 0;
-      const speedKmh = plane.speed ? Math.round(plane.speed * 3.6) : 0;
-
-      const popupContent = `
-        <div style="font-family: sans-serif; font-size: 13px;">
-          <h3 style="margin: 0 0 5px 0; color: #1e293b;">Vol ${flightTitle}</h3>
-          <b>Aéroport :</b> ${airportName}<br>
-          <b>Destination/Origine :</b> ${destination}<br>
-          <b>Altitude :</b> ${altMeters} m | <b>Vitesse :</b> ${speedKmh} km/h<br>
-          <b>Statut :</b> ${statusText}<br>
-          <b>Source :</b> <span style="color: #22c55e; font-weight: bold;">📡 GPS Temps Réel</span>
-        </div>
-      `;
-
-      const markerOptions = { icon: planeIcon };
-      if (hasRotationPlugin) {
-        markerOptions.rotationAngle = plane.heading;
-        markerOptions.rotationOrigin = "center center";
-      }
-
-      const marker = L.marker([plane.lat, plane.lon], markerOptions).bindPopup(popupContent);
-      flightsLayerGroup.addLayer(marker);
-
-      planeMarkers[flightTitle] = marker;
-      if (plane.callsign) planeMarkers[plane.callsign] = marker;
-    });
-
-  } catch (err) {
-    console.error("Erreur d'affichage du radar :", err);
-  }
-}
-
 function msToKmh(ms) {
   return Math.round(ms * 3.6);
 }
@@ -570,7 +489,7 @@ async function fetchFlightsData(specificAirport = null) {
 
   if (ebciBody) {
     await loadFlightType("departures", ebciBody, "EBCI");
-    await sleep(300);
+    await sleep(200);
   }
   if (eblgBody) {
     await loadFlightType("departures", eblgBody, "EBLG");
@@ -606,15 +525,20 @@ async function loadFlightType(type, elementContainer, airport) {
   }
 }
 
-function selectFlightOnMap(flightNum) {
-  const marker = planeMarkers[flightNum];
+function switchFlightTab(airport, type, btnElement) {
+  const parentTabContainer = btnElement.parentElement;
+  if (parentTabContainer) {
+    const buttons = parentTabContainer.querySelectorAll('.tab-btn');
+    buttons.forEach(btn => btn.classList.remove('active'));
+    btnElement.classList.add('active');
+  }
 
-  if (marker) {
-    const latLng = marker.getLatLng();
-    map.setView(latLng, 11, { animate: true });
-    marker.openPopup();
-  } else {
-    alert(`Le vol ${flightNum} n'est pas détecté actuellement sur la carte radar.`);
+  const targetBodyId = `${airport.toLowerCase()}-flights-body`;
+  const container = document.getElementById(targetBodyId);
+
+  if (container) {
+    const flightType = (type === 'dep' || type === 'departures') ? 'departures' : 'arrivals';
+    loadFlightType(flightType, container, airport.toUpperCase());
   }
 }
 
@@ -687,14 +611,11 @@ async function loadAirportWeather(lat, lon, station, tempElemId, metarElemId, fo
   }
 }
 
-// =================================================================
-// FILTRAGE DYNAMIQUE (EBLG / EBCI / TOUS)
-// =================================================================
 function filterAirportView(selectedAirport) {
   const buttons = document.querySelectorAll('.filter-btn');
   buttons.forEach(btn => {
     btn.classList.remove('active');
-    if (btn.getAttribute('onclick').includes(`'${selectedAirport}'`)) {
+    if (btn.getAttribute('onclick')?.includes(`'${selectedAirport}'`)) {
       btn.classList.add('active');
     }
   });
@@ -720,7 +641,6 @@ function filterAirportView(selectedAirport) {
   }
 }
 
-// Initialisation au chargement
 if (document.readyState === "loading") {
   document.addEventListener("DOMContentLoaded", initMap);
 } else {
