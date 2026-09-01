@@ -391,9 +391,12 @@ export default {
         if (res.ok) {
           const data = await res.json();
           const responseData = {
-            main: { temp: data.current_weather ? data.current_weather.temperature : 20 },
-            wind: { speed: data.current_weather ? Math.round(data.current_weather.windspeed / 3.6 * 10) / 10 : 0 }
-          };
+  main: { temp: data.current_weather ? data.current_weather.temperature : 20 },
+  wind: {
+    speed: data.current_weather ? Math.round(data.current_weather.windspeed / 3.6 * 10) / 10 : 0,
+    direction: data.current_weather ? data.current_weather.winddirection : 0
+  }
+};
           return new Response(JSON.stringify(responseData), {
             status: 200,
             headers: { ...corsHeaders, "Content-Type": "application/json" }
