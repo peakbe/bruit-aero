@@ -564,21 +564,24 @@ async function loadAirportWeather(lat, lon, station, tempElemId, metarElemId, fo
     const resWeather = await fetch(`${WORKER_BASE_URL}/api/weather?lat=${lat}&lon=${lon}`);
     const resMetar = await fetch(`${WORKER_BASE_URL}/api/metar?station=${station}`);
 
-    if (resWeather.ok) {
-      const weather = await resWeather.json();
-      const tempEl = document.getElementById(tempElemId);
-      
-      if (tempEl && weather.main) {
-        const windMs = weather.wind?.speed || 0;
-        const windKmh = msToKmh(windMs);
+   if (resWeather.ok) {
+  const weather = await resWeather.json();
+  const tempEl = document.getElementById(tempElemId);
 
-        tempEl.innerHTML = `
-          <strong>${Math.round(weather.main.temp)}°C</strong> 
-          <span style="font-size: 0.85em; opacity: 0.8;">| 💨 ${windMs} m/s (${windKmh} km/h)</span>
-        `;
-      }
-    }
+  if (tempEl && weather.main) {
+    const windMs = weather.wind?.speed || 0;
+    const windKmh = msToKmh(windMs);
+    const windDeg = weather.wind?.direction || 0;
 
+    tempEl.innerHTML = `
+      <strong>${Math.round(weather.main.temp)}°C</strong> 
+      <span style="font-size: 0.85em; opacity: 0.8;">| 💨 ${windMs} m/s (${windKmh} km/h)</span>
+    `;
+
+    // Met à jour la rose des vents avec les données réelles
+    drawCompass(`compass-${station.toLowerCase()}`, windDeg, Math.round(windKmh));
+  }
+}
     if (resMetar.ok) {
       const metar = await resMetar.json();
       const metarEl = document.getElementById(metarElemId);
