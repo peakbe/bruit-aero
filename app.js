@@ -212,7 +212,7 @@ async function renderFidsPlanesOnMap(map, flightsLayerGroup) {
 
     const hasRotationPlugin = typeof L.Marker.prototype.setRotationAngle === "function";
 
-    // 3. Associer le vol FIDS au signal GPS en direct
+   // 3. Associer le vol FIDS au signal GPS en direct
     fidsList.forEach(fids => {
       // Calcul du callsign ICAO théorique (ex: FR9053 -> RYR9053)
       const icaoPrefix = IATA_TO_ICAO[fids.parsed.prefix] || fids.parsed.prefix;
@@ -225,27 +225,16 @@ async function renderFidsPlanesOnMap(map, flightsLayerGroup) {
         (p.numberOnly && p.numberOnly === fids.parsed.number && p.numberOnly.length >= 3)
       );
 
-      let lat, lon, heading, sourceText, altText, speedText;
+      // SI L'AVION N'EST PAS CAPTÉ EN DIRECT PAR LE RADAR, ON NE L'AFFICHE PAS EN LIGNE
+      if (!matchLive) return;
 
-      if (matchLive) {
-        // POSITION RÉELLE GPS TROUVÉE
-        lat = matchLive.lat;
-        lon = matchLive.lon;
-        heading = matchLive.heading;
-        sourceText = `<span style="color: #22c55e; font-weight: bold;">📡 Radar GPS Temps Réel (${matchLive.callsign})</span>`;
-        altText = `${matchLive.altitude ? Math.round(matchLive.altitude) : 0} m`;
-        speedText = `${matchLive.speed ? Math.round(matchLive.speed * 3.6) : 0} km/h`;
-        processedFlights.add(matchLive.icao24);
-      } else {
-        // POSITION ESTIMÉE
-        const est = calculateEstimatedCoords(fids.airport, fids.type, fids.index_by_type);
-        lat = est.lat;
-        lon = est.lon;
-        heading = est.heading;
-        sourceText = `<span style="color: #f59e0b; font-weight: bold;">⏱️ Position Estimée (Horaire FIDS)</span>`;
-        altText = fids.type === "departures" ? "Au sol (Départ)" : "En approche hors zone";
-        speedText = "0 km/h";
-      }
+      const lat = matchLive.lat;
+      const lon = matchLive.lon;
+      const heading = matchLive.heading;
+      const sourceText = `<span style="color: #22c55e; font-weight: bold;">📡 Radar GPS Temps Réel (${matchLive.callsign})</span>`;
+      const altText = `${matchLive.altitude ? Math.round(matchLive.altitude) : 0} m`;
+      const speedText = `${matchLive.speed ? Math.round(matchLive.speed * 3.6) : 0} km/h`;
+      processedFlights.add(matchLive.icao24);
 
       const popupContent = `
         <div style="font-family: sans-serif; font-size: 13px;">
