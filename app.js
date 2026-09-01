@@ -226,8 +226,14 @@ async function renderFidsPlanesOnMap(map, flightsLayerGroup) {
       );
 
       // SI L'AVION N'EST PAS CAPTÉ EN DIRECT PAR LE RADAR, ON NE L'AFFICHE PAS EN LIGNE
-      if (!matchLive) {
-  // Pas de signal live : on place un marqueur estimé (grisé) au lieu de ne rien afficher
+     if (!matchLive) {
+  const statusLower = (fids.status || "").toLowerCase();
+  const isScheduled = /programm|scheduled/.test(statusLower);
+
+  // On n'estime une position que pour les vols pas encore partis.
+  // Les vols atterris, annulés ou retardés n'ont pas de position estimée sensée.
+  if (!isScheduled) return;
+
   const est = calculateEstimatedCoords(fids.airport, fids.type, fids.index_by_type);
   const popupContent = `
     <div style="font-family: sans-serif; font-size: 13px;">
@@ -235,7 +241,7 @@ async function renderFidsPlanesOnMap(map, flightsLayerGroup) {
       <b>Destination/Origine :</b> ${fids.city}<br>
       <b>Heure :</b> ${fids.time}<br>
       <b>Statut :</b> ${fids.status}<br>
-      <b>Source :</b> <span style="color:#f59e0b; font-weight:bold;">📍 Position estimée (pas de signal radar)</span>
+      <b>Source :</b> <span style="color:#f59e0b; font-weight:bold;">📍 Position estimée (pas encore de signal radar)</span>
     </div>
   `;
   const marker = L.marker([est.lat, est.lon], {
@@ -322,7 +328,7 @@ async function renderFidsPlanesOnMap(map, flightsLayerGroup) {
 function selectFlightOnMap(flightNum) {
   const cleanKey = flightNum.replace(/\s+/g, '').toUpperCase();
   const parsed = parseCallsign(cleanKey);
-  
+
   let marker = planeMarkers[cleanKey] || planeMarkers[parsed.number];
   if (!marker && IATA_TO_ICAO[parsed.prefix]) {
     marker = planeMarkers[IATA_TO_ICAO[parsed.prefix] + parsed.number];
@@ -332,10 +338,9 @@ function selectFlightOnMap(flightNum) {
     const latLng = marker.getLatLng();
     map.setView(latLng, 11, { animate: true });
     marker.openPopup();
-} else {
-  console.warn(`Vol ${flightNum} non localisable (pas de signal radar actif).`);
-  // ou un toast non bloquant si tu en as un, plutôt qu'un alert()
-}
+  } else {
+    console.warn(`Vol ${flightNum} non localisable (pas de position radar ou estimée disponible).`);
+  }
 }
 
 // =================================================================
