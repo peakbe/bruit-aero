@@ -226,7 +226,29 @@ async function renderFidsPlanesOnMap(map, flightsLayerGroup) {
       );
 
       // SI L'AVION N'EST PAS CAPTÉ EN DIRECT PAR LE RADAR, ON NE L'AFFICHE PAS EN LIGNE
-      if (!matchLive) return;
+      if (!matchLive) {
+  // Pas de signal live : on place un marqueur estimé (grisé) au lieu de ne rien afficher
+  const est = calculateEstimatedCoords(fids.airport, fids.type, fids.index_by_type);
+  const popupContent = `
+    <div style="font-family: sans-serif; font-size: 13px;">
+      <h3 style="margin: 0 0 5px 0; color: #1e293b;">Vol ${fids.flight} (${fids.type === 'departures' ? 'Départ' : 'Arrivée'})</h3>
+      <b>Destination/Origine :</b> ${fids.city}<br>
+      <b>Heure :</b> ${fids.time}<br>
+      <b>Statut :</b> ${fids.status}<br>
+      <b>Source :</b> <span style="color:#f59e0b; font-weight:bold;">📍 Position estimée (pas de signal radar)</span>
+    </div>
+  `;
+  const marker = L.marker([est.lat, est.lon], {
+    icon: yellowPlaneIcon,
+    opacity: 0.5
+  }).bindPopup(popupContent);
+  flightsLayerGroup.addLayer(marker);
+
+  planeMarkers[fids.flight] = marker;
+  planeMarkers[fids.parsed.raw] = marker;
+  if (fids.parsed.number) planeMarkers[fids.parsed.number] = marker;
+  return;
+}
 
       const lat = matchLive.lat;
       const lon = matchLive.lon;
@@ -310,9 +332,10 @@ function selectFlightOnMap(flightNum) {
     const latLng = marker.getLatLng();
     map.setView(latLng, 11, { animate: true });
     marker.openPopup();
-  } else {
-    alert(`Le vol ${flightNum} n'a pas pu être localisé sur la carte.`);
-  }
+} else {
+  console.warn(`Vol ${flightNum} non localisable (pas de signal radar actif).`);
+  // ou un toast non bloquant si tu en as un, plutôt qu'un alert()
+}
 }
 
 // =================================================================
@@ -516,18 +539,34 @@ async function loadFlightType(type, elementContainer, airport) {
 
     const data = await response.json();
     if (data && Array.isArray(data.flights) && data.flights.length > 0) {
+      
       elementContainer.innerHTML = data.flights
-        .map(
-          (f) => `
-            <tr onclick="selectFlightOnMap('${f.flight}')" style="cursor: pointer;">
-              <td><strong>${f.flight}</strong></td>
-              <td>${f.city}</td>
-              <td>${f.time}</td>
-              <td><span class="badge">${f.status}</span></td>
-            </tr>
-          `
-        )
-        .join("");
+  .map((f) => {
+    const statusLower = (f.status || "").toLowerCase();
+    const notTrackable = /land|atterr|cancel|annul|delay|retard/.test(statusLower);
+
+    if (notTrackable) {
+      return `
+        <tr style="opacity:0.5;" title="Position radar indisponible">
+          <td><strong>${f.flight}</strong></td>
+          <td>${f.city}</td>
+          <td>${f.time}</td>
+          <td><span class="badge">${f.status}</span></td>
+        </tr>
+      `;
+    }
+
+    return `
+      <tr onclick="selectFlightOnMap('${f.flight}')" style="cursor: pointer;">
+        <td><strong>${f.flight}</strong></td>
+        <td>${f.city}</td>
+        <td>${f.time}</td>
+        <td><span class="badge">${f.status}</span></td>
+      </tr>
+    `;
+  })
+  .join("");
+      
     } else {
       elementContainer.innerHTML = `<tr><td colspan="4" style="text-align:center;">Aucun vol trouvé pour ${airport}</td></tr>`;
     }
