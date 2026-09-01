@@ -145,7 +145,7 @@ export default {
         const type = url.searchParams.get("type") || "departures";
         const airportCode = (url.searchParams.get("airport") || "EBLG").toUpperCase();
         
-        const airlabsKey = env.AIRLABS_KEY || "VOTRE_CLE_AIRLABS";
+        const airlabsKey = env.AIRLABS_API_KEY || "VOTRE_CLE_AIRLABS";
         const aviationstackKey = env.AVIATIONSTACK_KEY || "VOTRE_CLE_AVIATIONSTACK";
         const rapidapiKey = env.RAPIDAPI_KEY || "VOTRE_CLE_RAPIDAPI";
 
