@@ -121,31 +121,47 @@ const AIRPORT_CONFIG = {
   EBCI: { name: "Charleroi Airport", lat: 50.4592, lon: 4.4538, heading: 242 }
 };
 
-function calculateEstimatedCoords(airportCode, type, index) {
+// Génère un nombre pseudo-aléatoire stable [0, 1) à partir d'une chaîne (numéro de vol)
+// -> même vol = même position tant qu'il garde le même statut, mais plus de ligne parfaite
+function seededRandom(str) {
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    hash = (hash * 31 + str.charCodeAt(i)) | 0;
+  }
+  const x = Math.sin(hash) * 10000;
+  return x - Math.floor(x); // [0, 1)
+}
+
+function calculateEstimatedCoords(airportCode, type, index, flightNumber = "") {
   const cfg = AIRPORT_CONFIG[airportCode] || AIRPORT_CONFIG.EBCI;
-  
-  // Distance entre chaque avion sur la ligne d'attente/approche
-  const step = (index + 1) * 0.018; 
+
+  // Distance de base sur l'axe d'approche/décollage, + variation stable par vol (±40%)
+  const baseStep = (index + 1) * 0.018;
+  const distJitter = 0.7 + seededRandom(flightNumber + "d") * 0.6; // entre 0.7x et 1.3x
+  const step = baseStep * distJitter;
+
+  // Décalage latéral perpendiculaire à l'axe, stable par vol (simule la dispersion réelle des trajectoires)
+  const headingRad = (cfg.heading * Math.PI) / 180;
+  const perpRad = headingRad + Math.PI / 2;
+  const lateralOffset = (seededRandom(flightNumber + "l") - 0.5) * 0.025; // ±0.0125°, latéral
+  const perpLat = Math.cos(perpRad) * lateralOffset;
+  const perpLon = Math.sin(perpRad) * lateralOffset;
 
   if (type === "departures") {
-    // Départs : Partent de l'aéroport et s'éloignent dans l'axe de décollage
     return {
-      lat: cfg.lat + (step * 0.5),
-      lon: cfg.lon + step,
+      lat: cfg.lat + (step * 0.5) + perpLat,
+      lon: cfg.lon + step + perpLon,
       heading: cfg.heading
     };
   } else {
-    // Arrivées : Placées EN AMONT de l'aéroport (éloignées sur l'axe d'approche)
-    const approachHeading = (cfg.heading + 180) % 360; // Cap orienté vers la piste
-    
+    const approachHeading = (cfg.heading + 180) % 360;
     return {
-      lat: cfg.lat - (step * 0.5) - 0.01, 
-      lon: cfg.lon - step - 0.02,
+      lat: cfg.lat - (step * 0.5) - 0.01 + perpLat,
+      lon: cfg.lon - step - 0.02 + perpLon,
       heading: approachHeading
     };
   }
 }
-
 // =================================================================
 // 4. AFFICHAGE ET CORRÉLATION DU RADAR
 // =================================================================
