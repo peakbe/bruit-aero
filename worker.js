@@ -56,17 +56,17 @@ export default {
               if (isGroundFlag || speedKmh < 60 || altitudeMeters < 150) return;
 
               mappedStates.push([
-                key,
-                f[16] || f[13] || "Inconnu",
-                "BE",
-                f[10] || 0,
-                f[10] || 0,
-                lon,
-                lat,
-                altitudeMeters,
-                false,
-                speedKts * 0.514444,
-                f[3] || 0
+                key,                          // [0] ICAO Hex
+                f[16] || f[13] || "Inconnu",  // [1] Indicatif / Vol
+                "BE",                         // [2] Pays
+                f[10] || 0,                   // [3] Horodatage
+                f[10] || 0,                   // [4] Dernier contact
+                lon,                          // [5] Longitude
+                lat,                          // [6] Latitude
+                altitudeMeters,               // [7] Altitude (mètres)
+                false,                        // [8] Au sol
+                speedKts * 0.514444,          // [9] Vitesse (m/s)
+                f[3] || 0                     // [10] Cap / Heading (degrés)
               ]);
             });
 
@@ -207,7 +207,6 @@ export default {
         // --- SOURCE 2 : AVIATIONSTACK ---
         try {
           const paramName = isDep ? "dep_icao" : "arr_icao";
-          // Correction de HTTP vers HTTPS
           const aviationUrl = `https://api.aviationstack.com/v1/flights?access_key=${aviationstackKey}&${paramName}=${airportCode}&limit=10`;
 
           const resAviation = await fetch(aviationUrl);
@@ -344,23 +343,23 @@ export default {
                   formattedTime = date.toLocaleTimeString("fr-BE", { hour: "2-digit", minute: "2-digit", timeZone: "Europe/Brussels" });
                 }
 
-               const rawFr24Status = (f?.status?.text || "").toLowerCase();
-let mappedStatus = "Programmé";
+                // Logique réordonnée des statuts
+                const rawFr24Status = (f?.status?.text || "").toLowerCase();
+                let mappedStatus = "Programmé";
 
-if (rawFr24Status.includes("landed")) {
-  mappedStatus = "Atterri";
-} else if (rawFr24Status.includes("boarding")) {
-  mappedStatus = "Embarquement";
-} else if (rawFr24Status.includes("departed") || rawFr24Status.includes("en route") || rawFr24Status.includes("en-route")) {
-  mappedStatus = "En vol / Parti";
-} else if (rawFr24Status.includes("delayed")) {
-  mappedStatus = "Retardé";
-} else if (rawFr24Status.includes("cancelled") || rawFr24Status.includes("canceled")) {
-  mappedStatus = "Annulé";
-} else {
-  // Les mentions "Estimated HH:MM" restent marquées "Programmé" tant qu'il n'y a pas de retard explicite
-  mappedStatus = "Programmé";
-}
+                if (rawFr24Status.includes("landed")) {
+                  mappedStatus = "Atterri";
+                } else if (rawFr24Status.includes("boarding")) {
+                  mappedStatus = "Embarquement";
+                } else if (rawFr24Status.includes("departed") || rawFr24Status.includes("en route") || rawFr24Status.includes("en-route")) {
+                  mappedStatus = "En vol / Parti";
+                } else if (rawFr24Status.includes("delayed")) {
+                  mappedStatus = "Retardé";
+                } else if (rawFr24Status.includes("cancelled") || rawFr24Status.includes("canceled")) {
+                  mappedStatus = "Annulé";
+                } else {
+                  mappedStatus = "Programmé";
+                }
 
                 return {
                   flight: f?.identification?.number?.default || f?.identification?.callsign || "N/C",
