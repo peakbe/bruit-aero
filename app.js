@@ -1,11 +1,10 @@
 // =================================================================
-// 1. CONFIGURATION ET VARIABLES GLOBALES SÉCURISÉES
+// 1. CONFIGURATION ET VARIABLES GLOBALES
 // =================================================================
 var WORKER_BASE_URL = "https://bruit-aero-proxy.pnyr682w7f.workers.dev";
 
 var map = map || null;
 var planeMarkers = planeMarkers || {}; 
-var lastValidStates = lastValidStates || [];
 var currentAirport = currentAirport || "EBLG";
 var flightsGroup = flightsGroup || null;
 
@@ -25,30 +24,17 @@ const yellowPlaneIcon = L.divIcon({
 
 const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
-// Dictionnaire étendu IATA -> ICAO
 const IATA_TO_ICAO = {
-  "FR": "RYR", // Ryanair
-  "TB": "TUI", // TUI fly Belgium
-  "SN": "BEL", // Brussels Airlines
-  "LH": "DLH", // Lufthansa
-  "HV": "TRA", // Transavia
-  "W6": "WZZ", // Wizz Air
-  "3V": "TAY", // ASL Airlines Belgium
-  "FQ": "BAW", // British Airways
-  "VY": "VLG"  // Vueling
+  "FR": "RYR", "TB": "TUI", "SN": "BEL", "LH": "DLH", 
+  "HV": "TRA", "W6": "WZZ", "3V": "TAY", "FQ": "BAW", "VY": "VLG"
 };
-
-const MAX_ESTIMATED_MARKERS_PER_GROUP = 4;
 
 // =================================================================
 // 2. INITIALISATION CARTE
 // =================================================================
 function initMap() {
   const mapContainer = document.getElementById("map");
-  if (!mapContainer) {
-    console.error("Conteneur #map introuvable.");
-    return;
-  }
+  if (!mapContainer) return;
 
   map = L.map("map").setView([50.55, 4.95], 9);
   flightsGroup = L.layerGroup().addTo(map);
@@ -58,11 +44,8 @@ function initMap() {
     attribution: "© OpenStreetMap",
   }).addTo(map);
 
-  const markerEBLG = L.marker([AIRPORTS.EBLG.lat, AIRPORTS.EBLG.lon]).addTo(map).bindPopup(`<b>${AIRPORTS.EBLG.name} (EBLG)</b>`);
-  const markerEBCI = L.marker([AIRPORTS.EBCI.lat, AIRPORTS.EBCI.lon]).addTo(map).bindPopup(`<b>${AIRPORTS.EBCI.name} (EBCI)</b>`);
-
-  markerEBLG.on('click', () => fetchFlightsData('EBLG'));
-  markerEBCI.on('click', () => fetchFlightsData('EBCI'));
+  L.marker([AIRPORTS.EBLG.lat, AIRPORTS.EBLG.lon]).addTo(map).bindPopup(`<b>${AIRPORTS.EBLG.name} (EBLG)</b>`);
+  L.marker([AIRPORTS.EBCI.lat, AIRPORTS.EBCI.lon]).addTo(map).bindPopup(`<b>${AIRPORTS.EBCI.name} (EBCI)</b>`);
 
   renderSonometersOnMap(map);
 
@@ -73,16 +56,7 @@ function initMap() {
       const button = L.DomUtil.create("button", "leaflet-btn-recenter", container);
       button.type = "button";
       button.innerHTML = "🎯 Recentrer";
-      button.title = "Recentrer la carte";
-
-      L.DomEvent.disableClickPropagation(button);
-      L.DomEvent.disableScrollPropagation(button);
-
-      button.onclick = function (e) {
-        e.preventDefault();
-        mapInstance.setView([50.55, 4.95], 9);
-      };
-
+      button.onclick = (e) => { e.preventDefault(); mapInstance.setView([50.55, 4.95], 9); };
       return container;
     }
   });
@@ -93,83 +67,33 @@ function initMap() {
   fetchFlightsData();
   fetchWeatherData();
 
-  // Rafraîchissement radar fluide (5 sec) & données secondaires
+  // Rafraîchissement du radar en direct toutes les 5s pour une animation fluide
   setInterval(() => renderFidsPlanesOnMap(map, flightsGroup), 5000);
   setInterval(fetchFlightsData, 120000);
   setInterval(fetchWeatherData, 300000);
 
-  window.addEventListener("resize", () => {
-    if (map) map.invalidateSize();
-  });
+  window.addEventListener("resize", () => { if (map) map.invalidateSize(); });
 }
 
 // =================================================================
-// 3. UTILITAIRES ET PARSING
+// 3. UTILITAIRES
 // =================================================================
 function parseCallsign(flightStr) {
   if (!flightStr) return { raw: "", prefix: "", number: "" };
   const clean = flightStr.replace(/\s+/g, '').toUpperCase();
   const match = clean.match(/^([A-Z0-9]{2,3})?(\d+)$/);
-  
-  if (!match) return { raw: clean, prefix: "", number: "" };
-  return {
-    raw: clean,
-    prefix: match[1] || "",
-    number: match[2]
-  };
-}
-
-const AIRPORT_CONFIG = {
-  EBLG: { name: "Liège Airport", lat: 50.6374, lon: 5.4432, heading: 228 },
-  EBCI: { name: "Charleroi Airport", lat: 50.4592, lon: 4.4538, heading: 242 }
-};
-
-function seededRandom(str) {
-  let hash = 0;
-  for (let i = 0; i < str.length; i++) {
-    hash = (hash * 31 + str.charCodeAt(i)) | 0;
-  }
-  const x = Math.sin(hash) * 10000;
-  return x - Math.floor(x);
-}
-
-function calculateEstimatedCoords(airportCode, type, index, flightNumber = "") {
-  const cfg = AIRPORT_CONFIG[airportCode] || AIRPORT_CONFIG.EBCI;
-
-  const baseStep = (index + 1) * 0.018;
-  const distJitter = 0.7 + seededRandom(flightNumber + "d") * 0.6;
-  const step = baseStep * distJitter;
-
-  const headingRad = (cfg.heading * Math.PI) / 180;
-  const perpRad = headingRad + Math.PI / 2;
-  const lateralOffset = (seededRandom(flightNumber + "l") - 0.5) * 0.025;
-  const perpLat = Math.cos(perpRad) * lateralOffset;
-  const perpLon = Math.sin(perpRad) * lateralOffset;
-
-  if (type === "departures") {
-    return {
-      lat: cfg.lat + (step * 0.5) + perpLat,
-      lon: cfg.lon + step + perpLon,
-      heading: cfg.heading
-    };
-  } else {
-    const approachHeading = (cfg.heading + 180) % 360;
-    return {
-      lat: cfg.lat - (step * 0.5) - 0.01 + perpLat,
-      lon: cfg.lon - step - 0.02 + perpLon,
-      heading: approachHeading
-    };
-  }
+  return { raw: clean, prefix: match ? match[1] || "" : "", number: match ? match[2] : "" };
 }
 
 // =================================================================
-// 4. AFFICHAGE ET CORRÉLATION DU RADAR (AVEC ANIMATION)
+// 4. RADAR TEMPS RÉEL ET CORRÉLATION FIDS
 // =================================================================
 async function renderFidsPlanesOnMap(map, flightsLayerGroup) {
   if (!flightsLayerGroup) return;
   const currentActiveKeys = new Set();
 
   try {
+    // 1. Récupération du radar réel OpenSky
     const resRadar = await fetch(`${WORKER_BASE_URL}/api/opensky?lamin=49.0&lomin=2.0&lamax=51.8&lomax=7.0`).catch(() => null);
     const radarData = resRadar && resRadar.ok ? await resRadar.json() : { states: [] };
     const liveStates = radarData.states || [];
@@ -190,146 +114,64 @@ async function renderFidsPlanesOnMap(map, flightsLayerGroup) {
       };
     }).filter(p => p.lat && p.lon);
 
+    // 2. Récupération des données d'affichage FIDS pour enrichir le popup
     const combinations = [
-      { airport: 'EBLG', type: 'departures' },
-      { airport: 'EBLG', type: 'arrivals' },
-      { airport: 'EBCI', type: 'departures' },
-      { airport: 'EBCI', type: 'arrivals' }
+      { airport: 'EBLG', type: 'departures' }, { airport: 'EBLG', type: 'arrivals' },
+      { airport: 'EBCI', type: 'departures' }, { airport: 'EBCI', type: 'arrivals' }
     ];
 
     const fidsList = [];
-    const processedFlights = new Set();
-
     for (const c of combinations) {
       try {
         const res = await fetch(`${WORKER_BASE_URL}/api/fids?airport=${c.airport}&type=${c.type}`);
         if (res.ok) {
           const rawData = await res.json();
           const flightArray = Array.isArray(rawData) ? rawData : (rawData.flights || []);
-          flightArray.forEach((f, idx) => {
-            const parsed = parseCallsign(f.flight);
-            fidsList.push({ 
-              ...f, 
-              airport: c.airport, 
-              type: c.type, 
-              parsed, 
-              index_by_type: idx 
-            });
-          });
+          flightArray.forEach(f => fidsList.push({ ...f, airport: c.airport, type: c.type, parsed: parseCallsign(f.flight) }));
         }
-      } catch (e) {
-        console.error("Erreur FIDS :", e);
-      }
-      await sleep(50);
+      } catch (e) {}
     }
 
     const hasRotationPlugin = typeof L.Marker.prototype.setRotationAngle === "function";
-    const estimatedCounts = {};
 
-    fidsList.forEach(fids => {
-      const icaoPrefix = IATA_TO_ICAO[fids.parsed.prefix] || fids.parsed.prefix;
-      const targetIcaoCallsign = `${icaoPrefix}${fids.parsed.number}`;
-
-      const matchLive = livePlanes.find(p => 
-        p.callsign === targetIcaoCallsign ||
-        p.callsign === fids.parsed.raw ||
-        (p.numberOnly && p.numberOnly === fids.parsed.number && p.numberOnly.length >= 3)
-      );
-
-      const markerKey = fids.flight || fids.parsed.raw;
-
-      if (!matchLive) {
-        const statusLower = (fids.status || "").toLowerCase();
-        const isScheduled = /programm|scheduled/.test(statusLower);
-
-        if (!isScheduled) return;
-
-        const groupKey = `${fids.airport}-${fids.type}`;
-        estimatedCounts[groupKey] = (estimatedCounts[groupKey] || 0) + 1;
-        if (estimatedCounts[groupKey] > MAX_ESTIMATED_MARKERS_PER_GROUP) return;
-
-        const est = calculateEstimatedCoords(fids.airport, fids.type, fids.index_by_type, fids.flight);
-        const popupContent = `
-          <div style="font-family: sans-serif; font-size: 13px;">
-            <h3 style="margin: 0 0 5px 0; color: #1e293b;">Vol ${fids.flight} (${fids.type === 'departures' ? 'Départ' : 'Arrivée'})</h3>
-            <b>Destination/Origine :</b> ${fids.city}<br>
-            <b>Heure :</b> ${fids.time}<br>
-            <b>Statut :</b> ${fids.status}<br>
-            <b>Source :</b> <span style="color:#f59e0b; font-weight:bold;">📍 Position estimée</span>
-          </div>
-        `;
-
-        if (planeMarkers[markerKey]) {
-          planeMarkers[markerKey].setLatLng([est.lat, est.lon]);
-          planeMarkers[markerKey].getPopup().setContent(popupContent);
-        } else {
-          const marker = L.marker([est.lat, est.lon], {
-            icon: yellowPlaneIcon,
-            opacity: 0.5
-          }).bindPopup(popupContent);
-          
-          flightsLayerGroup.addLayer(marker);
-          planeMarkers[markerKey] = marker;
-        }
-
-        currentActiveKeys.add(markerKey);
-        if (fids.parsed.number) planeMarkers[fids.parsed.number] = planeMarkers[markerKey];
-        return;
-      }
-
-      const lat = matchLive.lat;
-      const lon = matchLive.lon;
-      const heading = matchLive.heading;
-      const sourceText = `<span style="color: #22c55e; font-weight: bold;">📡 Radar GPS Temps Réel (${matchLive.callsign})</span>`;
-      const altText = `${matchLive.altitude ? Math.round(matchLive.altitude) : 0} m`;
-      const speedText = `${matchLive.speed ? Math.round(matchLive.speed * 3.6) : 0} km/h`;
-      processedFlights.add(matchLive.icao24);
-
-      const popupContent = `
-        <div style="font-family: sans-serif; font-size: 13px;">
-          <h3 style="margin: 0 0 5px 0; color: #1e293b;">Vol ${fids.flight} (${fids.type === 'departures' ? 'Départ' : 'Arrivée'})</h3>
-          <b>Aéroport :</b> ${AIRPORT_CONFIG[fids.airport]?.name || fids.airport}<br>
-          <b>Destination/Origine :</b> ${fids.city}<br>
-          <b>Heure :</b> ${fids.time}<br>
-          <b>Altitude :</b> ${altText} | <b>Vitesse :</b> ${speedText}<br>
-          <b>Statut :</b> ${fids.status}<br>
-          <b>Source :</b> ${sourceText}
-        </div>
-      `;
-
-      if (planeMarkers[markerKey]) {
-        planeMarkers[markerKey].setLatLng([lat, lon]);
-        if (hasRotationPlugin) planeMarkers[markerKey].setRotationAngle(heading);
-        planeMarkers[markerKey].getPopup().setContent(popupContent);
-      } else {
-        const markerOptions = { icon: yellowPlaneIcon };
-        if (hasRotationPlugin) {
-          markerOptions.rotationAngle = heading;
-          markerOptions.rotationOrigin = "center center";
-        }
-        const marker = L.marker([lat, lon], markerOptions).bindPopup(popupContent);
-        flightsLayerGroup.addLayer(marker);
-        planeMarkers[markerKey] = marker;
-      }
-
-      currentActiveKeys.add(markerKey);
-      planeMarkers[targetIcaoCallsign] = planeMarkers[markerKey];
-      if (fids.parsed.number) planeMarkers[fids.parsed.number] = planeMarkers[markerKey];
-    });
-
+    // 3. Affichage exclusif des avions réellement en vol
     livePlanes.forEach(plane => {
-      if (processedFlights.has(plane.icao24)) return;
-
       const markerKey = plane.callsign || plane.icao24;
-      const popupContent = `
+
+      // Recherche de métadonnées FIDS correspondantes
+      const matchingFids = fidsList.find(f => {
+        const icaoPrefix = IATA_TO_ICAO[f.parsed.prefix] || f.parsed.prefix;
+        const targetCallsign = `${icaoPrefix}${f.parsed.number}`;
+        return plane.callsign === targetCallsign || plane.callsign === f.parsed.raw || (plane.numberOnly && plane.numberOnly === f.parsed.number);
+      });
+
+      const altText = plane.altitude ? `${Math.round(plane.altitude)} m` : "Non spécifiée";
+      const speedText = plane.speed ? `${Math.round(plane.speed * 3.6)} km/h` : "Non spécifiée";
+
+      let popupContent = `
         <div style="font-family: sans-serif; font-size: 13px;">
           <h3 style="margin: 0 0 5px 0; color: #1e293b;">Vol ${plane.callsign || "Inconnu"}</h3>
-          <b>Altitude :</b> ${plane.altitude ? Math.round(plane.altitude) : 0} m<br>
-          <b>Vitesse :</b> ${plane.speed ? Math.round(plane.speed * 3.6) : 0} km/h<br>
+          <b>Altitude :</b> ${altText}<br>
+          <b>Vitesse :</b> ${speedText}<br>
           <b>Source :</b> <span style="color: #22c55e; font-weight: bold;">📡 Radar GPS Direct</span>
         </div>
       `;
 
+      if (matchingFids) {
+        popupContent = `
+          <div style="font-family: sans-serif; font-size: 13px;">
+            <h3 style="margin: 0 0 5px 0; color: #1e293b;">Vol ${matchingFids.flight} (${matchingFids.type === 'departures' ? 'Départ' : 'Arrivée'})</h3>
+            <b>Aéroport :</b> ${matchingFids.airport}<br>
+            <b>Destination/Origine :</b> ${matchingFids.city}<br>
+            <b>Heure :</b> ${matchingFids.time}<br>
+            <b>Altitude :</b> ${altText} | <b>Vitesse :</b> ${speedText}<br>
+            <b>Statut :</b> ${matchingFids.status}<br>
+            <b>Source :</b> <span style="color: #22c55e; font-weight: bold;">📡 Radar GPS Direct</span>
+          </div>
+        `;
+      }
+
+      // Mise à jour fluide du marqueur existant
       if (planeMarkers[markerKey]) {
         planeMarkers[markerKey].setLatLng([plane.lat, plane.lon]);
         if (hasRotationPlugin) planeMarkers[markerKey].setRotationAngle(plane.heading);
@@ -346,9 +188,11 @@ async function renderFidsPlanesOnMap(map, flightsLayerGroup) {
       }
 
       currentActiveKeys.add(markerKey);
+      if (plane.callsign) planeMarkers[plane.callsign] = planeMarkers[markerKey];
+      if (plane.numberOnly) planeMarkers[plane.numberOnly] = planeMarkers[markerKey];
     });
 
-    // Nettoyage des marqueurs obsolètes
+    // Nettoyage des avions qui quittent le radar
     Object.keys(planeMarkers).forEach(key => {
       if (!currentActiveKeys.has(key)) {
         flightsLayerGroup.removeLayer(planeMarkers[key]);
@@ -374,16 +218,15 @@ function selectFlightOnMap(flightNum) {
   }
 
   if (marker) {
-    const latLng = marker.getLatLng();
-    map.setView(latLng, 11, { animate: true });
+    map.setView(marker.getLatLng(), 11, { animate: true });
     marker.openPopup();
   } else {
-    console.warn(`Vol ${flightNum} non localisable.`);
+    alert(`Le vol ${flightNum} n'est pas encore visible sur le radar en direct.`);
   }
 }
 
 // =================================================================
-// 6. DONNÉES SONOMÈTRES & PISTES
+// 6. DONNÉES SONOMÈTRES ET PISTES
 // =================================================================
 const sonometersEBCI = [
   { id: "F118", address: "Rue Piconette 1, Sombreffe", latDMS: "50 30 18.96 N", lonDMS: "4 36 40.25 E" },
@@ -430,29 +273,21 @@ let currentRunwayEBLG = "22";
 
 function dmsToDecimal(dmsStr) {
   const parts = dmsStr.trim().split(/\s+/);
-  const degrees = parseFloat(parts[0]);
-  const minutes = parseFloat(parts[1]);
-  const seconds = parseFloat(parts[2]);
-  const direction = parts[3];
-
-  let dd = degrees + minutes / 60 + seconds / 3600;
-  if (direction === "S" || direction === "W") dd = -dd;
-  return dd;
+  let dd = parseFloat(parts[0]) + parseFloat(parts[1]) / 60 + parseFloat(parts[2]) / 3600;
+  return (parts[3] === "S" || parts[3] === "W") ? -dd : dd;
 }
 
 function getSonometerColor(id, airport) {
   if (airport === "EBLG") {
     if (currentRunwayEBLG === "22") return "#10b981"; 
     if (currentRunwayEBLG === "04") {
-      const redListEBLG = ["F004", "F005", "F006", "F010", "F012", "F016", "F017"];
-      return redListEBLG.includes(id) ? "#ef4444" : "#10b981";
+      return ["F004", "F005", "F006", "F010", "F012", "F016", "F017"].includes(id) ? "#ef4444" : "#10b981";
     }
   }
   if (airport === "EBCI") {
     if (currentRunwayEBCI === "24") return "#10b981"; 
     if (currentRunwayEBCI === "06") {
-      const redListEBCI = ["F114", "F116", "F117", "F118"];
-      return redListEBCI.includes(id) ? "#ef4444" : "#10b981";
+      return ["F114", "F116", "F117", "F118"].includes(id) ? "#ef4444" : "#10b981";
     }
   }
   return "#10b981";
@@ -475,87 +310,47 @@ function renderSonometersOnMap(map) {
     const color = getSonometerColor(s.id, s.airport);
 
     const marker = L.circleMarker([lat, lng], {
-      radius: 7,
-      fillColor: color,
-      color: "#ffffff",
-      weight: 2,
-      opacity: 1,
-      fillOpacity: 0.9
+      radius: 7, fillColor: color, color: "#ffffff", weight: 2, opacity: 1, fillOpacity: 0.9
     }).addTo(map);
 
     const activeRunway = s.airport === "EBCI" ? currentRunwayEBCI : currentRunwayEBLG;
-    const statusText = color === "#10b981" ? "Actif (Vert)" : "Inactif/Alerte (Rouge)";
 
-    const basePopupHTML = `
+    marker.bindPopup(`
       <div style="color: #0f172a; font-family: sans-serif; min-width: 200px;">
         <b style="font-size: 1.05rem;">Sonomètre ${s.id} (${s.airport})</b><br>
         <span style="font-size:0.85rem; color: #475569;">${s.address}</span>
         <hr style="margin:6px 0; border:0; border-top:1px solid #cbd5e1;">
         <b>Piste active :</b> Piste ${activeRunway}<br>
-        <b>Statut :</b> <span style="color:${color}; font-weight:bold;">${statusText}</span>
-        <hr style="margin:6px 0; border:0; border-top:1px solid #cbd5e1;">
-        <div id="weather-sono-${s.id}" style="font-size:0.85rem; color: #64748b;">
-          ⏳ Chargement de la météo locale...
+        <div id="weather-sono-${s.id}" style="font-size:0.85rem; color: #64748b; margin-top: 4px;">
+          ⏳ Chargement météo...
         </div>
       </div>
-    `;
-
-    marker.bindPopup(basePopupHTML);
+    `);
 
     marker.on('click', async () => {
       try {
         const res = await fetch(`${WORKER_BASE_URL}/api/weather?lat=${lat}&lon=${lng}`);
         const weatherDiv = document.getElementById(`weather-sono-${s.id}`);
-        
         if (res.ok && weatherDiv) {
           const weather = await res.json();
-          const temp = Math.round(weather.main?.temp ?? 0);
-          const windMs = weather.wind?.speed ?? 0;
-          const windKmh = msToKmh(windMs);
-          const city = weather.name || "Localité";
-          const icon = weather.weather?.[0]?.icon || "01d";
-          const desc = weather.weather?.[0]?.description || "";
-
-          weatherDiv.innerHTML = `
-            <b>🌤️ Météo (${city}) :</b><br>
-            <div style="display: flex; align-items: center; gap: 8px; margin-top: 4px;">
-              <img src="https://openweathermap.org/img/wn/${icon}.png" width="32" height="32" alt="${desc}"/>
-              <div>
-                <strong>${temp}°C</strong> — ${desc}<br>
-                <span style="font-size: 0.75rem; color: #475569;">💨 Vent : ${windKmh} km/h (${windMs} m/s)</span>
-              </div>
-            </div>
-          `;
-        } else if (weatherDiv) {
-          weatherDiv.innerHTML = `<span style="color:#ef4444;">Météo indisponible</span>`;
+          weatherDiv.innerHTML = `<b>🌤️ Météo :</b> ${Math.round(weather.main?.temp ?? 0)}°C, Vent ${msToKmh(weather.wind?.speed ?? 0)} km/h`;
         }
-      } catch (err) {
-        console.error("Erreur météo sonomètre :", err);
-      }
+      } catch (err) {}
     });
 
     sonometerMarkers.push(marker);
   });
 }
 
-function setRunwayEBCI(runwayNum, map) {
-  currentRunwayEBCI = runwayNum;
-  renderSonometersOnMap(map);
-}
-
-function setRunwayEBLG(runwayNum, map) {
-  currentRunwayEBLG = runwayNum;
-  renderSonometersOnMap(map);
-}
+function setRunwayEBCI(runwayNum, map) { currentRunwayEBCI = runwayNum; renderSonometersOnMap(map); }
+function setRunwayEBLG(runwayNum, map) { currentRunwayEBLG = runwayNum; renderSonometersOnMap(map); }
 
 // =================================================================
 // 7. CHARGEMENT TABLEAUX ET MÉTÉO
 // =================================================================
-function msToKmh(ms) {
-  return Math.round(ms * 3.6);
-}
+function msToKmh(ms) { return Math.round(ms * 3.6); }
 
-function drawCompass(canvasId, windDeg, windKmh) {
+function drawCompass(canvasId, windDeg) {
   const canvas = document.getElementById(canvasId);
   if (!canvas) return;
   const ctx = canvas.getContext('2d');
@@ -597,19 +392,13 @@ async function fetchFlightsData(specificAirport = null) {
     return;
   }
 
-  if (ebciBody) {
-    await loadFlightType("departures", ebciBody, "EBCI");
-    await sleep(200);
-  }
-  if (eblgBody) {
-    await loadFlightType("departures", eblgBody, "EBLG");
-  }
+  if (ebciBody) { await loadFlightType("departures", ebciBody, "EBCI"); await sleep(200); }
+  if (eblgBody) { await loadFlightType("departures", eblgBody, "EBLG"); }
 }
 
 async function loadFlightType(type, elementContainer, airport) {
   try {
     const cleanType = (type === 'dep' || type === 'departures') ? 'departures' : 'arrivals';
-    
     const response = await fetch(`${WORKER_BASE_URL}/api/fids?airport=${airport}&type=${cleanType}`);
     if (!response.ok) return;
 
@@ -617,61 +406,38 @@ async function loadFlightType(type, elementContainer, airport) {
     const flights = Array.isArray(rawData) ? rawData : (rawData.flights || []);
 
     if (flights.length > 0) {
-      elementContainer.innerHTML = flights
-        .map((f) => {
-          const flightNum = f.flight || f.flightNumber || f.callsign || "—";
-          const city = f.city || f.destination || f.origin || "—";
-          const time = f.time || f.scheduledTime || "—";
-          const status = f.status || "Programmé";
+      elementContainer.innerHTML = flights.map((f) => {
+        const flightNum = f.flight || f.flightNumber || f.callsign || "—";
+        const city = f.city || f.destination || f.origin || "—";
+        const time = f.time || f.scheduledTime || "—";
+        const status = f.status || "Programmé";
 
-          const statusLower = status.toLowerCase();
-          const notTrackable = /land|atterr|cancel|annul|delay|retard/.test(statusLower);
-
-          if (notTrackable) {
-            return `
-              <tr style="opacity:0.5;" title="Position radar indisponible">
-                <td><strong>${flightNum}</strong></td>
-                <td>${city}</td>
-                <td>${time}</td>
-                <td><span class="badge">${status}</span></td>
-              </tr>
-            `;
-          }
-
-          return `
-            <tr onclick="selectFlightOnMap('${flightNum}')" style="cursor: pointer;">
-              <td><strong>${flightNum}</strong></td>
-              <td>${city}</td>
-              <td>${time}</td>
-              <td><span class="badge">${status}</span></td>
-            </tr>
-          `;
-        })
-        .join("");
+        return `
+          <tr onclick="selectFlightOnMap('${flightNum}')" style="cursor: pointer;">
+            <td><strong>${flightNum}</strong></td>
+            <td>${city}</td>
+            <td>${time}</td>
+            <td><span class="badge">${status}</span></td>
+          </tr>
+        `;
+      }).join("");
     } else {
-      elementContainer.innerHTML = `<tr><td colspan="4" style="text-align:center;">Aucun vol trouvé pour ${airport}</td></tr>`;
+      elementContainer.innerHTML = `<tr><td colspan="4" style="text-align:center;">Aucun vol trouvé</td></tr>`;
     }
   } catch (error) {
-    console.error(`Erreur vols (${type}) pour ${airport}:`, error);
     elementContainer.innerHTML = `<tr><td colspan="4" style="text-align:center; color:#ef4444;">Erreur de chargement</td></tr>`;
   }
 }
 
 function switchFlightTab(airport, type, btnElement) {
-  const parentTabContainer = btnElement.parentElement;
-  if (parentTabContainer) {
-    const buttons = parentTabContainer.querySelectorAll('.tab-btn, button');
-    buttons.forEach(btn => btn.classList.remove('active'));
+  const parent = btnElement.parentElement;
+  if (parent) {
+    parent.querySelectorAll('.tab-btn, button').forEach(btn => btn.classList.remove('active'));
     btnElement.classList.add('active');
   }
 
-  const targetBodyId = `${airport.toLowerCase()}-flights-body`;
-  const container = document.getElementById(targetBodyId);
-
-  if (container) {
-    const flightType = (type === 'dep' || type === 'departures') ? 'departures' : 'arrivals';
-    loadFlightType(flightType, container, airport.toUpperCase());
-  }
+  const container = document.getElementById(`${airport.toLowerCase()}-flights-body`);
+  if (container) loadFlightType((type === 'dep' || type === 'departures') ? 'departures' : 'arrivals', container, airport.toUpperCase());
 }
 
 async function fetchWeatherData() {
@@ -690,26 +456,15 @@ async function loadAirportWeather(lat, lon, station, tempElemId, metarElemId, fo
       const tempEl = document.getElementById(tempElemId);
 
       if (tempEl && weather.main) {
-        const windMs = weather.wind?.speed || 0;
-        const windKmh = msToKmh(windMs);
-        const windDeg = weather.wind?.deg || 0;
-
-        tempEl.innerHTML = `
-          <strong>${Math.round(weather.main.temp)}°C</strong> 
-          <span style="font-size: 0.85em; opacity: 0.8;">| 💨 ${windMs} m/s (${windKmh} km/h)</span>
-        `;
-
-        drawCompass(`compass-${station.toLowerCase()}`, windDeg, Math.round(windKmh));
+        tempEl.innerHTML = `<strong>${Math.round(weather.main.temp)}°C</strong> | 💨 ${msToKmh(weather.wind?.speed || 0)} km/h`;
+        drawCompass(`compass-${station.toLowerCase()}`, weather.wind?.deg || 0);
       }
     }
 
     if (resMetar.ok) {
       const metar = await resMetar.json();
       const metarEl = document.getElementById(metarElemId);
-      if (metarEl) {
-        const rawText = metar.raw || metar.sanitized || metar.metar || (typeof metar === 'string' ? metar : null);
-        if (rawText) metarEl.innerText = rawText;
-      }
+      if (metarEl) metarEl.innerText = metar.raw || metar.sanitized || metar.metar || "";
     }
 
     const forecastEl = document.getElementById(forecastElemId);
@@ -718,61 +473,32 @@ async function loadAirportWeather(lat, lon, station, tempElemId, metarElemId, fo
       if (resForecast.ok) {
         const forecastData = await resForecast.json();
         if (forecastData && Array.isArray(forecastData.list)) {
-          const upcomingForecast = forecastData.list.slice(0, 4); 
-
-          forecastEl.innerHTML = upcomingForecast.map(item => {
-            const time = new Date(item.dt * 1000).toLocaleTimeString('fr-BE', { hour: '2-digit', minute: '2-digit' });
-            const temp = Math.round(item.main.temp);
-            const icon = item.weather[0]?.icon || "01d";
-            const forecastWindMs = item.wind?.speed || 0;
-            const forecastWindKmh = msToKmh(forecastWindMs);
-
-            return `
-              <div style="text-align: center; font-size: 0.8rem; padding: 4px; border-right: 1px solid rgba(255,255,255,0.1);">
-                <div>${time}</div>
-                <img src="https://openweathermap.org/img/wn/${icon}.png" width="30" height="30" alt="icon"/>
-                <div><strong>${temp}°C</strong></div>
-                <div style="font-size: 0.75rem; color: #cbd5e1; margin-top: 2px;">
-                  💨 ${forecastWindMs} m/s<br>(${forecastWindKmh} km/h)
-                </div>
-              </div>
-            `;
-          }).join('');
+          forecastEl.innerHTML = forecastData.list.slice(0, 4).map(item => `
+            <div style="text-align: center; font-size: 0.8rem; padding: 4px;">
+              <div>${new Date(item.dt * 1000).toLocaleTimeString('fr-BE', { hour: '2-digit', minute: '2-digit' })}</div>
+              <div><strong>${Math.round(item.main.temp)}°C</strong></div>
+            </div>
+          `).join('');
         }
       }
     }
-  } catch (err) {
-    console.error(`Erreur météo ${station} :`, err);
-  }
+  } catch (err) {}
 }
 
 function filterAirportView(selectedAirport) {
-  const buttons = document.querySelectorAll('.filter-btn');
-  buttons.forEach(btn => {
-    btn.classList.remove('active');
-    if (btn.getAttribute('onclick')?.includes(`'${selectedAirport}'`)) {
-      btn.classList.add('active');
-    }
+  document.querySelectorAll('.filter-btn').forEach(btn => {
+    btn.classList.toggle('active', btn.getAttribute('onclick')?.includes(`'${selectedAirport}'`));
   });
 
-  const elementsToFilter = document.querySelectorAll('[data-airport]');
-  elementsToFilter.forEach(el => {
+  document.querySelectorAll('[data-airport]').forEach(el => {
     const elAirport = el.getAttribute('data-airport');
-    if (selectedAirport === 'ALL' || elAirport === selectedAirport) {
-      el.style.display = el.classList.contains('control-group') ? 'flex' : 'block';
-    } else {
-      el.style.display = 'none';
-    }
+    el.style.display = (selectedAirport === 'ALL' || elAirport === selectedAirport) ? '' : 'none';
   });
 
-  if (typeof map !== 'undefined' && map) {
-    if (selectedAirport === 'EBLG') {
-      map.setView([50.6374, 5.4432], 11);
-    } else if (selectedAirport === 'EBCI') {
-      map.setView([50.4592, 4.4538], 11);
-    } else {
-      map.setView([50.55, 4.95], 9);
-    }
+  if (map) {
+    if (selectedAirport === 'EBLG') map.setView([50.6374, 5.4432], 11);
+    else if (selectedAirport === 'EBCI') map.setView([50.4592, 4.4538], 11);
+    else map.setView([50.55, 4.95], 9);
   }
 }
 
