@@ -312,6 +312,16 @@ export default {
         } catch (e) {
           console.error("Échec AeroDataBox, bascule sur FR24 FIDS...", e);
         }
+        let status = "Programmé";
+const rawStatus = (f.status || "").toLowerCase();
+if (rawStatus.includes("enroute") || rawStatus.includes("active") || rawStatus.includes("departed")) status = "En vol / Parti";
+else if (rawStatus.includes("landed")) status = "Atterri";
+else if (rawStatus.includes("canceled") || rawStatus.includes("cancelled")) status = "Annulé";
+else if (rawStatus.includes("delayed")) status = "Retardé";
+else if (rawStatus.includes("estimated")) status = "Estimé";
+else if (rawStatus.includes("scheduled")) status = "Programmé";
+else if (rawStatus.includes("boarding")) status = "Embarquement";
+else if (rawStatus) console.log(`Statut AeroDataBox non reconnu : "${f.status}"`); // <-- ajout
 
         // --- SOURCE 4 : FLIGHTRADAR24 FIDS ---
         try {
