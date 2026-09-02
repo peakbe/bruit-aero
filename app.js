@@ -37,6 +37,8 @@ const IATA_TO_ICAO = {
   "FQ": "BAW", // British Airways
   "VY": "VLG"  // Vueling
 };
+// Nombre max de vols "Programmé" affichés avec une position estimée, par aéroport et par type (dep/arr)
+const MAX_ESTIMATED_MARKERS_PER_GROUP = 4;
 
 // =================================================================
 // 2. INITIALISATION CARTE
@@ -120,17 +122,6 @@ const AIRPORT_CONFIG = {
   EBLG: { name: "Liège Airport", lat: 50.6374, lon: 5.4432, heading: 228 },
   EBCI: { name: "Charleroi Airport", lat: 50.4592, lon: 4.4538, heading: 242 }
 };
-
-// Génère un nombre pseudo-aléatoire stable [0, 1) à partir d'une chaîne (numéro de vol)
-// -> même vol = même position tant qu'il garde le même statut, mais plus de ligne parfaite
-function seededRandom(str) {
-  let hash = 0;
-  for (let i = 0; i < str.length; i++) {
-    hash = (hash * 31 + str.charCodeAt(i)) | 0;
-  }
-  const x = Math.sin(hash) * 10000;
-  return x - Math.floor(x); // [0, 1)
-}
 
 // Génère un nombre pseudo-aléatoire stable [0, 1) à partir d'une chaîne (numéro de vol)
 // -> même vol = même position tant qu'il garde le même statut, mais plus de ligne parfaite
@@ -237,7 +228,10 @@ async function renderFidsPlanesOnMap(map, flightsLayerGroup) {
       await sleep(100);
     }
 
-    const hasRotationPlugin = typeof L.Marker.prototype.setRotationAngle === "function";
+        const hasRotationPlugin = typeof L.Marker.prototype.setRotationAngle === "function";
+
+    // Compteur de marqueurs estimés déjà placés, par clé "aéroport-type"
+    const estimatedCounts = {};
 
    // 3. Associer le vol FIDS au signal GPS en direct
     fidsList.forEach(fids => {
@@ -253,13 +247,18 @@ async function renderFidsPlanesOnMap(map, flightsLayerGroup) {
       );
 
       // SI L'AVION N'EST PAS CAPTÉ EN DIRECT PAR LE RADAR, ON NE L'AFFICHE PAS EN LIGNE
-     if (!matchLive) {
+         if (!matchLive) {
   const statusLower = (fids.status || "").toLowerCase();
   const isScheduled = /programm|scheduled/.test(statusLower);
 
   // On n'estime une position que pour les vols pas encore partis.
   // Les vols atterris, annulés ou retardés n'ont pas de position estimée sensée.
   if (!isScheduled) return;
+
+  // Limite le nombre de marqueurs estimés affichés par aéroport/type (garde les N prochains vols)
+  const groupKey = `${fids.airport}-${fids.type}`;
+  estimatedCounts[groupKey] = (estimatedCounts[groupKey] || 0) + 1;
+  if (estimatedCounts[groupKey] > MAX_ESTIMATED_MARKERS_PER_GROUP) return;
 
   const est = calculateEstimatedCoords(fids.airport, fids.type, fids.index_by_type, fids.flight);
   const popupContent = `
