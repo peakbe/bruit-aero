@@ -344,13 +344,23 @@ export default {
                   formattedTime = date.toLocaleTimeString("fr-BE", { hour: "2-digit", minute: "2-digit", timeZone: "Europe/Brussels" });
                 }
 
-                const rawFr24Status = (f?.status?.text || "").toLowerCase();
-                let mappedStatus = "Programmé";
-                if (rawFr24Status.includes("landed")) mappedStatus = "Atterri";
-                else if (rawFr24Status.includes("estimated") || rawFr24Status.includes("delayed")) mappedStatus = "Estimé/Retardé";
-                else if (rawFr24Status.includes("boarding")) mappedStatus = "Embarquement";
-                else if (rawFr24Status.includes("departed") || rawFr24Status.includes("en route") || rawFr24Status.includes("en-route")) mappedStatus = "En vol / Parti";
-                else if (rawFr24Status.includes("cancelled") || rawFr24Status.includes("canceled")) mappedStatus = "Annulé";
+               const rawFr24Status = (f?.status?.text || "").toLowerCase();
+let mappedStatus = "Programmé";
+
+if (rawFr24Status.includes("landed")) {
+  mappedStatus = "Atterri";
+} else if (rawFr24Status.includes("boarding")) {
+  mappedStatus = "Embarquement";
+} else if (rawFr24Status.includes("departed") || rawFr24Status.includes("en route") || rawFr24Status.includes("en-route")) {
+  mappedStatus = "En vol / Parti";
+} else if (rawFr24Status.includes("delayed")) {
+  mappedStatus = "Retardé";
+} else if (rawFr24Status.includes("cancelled") || rawFr24Status.includes("canceled")) {
+  mappedStatus = "Annulé";
+} else {
+  // Les mentions "Estimated HH:MM" restent marquées "Programmé" tant qu'il n'y a pas de retard explicite
+  mappedStatus = "Programmé";
+}
 
                 return {
                   flight: f?.identification?.number?.default || f?.identification?.callsign || "N/C",
