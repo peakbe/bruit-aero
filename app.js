@@ -93,7 +93,8 @@ function initMap() {
   fetchFlightsData();
   fetchWeatherData();
 
-  setInterval(() => renderFidsPlanesOnMap(map, flightsGroup), 60000);
+  // Rafraîchissement radar fluide (5 sec) & données secondaires
+  setInterval(() => renderFidsPlanesOnMap(map, flightsGroup), 5000);
   setInterval(fetchFlightsData, 120000);
   setInterval(fetchWeatherData, 300000);
 
@@ -162,12 +163,11 @@ function calculateEstimatedCoords(airportCode, type, index, flightNumber = "") {
 }
 
 // =================================================================
-// 4. AFFICHAGE ET CORRÉLATION DU RADAR
+// 4. AFFICHAGE ET CORRÉLATION DU RADAR (AVEC ANIMATION)
 // =================================================================
 async function renderFidsPlanesOnMap(map, flightsLayerGroup) {
   if (!flightsLayerGroup) return;
-  flightsLayerGroup.clearLayers();
-  planeMarkers = {};
+  const currentActiveKeys = new Set();
 
   try {
     const resRadar = await fetch(`${WORKER_BASE_URL}/api/opensky?lamin=49.0&lomin=2.0&lamax=51.8&lomax=7.0`).catch(() => null);
@@ -220,7 +220,7 @@ async function renderFidsPlanesOnMap(map, flightsLayerGroup) {
       } catch (e) {
         console.error("Erreur FIDS :", e);
       }
-      await sleep(100);
+      await sleep(50);
     }
 
     const hasRotationPlugin = typeof L.Marker.prototype.setRotationAngle === "function";
@@ -235,6 +235,8 @@ async function renderFidsPlanesOnMap(map, flightsLayerGroup) {
         p.callsign === fids.parsed.raw ||
         (p.numberOnly && p.numberOnly === fids.parsed.number && p.numberOnly.length >= 3)
       );
+
+      const markerKey = fids.flight || fids.parsed.raw;
 
       if (!matchLive) {
         const statusLower = (fids.status || "").toLowerCase();
@@ -253,18 +255,25 @@ async function renderFidsPlanesOnMap(map, flightsLayerGroup) {
             <b>Destination/Origine :</b> ${fids.city}<br>
             <b>Heure :</b> ${fids.time}<br>
             <b>Statut :</b> ${fids.status}<br>
-            <b>Source :</b> <span style="color:#f59e0b; font-weight:bold;">📍 Position estimée (pas encore de signal radar)</span>
+            <b>Source :</b> <span style="color:#f59e0b; font-weight:bold;">📍 Position estimée</span>
           </div>
         `;
-        const marker = L.marker([est.lat, est.lon], {
-          icon: yellowPlaneIcon,
-          opacity: 0.5
-        }).bindPopup(popupContent);
-        flightsLayerGroup.addLayer(marker);
 
-        planeMarkers[fids.flight] = marker;
-        planeMarkers[fids.parsed.raw] = marker;
-        if (fids.parsed.number) planeMarkers[fids.parsed.number] = marker;
+        if (planeMarkers[markerKey]) {
+          planeMarkers[markerKey].setLatLng([est.lat, est.lon]);
+          planeMarkers[markerKey].getPopup().setContent(popupContent);
+        } else {
+          const marker = L.marker([est.lat, est.lon], {
+            icon: yellowPlaneIcon,
+            opacity: 0.5
+          }).bindPopup(popupContent);
+          
+          flightsLayerGroup.addLayer(marker);
+          planeMarkers[markerKey] = marker;
+        }
+
+        currentActiveKeys.add(markerKey);
+        if (fids.parsed.number) planeMarkers[fids.parsed.number] = planeMarkers[markerKey];
         return;
       }
 
@@ -288,24 +297,30 @@ async function renderFidsPlanesOnMap(map, flightsLayerGroup) {
         </div>
       `;
 
-      const markerOptions = { icon: yellowPlaneIcon };
-      if (hasRotationPlugin) {
-        markerOptions.rotationAngle = heading;
-        markerOptions.rotationOrigin = "center center";
+      if (planeMarkers[markerKey]) {
+        planeMarkers[markerKey].setLatLng([lat, lon]);
+        if (hasRotationPlugin) planeMarkers[markerKey].setRotationAngle(heading);
+        planeMarkers[markerKey].getPopup().setContent(popupContent);
+      } else {
+        const markerOptions = { icon: yellowPlaneIcon };
+        if (hasRotationPlugin) {
+          markerOptions.rotationAngle = heading;
+          markerOptions.rotationOrigin = "center center";
+        }
+        const marker = L.marker([lat, lon], markerOptions).bindPopup(popupContent);
+        flightsLayerGroup.addLayer(marker);
+        planeMarkers[markerKey] = marker;
       }
 
-      const marker = L.marker([lat, lon], markerOptions).bindPopup(popupContent);
-      flightsLayerGroup.addLayer(marker);
-
-      planeMarkers[fids.flight] = marker;
-      planeMarkers[fids.parsed.raw] = marker;
-      planeMarkers[targetIcaoCallsign] = marker;
-      if (fids.parsed.number) planeMarkers[fids.parsed.number] = marker;
+      currentActiveKeys.add(markerKey);
+      planeMarkers[targetIcaoCallsign] = planeMarkers[markerKey];
+      if (fids.parsed.number) planeMarkers[fids.parsed.number] = planeMarkers[markerKey];
     });
 
     livePlanes.forEach(plane => {
       if (processedFlights.has(plane.icao24)) return;
 
+      const markerKey = plane.callsign || plane.icao24;
       const popupContent = `
         <div style="font-family: sans-serif; font-size: 13px;">
           <h3 style="margin: 0 0 5px 0; color: #1e293b;">Vol ${plane.callsign || "Inconnu"}</h3>
@@ -315,16 +330,30 @@ async function renderFidsPlanesOnMap(map, flightsLayerGroup) {
         </div>
       `;
 
-      const markerOptions = { icon: yellowPlaneIcon };
-      if (hasRotationPlugin) {
-        markerOptions.rotationAngle = plane.heading;
-        markerOptions.rotationOrigin = "center center";
+      if (planeMarkers[markerKey]) {
+        planeMarkers[markerKey].setLatLng([plane.lat, plane.lon]);
+        if (hasRotationPlugin) planeMarkers[markerKey].setRotationAngle(plane.heading);
+        planeMarkers[markerKey].getPopup().setContent(popupContent);
+      } else {
+        const markerOptions = { icon: yellowPlaneIcon };
+        if (hasRotationPlugin) {
+          markerOptions.rotationAngle = plane.heading;
+          markerOptions.rotationOrigin = "center center";
+        }
+        const marker = L.marker([plane.lat, plane.lon], markerOptions).bindPopup(popupContent);
+        flightsLayerGroup.addLayer(marker);
+        planeMarkers[markerKey] = marker;
       }
 
-      const marker = L.marker([plane.lat, plane.lon], markerOptions).bindPopup(popupContent);
-      flightsLayerGroup.addLayer(marker);
+      currentActiveKeys.add(markerKey);
+    });
 
-      if (plane.callsign) planeMarkers[plane.callsign] = marker;
+    // Nettoyage des marqueurs obsolètes
+    Object.keys(planeMarkers).forEach(key => {
+      if (!currentActiveKeys.has(key)) {
+        flightsLayerGroup.removeLayer(planeMarkers[key]);
+        delete planeMarkers[key];
+      }
     });
 
   } catch (err) {
@@ -349,7 +378,7 @@ function selectFlightOnMap(flightNum) {
     map.setView(latLng, 11, { animate: true });
     marker.openPopup();
   } else {
-    console.warn(`Vol ${flightNum} non localisable (pas de position radar ou estimée disponible).`);
+    console.warn(`Vol ${flightNum} non localisable.`);
   }
 }
 
