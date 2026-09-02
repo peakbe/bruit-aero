@@ -207,7 +207,8 @@ export default {
         // --- SOURCE 2 : AVIATIONSTACK ---
         try {
           const paramName = isDep ? "dep_icao" : "arr_icao";
-          const aviationUrl = `http://api.aviationstack.com/v1/flights?access_key=${aviationstackKey}&${paramName}=${airportCode}&limit=10`;
+          // Correction de HTTP vers HTTPS
+          const aviationUrl = `https://api.aviationstack.com/v1/flights?access_key=${aviationstackKey}&${paramName}=${airportCode}&limit=10`;
 
           const resAviation = await fetch(aviationUrl);
           if (resAviation.ok) {
@@ -292,6 +293,9 @@ export default {
                 if (rawStatus.includes("enroute") || rawStatus.includes("active") || rawStatus.includes("departed")) status = "En vol / Parti";
                 else if (rawStatus.includes("landed")) status = "Atterri";
                 else if (rawStatus.includes("canceled") || rawStatus.includes("cancelled")) status = "Annulé";
+                else if (rawStatus.includes("delayed")) status = "Retardé";
+                else if (rawStatus.includes("estimated")) status = "Estimé";
+                else if (rawStatus.includes("boarding")) status = "Embarquement";
 
                 return {
                   flight: flightNum,
@@ -312,16 +316,6 @@ export default {
         } catch (e) {
           console.error("Échec AeroDataBox, bascule sur FR24 FIDS...", e);
         }
-        let status = "Programmé";
-const rawStatus = (f.status || "").toLowerCase();
-if (rawStatus.includes("enroute") || rawStatus.includes("active") || rawStatus.includes("departed")) status = "En vol / Parti";
-else if (rawStatus.includes("landed")) status = "Atterri";
-else if (rawStatus.includes("canceled") || rawStatus.includes("cancelled")) status = "Annulé";
-else if (rawStatus.includes("delayed")) status = "Retardé";
-else if (rawStatus.includes("estimated")) status = "Estimé";
-else if (rawStatus.includes("scheduled")) status = "Programmé";
-else if (rawStatus.includes("boarding")) status = "Embarquement";
-else if (rawStatus) console.log(`Statut AeroDataBox non reconnu : "${f.status}"`); // <-- ajout
 
         // --- SOURCE 4 : FLIGHTRADAR24 FIDS ---
         try {
@@ -350,21 +344,20 @@ else if (rawStatus) console.log(`Statut AeroDataBox non reconnu : "${f.status}"`
                   formattedTime = date.toLocaleTimeString("fr-BE", { hour: "2-digit", minute: "2-digit", timeZone: "Europe/Brussels" });
                 }
 
-               const rawFr24Status = (f?.status?.text || "").toLowerCase();
-let mappedStatus = "Programmé";
-if (rawFr24Status.includes("landed")) mappedStatus = "Atterri";
-else if (rawFr24Status.includes("estimated") || rawFr24Status.includes("delayed")) mappedStatus = "Estimé/Retardé";
-else if (rawFr24Status.includes("boarding")) mappedStatus = "Embarquement";
-else if (rawFr24Status.includes("departed") || rawFr24Status.includes("en route") || rawFr24Status.includes("en-route")) mappedStatus = "En vol / Parti";
-else if (rawFr24Status.includes("cancelled") || rawFr24Status.includes("canceled")) mappedStatus = "Annulé";
-else if (rawFr24Status.includes("scheduled")) mappedStatus = "Programmé";
+                const rawFr24Status = (f?.status?.text || "").toLowerCase();
+                let mappedStatus = "Programmé";
+                if (rawFr24Status.includes("landed")) mappedStatus = "Atterri";
+                else if (rawFr24Status.includes("estimated") || rawFr24Status.includes("delayed")) mappedStatus = "Estimé/Retardé";
+                else if (rawFr24Status.includes("boarding")) mappedStatus = "Embarquement";
+                else if (rawFr24Status.includes("departed") || rawFr24Status.includes("en route") || rawFr24Status.includes("en-route")) mappedStatus = "En vol / Parti";
+                else if (rawFr24Status.includes("cancelled") || rawFr24Status.includes("canceled")) mappedStatus = "Annulé";
 
-return {
-  flight: f?.identification?.number?.default || f?.identification?.callsign || "N/C",
-  city: dest ? `${dest.position?.region?.city || dest.name} (${dest.code?.iata || ''})` : "Inconnu",
-  time: formattedTime,
-  status: mappedStatus
-};
+                return {
+                  flight: f?.identification?.number?.default || f?.identification?.callsign || "N/C",
+                  city: dest ? `${dest.position?.region?.city || dest.name} (${dest.code?.iata || ''})` : "Inconnu",
+                  time: formattedTime,
+                  status: mappedStatus
+                };
               });
 
               return new Response(JSON.stringify({ airport: airportCode, type, flights }), {
@@ -410,12 +403,12 @@ return {
         if (res.ok) {
           const data = await res.json();
           const responseData = {
-  main: { temp: data.current_weather ? data.current_weather.temperature : 20 },
-  wind: {
-    speed: data.current_weather ? Math.round(data.current_weather.windspeed / 3.6 * 10) / 10 : 0,
-    direction: data.current_weather ? data.current_weather.winddirection : 0
-  }
-};
+            main: { temp: data.current_weather ? data.current_weather.temperature : 20 },
+            wind: {
+              speed: data.current_weather ? Math.round(data.current_weather.windspeed / 3.6 * 10) / 10 : 0,
+              direction: data.current_weather ? data.current_weather.winddirection : 0
+            }
+          };
           return new Response(JSON.stringify(responseData), {
             status: 200,
             headers: { ...corsHeaders, "Content-Type": "application/json" }
