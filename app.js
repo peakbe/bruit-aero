@@ -132,6 +132,17 @@ function seededRandom(str) {
   return x - Math.floor(x); // [0, 1)
 }
 
+// Génère un nombre pseudo-aléatoire stable [0, 1) à partir d'une chaîne (numéro de vol)
+// -> même vol = même position tant qu'il garde le même statut, mais plus de ligne parfaite
+function seededRandom(str) {
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    hash = (hash * 31 + str.charCodeAt(i)) | 0;
+  }
+  const x = Math.sin(hash) * 10000;
+  return x - Math.floor(x); // [0, 1)
+}
+
 function calculateEstimatedCoords(airportCode, type, index, flightNumber = "") {
   const cfg = AIRPORT_CONFIG[airportCode] || AIRPORT_CONFIG.EBCI;
 
@@ -250,7 +261,7 @@ async function renderFidsPlanesOnMap(map, flightsLayerGroup) {
   // Les vols atterris, annulés ou retardés n'ont pas de position estimée sensée.
   if (!isScheduled) return;
 
-  const est = calculateEstimatedCoords(fids.airport, fids.type, fids.index_by_type);
+  const est = calculateEstimatedCoords(fids.airport, fids.type, fids.index_by_type, fids.flight);
   const popupContent = `
     <div style="font-family: sans-serif; font-size: 13px;">
       <h3 style="margin: 0 0 5px 0; color: #1e293b;">Vol ${fids.flight} (${fids.type === 'departures' ? 'Départ' : 'Arrivée'})</h3>
