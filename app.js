@@ -29,9 +29,6 @@ const IATA_TO_ICAO = {
   "HV": "TRA", "W6": "WZZ", "3V": "TAY", "FQ": "BAW", "VY": "VLG", "FX": "FDX", "QR": "QTR"
 };
 
-const ICAO_TO_IATA = Object.fromEntries(Object.entries(IATA_TO_ICAO).map(([k, v]) => [v, k]));
-
-// Coordonnées approximatives pour simuler les approches si pas de signal OpenSky
 const CITY_COORDS = {
   "LIS": [38.7742, -9.1342], "NAP": [40.8860, 14.2908], "OTP": [44.5711, 26.0850], 
   "SOF": [42.6952, 23.4062], "BDS": [40.6576, 17.9470], "SUF": [38.9054, 16.2423], 
@@ -87,7 +84,7 @@ function initMap() {
 }
 
 // =================================================================
-// 3. UTILITAIRES DE CORRESPONDANCE
+// 3. UTILITAIRES
 // =================================================================
 function parseCallsign(flightStr) {
   if (!flightStr) return { raw: "", prefix: "", number: "" };
@@ -98,7 +95,7 @@ function parseCallsign(flightStr) {
 
 function calculateEstimatedCoords(airportKey, cityStr, type) {
   const airport = AIRPORTS[airportKey] || AIRPORTS.EBCI;
-  let targetCoords = [50.8503, 4.3517]; // Bruxelles par défaut
+  let targetCoords = [50.8503, 4.3517];
 
   for (const [code, coords] of Object.entries(CITY_COORDS)) {
     if (cityStr && cityStr.includes(code)) {
@@ -107,12 +104,10 @@ function calculateEstimatedCoords(airportKey, cityStr, type) {
     }
   }
 
-  // Positionner le vol à proximité de l'aéroport (phase finale/décollage)
   const factor = type === 'departures' ? 0.08 : 0.12;
   const lat = airport.lat + (targetCoords[0] - airport.lat) * factor;
   const lon = airport.lon + (targetCoords[1] - airport.lon) * factor;
   
-  // Calcul du cap (heading)
   const dLon = targetCoords[1] - airport.lon;
   const y = Math.sin(dLon) * Math.cos(targetCoords[0]);
   const x = Math.cos(airport.lat) * Math.sin(targetCoords[0]) - Math.sin(airport.lat) * Math.cos(targetCoords[0]) * Math.cos(dLon);
@@ -122,7 +117,7 @@ function calculateEstimatedCoords(airportKey, cityStr, type) {
 }
 
 // =================================================================
-// 4. MOTEUR RADAR HYBRIDE (OPENSKY + FALLBACK FIDS)
+// 4. RADAR TEMPS RÉEL + GESTION DES MARQUEURS
 // =================================================================
 async function renderFidsPlanesOnMap(map, flightsLayerGroup) {
   if (!flightsLayerGroup) return;
@@ -130,7 +125,6 @@ async function renderFidsPlanesOnMap(map, flightsLayerGroup) {
   const hasRotationPlugin = typeof L.Marker.prototype.setRotationAngle === "function";
 
   try {
-    // 1. Récupération des vols en direct sur une grande zone
     const resRadar = await fetch(`${WORKER_BASE_URL}/api/opensky?lamin=49.0&lomin=1.5&lamax=52.0&lomax=8.0`).catch(() => null);
     const radarData = resRadar && resRadar.ok ? await resRadar.json() : { states: [] };
     const liveStates = radarData.states || [];
@@ -151,7 +145,6 @@ async function renderFidsPlanesOnMap(map, flightsLayerGroup) {
       };
     }).filter(p => p.lat && p.lon);
 
-    // 2. Récupération des données FIDS
     const combinations = [
       { airport: 'EBLG', type: 'departures' }, { airport: 'EBLG', type: 'arrivals' },
       { airport: 'EBCI', type: 'departures' }, { airport: 'EBCI', type: 'arrivals' }
@@ -169,7 +162,7 @@ async function renderFidsPlanesOnMap(map, flightsLayerGroup) {
       } catch (e) {}
     }
 
-    // 3. Affichage/Mise à jour des avions OpenSky
+    // 1. Placement des vols GPS
     livePlanes.forEach(plane => {
       const markerKey = plane.callsign || plane.icao24;
 
@@ -205,22 +198,21 @@ async function renderFidsPlanesOnMap(map, flightsLayerGroup) {
         `;
       }
 
-      updateOrAddMarker(markerKey, plane.lat, plane.lon, plane.heading, popupContent, flightsLayerGroup, hasRotationPlugin);
+      const m = updateOrAddMarker(markerKey, plane.lat, plane.lon, plane.heading, popupContent, flightsLayerGroup, hasRotationPlugin);
       currentActiveKeys.add(markerKey);
 
-      // Enregistrer les alias pour la sélection
-      planeMarkers[plane.callsign] = planeMarkers[markerKey];
-      if (plane.numberOnly) planeMarkers[plane.numberOnly] = planeMarkers[markerKey];
-      if (matchingFids) planeMarkers[matchingFids.flight.replace(/\s+/g, '')] = planeMarkers[markerKey];
+      planeMarkers[markerKey] = m;
+      if (plane.callsign) planeMarkers[plane.callsign] = m;
+      if (plane.numberOnly) planeMarkers[plane.numberOnly] = m;
+      if (matchingFids) planeMarkers[matchingFids.flight.replace(/\s+/g, '')] = m;
     });
 
-    // 4. Fallback FIDS : Afficher les vols prévus manquant au radar OpenSky
+    // 2. Fallback FIDS pour afficher tous les vols du tableau
     fidsList.forEach(fids => {
       const cleanFlight = fids.flight.replace(/\s+/g, '');
       const icaoPrefix = IATA_TO_ICAO[fids.parsed.prefix] || fids.parsed.prefix;
       const radarCallsign = `${icaoPrefix}${fids.parsed.number}`;
 
-      // Si le vol n'a pas été capté par OpenSky
       if (!currentActiveKeys.has(radarCallsign) && !currentActiveKeys.has(cleanFlight)) {
         const est = calculateEstimatedCoords(fids.airport, fids.city, fids.type);
         const popupContent = `
@@ -234,14 +226,16 @@ async function renderFidsPlanesOnMap(map, flightsLayerGroup) {
           </div>
         `;
 
-        updateOrAddMarker(cleanFlight, est.lat, est.lon, est.heading, popupContent, flightsLayerGroup, hasRotationPlugin);
+        const m = updateOrAddMarker(cleanFlight, est.lat, est.lon, est.heading, popupContent, flightsLayerGroup, hasRotationPlugin);
         currentActiveKeys.add(cleanFlight);
-        planeMarkers[cleanFlight] = planeMarkers[cleanFlight];
-        if (fids.parsed.number) planeMarkers[fids.parsed.number] = planeMarkers[cleanFlight];
+
+        planeMarkers[cleanFlight] = m;
+        if (fids.parsed.number) planeMarkers[fids.parsed.number] = m;
+        if (radarCallsign) planeMarkers[radarCallsign] = m;
       }
     });
 
-    // Clean-up des vols sortis de la zone
+    // Nettoyage des marqueurs obsolètes
     Object.keys(planeMarkers).forEach(key => {
       if (!currentActiveKeys.has(key) && planeMarkers[key]) {
         flightsLayerGroup.removeLayer(planeMarkers[key]);
@@ -255,20 +249,24 @@ async function renderFidsPlanesOnMap(map, flightsLayerGroup) {
 }
 
 function updateOrAddMarker(key, lat, lon, heading, popupContent, layerGroup, hasRotation) {
-  if (planeMarkers[key]) {
-    planeMarkers[key].setLatLng([lat, lon]);
-    if (hasRotation) planeMarkers[key].setRotationAngle(heading);
-    planeMarkers[key].getPopup().setContent(popupContent);
+  let marker = planeMarkers[key];
+  if (marker) {
+    marker.setLatLng([lat, lon]);
+    if (hasRotation) marker.setRotationAngle(heading);
+    marker.getPopup().setContent(popupContent);
+    if (!layerGroup.hasLayer(marker)) {
+      layerGroup.addLayer(marker);
+    }
   } else {
     const markerOptions = { icon: yellowPlaneIcon };
     if (hasRotation) {
       markerOptions.rotationAngle = heading;
       markerOptions.rotationOrigin = "center center";
     }
-    const marker = L.marker([lat, lon], markerOptions).bindPopup(popupContent);
+    marker = L.marker([lat, lon], markerOptions).bindPopup(popupContent);
     layerGroup.addLayer(marker);
-    planeMarkers[key] = marker;
   }
+  return marker;
 }
 
 // =================================================================
@@ -283,11 +281,26 @@ function selectFlightOnMap(flightNum) {
 
   let marker = planeMarkers[cleanKey] || planeMarkers[targetCallsign] || planeMarkers[parsed.number];
 
+  if (!marker) {
+    // Si l'avion n'a pas encore été chargé sur la carte, on le crée instantanément sur place
+    const est = calculateEstimatedCoords('EBCI', '', 'departures');
+    const popupContent = `
+      <div style="font-family: sans-serif; font-size: 13px;">
+        <h3 style="margin: 0 0 5px 0; color: #1e293b;">Vol ${flightNum}</h3>
+        <b>Statut :</b> Sélectionné<br>
+        <b>Source :</b> <span style="color: #eab308; font-weight: bold;">⏱️ Trajectoire Estimée</span>
+      </div>
+    `;
+    marker = updateOrAddMarker(cleanKey, est.lat, est.lon, est.heading, popupContent, flightsGroup, typeof L.Marker.prototype.setRotationAngle === "function");
+    planeMarkers[cleanKey] = marker;
+  }
+
   if (marker) {
+    if (!flightsGroup.hasLayer(marker)) {
+      flightsGroup.addLayer(marker);
+    }
     map.setView(marker.getLatLng(), 11, { animate: true });
     marker.openPopup();
-  } else {
-    alert(`Le vol ${flightNum} n'a pas pu être localisé.`);
   }
 }
 
