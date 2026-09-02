@@ -25,7 +25,7 @@ const yellowPlaneIcon = L.divIcon({
 
 const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
-// Dictionnaire étendu IATA -> ICAO pour la correspondance des indicatifs
+// Dictionnaire étendu IATA -> ICAO
 const IATA_TO_ICAO = {
   "FR": "RYR", // Ryanair
   "TB": "TUI", // TUI fly Belgium
@@ -37,7 +37,7 @@ const IATA_TO_ICAO = {
   "FQ": "BAW", // British Airways
   "VY": "VLG"  // Vueling
 };
-// Nombre max de vols "Programmé" affichés avec une position estimée, par aéroport et par type (dep/arr)
+
 const MAX_ESTIMATED_MARKERS_PER_GROUP = 4;
 
 // =================================================================
@@ -123,29 +123,25 @@ const AIRPORT_CONFIG = {
   EBCI: { name: "Charleroi Airport", lat: 50.4592, lon: 4.4538, heading: 242 }
 };
 
-// Génère un nombre pseudo-aléatoire stable [0, 1) à partir d'une chaîne (numéro de vol)
-// -> même vol = même position tant qu'il garde le même statut, mais plus de ligne parfaite
 function seededRandom(str) {
   let hash = 0;
   for (let i = 0; i < str.length; i++) {
     hash = (hash * 31 + str.charCodeAt(i)) | 0;
   }
   const x = Math.sin(hash) * 10000;
-  return x - Math.floor(x); // [0, 1)
+  return x - Math.floor(x);
 }
 
 function calculateEstimatedCoords(airportCode, type, index, flightNumber = "") {
   const cfg = AIRPORT_CONFIG[airportCode] || AIRPORT_CONFIG.EBCI;
 
-  // Distance de base sur l'axe d'approche/décollage, + variation stable par vol (±40%)
   const baseStep = (index + 1) * 0.018;
-  const distJitter = 0.7 + seededRandom(flightNumber + "d") * 0.6; // entre 0.7x et 1.3x
+  const distJitter = 0.7 + seededRandom(flightNumber + "d") * 0.6;
   const step = baseStep * distJitter;
 
-  // Décalage latéral perpendiculaire à l'axe, stable par vol (simule la dispersion réelle des trajectoires)
   const headingRad = (cfg.heading * Math.PI) / 180;
   const perpRad = headingRad + Math.PI / 2;
-  const lateralOffset = (seededRandom(flightNumber + "l") - 0.5) * 0.025; // ±0.0125°, latéral
+  const lateralOffset = (seededRandom(flightNumber + "l") - 0.5) * 0.025;
   const perpLat = Math.cos(perpRad) * lateralOffset;
   const perpLon = Math.sin(perpRad) * lateralOffset;
 
@@ -164,6 +160,7 @@ function calculateEstimatedCoords(airportCode, type, index, flightNumber = "") {
     };
   }
 }
+
 // =================================================================
 // 4. AFFICHAGE ET CORRÉLATION DU RADAR
 // =================================================================
@@ -173,12 +170,10 @@ async function renderFidsPlanesOnMap(map, flightsLayerGroup) {
   planeMarkers = {};
 
   try {
-    // 1. Récupération des données OpenSky (Zone élargie Belgique + frontières)
     const resRadar = await fetch(`${WORKER_BASE_URL}/api/opensky?lamin=49.0&lomin=2.0&lamax=51.8&lomax=7.0`).catch(() => null);
     const radarData = resRadar && resRadar.ok ? await resRadar.json() : { states: [] };
     const liveStates = radarData.states || [];
 
-    // Formater la liste des avions captés en direct par le radar GPS
     const livePlanes = liveStates.map(state => {
       const callsign = (state[1] || "").trim().toUpperCase();
       const parsed = parseCallsign(callsign);
@@ -195,7 +190,6 @@ async function renderFidsPlanesOnMap(map, flightsLayerGroup) {
       };
     }).filter(p => p.lat && p.lon);
 
-    // 2. Récupération des tableaux FIDS (Départs et Arrivées)
     const combinations = [
       { airport: 'EBLG', type: 'departures' },
       { airport: 'EBLG', type: 'arrivals' },
@@ -210,8 +204,9 @@ async function renderFidsPlanesOnMap(map, flightsLayerGroup) {
       try {
         const res = await fetch(`${WORKER_BASE_URL}/api/fids?airport=${c.airport}&type=${c.type}`);
         if (res.ok) {
-          const data = await res.json();
-          (data.flights || []).forEach((f, idx) => {
+          const rawData = await res.json();
+          const flightArray = Array.isArray(rawData) ? rawData : (rawData.flights || []);
+          flightArray.forEach((f, idx) => {
             const parsed = parseCallsign(f.flight);
             fidsList.push({ 
               ...f, 
@@ -228,59 +223,50 @@ async function renderFidsPlanesOnMap(map, flightsLayerGroup) {
       await sleep(100);
     }
 
-        const hasRotationPlugin = typeof L.Marker.prototype.setRotationAngle === "function";
-
-    // Compteur de marqueurs estimés déjà placés, par clé "aéroport-type"
+    const hasRotationPlugin = typeof L.Marker.prototype.setRotationAngle === "function";
     const estimatedCounts = {};
 
-   // 3. Associer le vol FIDS au signal GPS en direct
     fidsList.forEach(fids => {
-      // Calcul du callsign ICAO théorique (ex: FR9053 -> RYR9053)
       const icaoPrefix = IATA_TO_ICAO[fids.parsed.prefix] || fids.parsed.prefix;
       const targetIcaoCallsign = `${icaoPrefix}${fids.parsed.number}`;
 
-      // Recherche du vol réel sur le radar
       const matchLive = livePlanes.find(p => 
         p.callsign === targetIcaoCallsign ||
         p.callsign === fids.parsed.raw ||
         (p.numberOnly && p.numberOnly === fids.parsed.number && p.numberOnly.length >= 3)
       );
 
-      // SI L'AVION N'EST PAS CAPTÉ EN DIRECT PAR LE RADAR, ON NE L'AFFICHE PAS EN LIGNE
-         if (!matchLive) {
-  const statusLower = (fids.status || "").toLowerCase();
-  const isScheduled = /programm|scheduled/.test(statusLower);
+      if (!matchLive) {
+        const statusLower = (fids.status || "").toLowerCase();
+        const isScheduled = /programm|scheduled/.test(statusLower);
 
-  // On n'estime une position que pour les vols pas encore partis.
-  // Les vols atterris, annulés ou retardés n'ont pas de position estimée sensée.
-  if (!isScheduled) return;
+        if (!isScheduled) return;
 
-  // Limite le nombre de marqueurs estimés affichés par aéroport/type (garde les N prochains vols)
-  const groupKey = `${fids.airport}-${fids.type}`;
-  estimatedCounts[groupKey] = (estimatedCounts[groupKey] || 0) + 1;
-  if (estimatedCounts[groupKey] > MAX_ESTIMATED_MARKERS_PER_GROUP) return;
+        const groupKey = `${fids.airport}-${fids.type}`;
+        estimatedCounts[groupKey] = (estimatedCounts[groupKey] || 0) + 1;
+        if (estimatedCounts[groupKey] > MAX_ESTIMATED_MARKERS_PER_GROUP) return;
 
-  const est = calculateEstimatedCoords(fids.airport, fids.type, fids.index_by_type, fids.flight);
-  const popupContent = `
-    <div style="font-family: sans-serif; font-size: 13px;">
-      <h3 style="margin: 0 0 5px 0; color: #1e293b;">Vol ${fids.flight} (${fids.type === 'departures' ? 'Départ' : 'Arrivée'})</h3>
-      <b>Destination/Origine :</b> ${fids.city}<br>
-      <b>Heure :</b> ${fids.time}<br>
-      <b>Statut :</b> ${fids.status}<br>
-      <b>Source :</b> <span style="color:#f59e0b; font-weight:bold;">📍 Position estimée (pas encore de signal radar)</span>
-    </div>
-  `;
-  const marker = L.marker([est.lat, est.lon], {
-    icon: yellowPlaneIcon,
-    opacity: 0.5
-  }).bindPopup(popupContent);
-  flightsLayerGroup.addLayer(marker);
+        const est = calculateEstimatedCoords(fids.airport, fids.type, fids.index_by_type, fids.flight);
+        const popupContent = `
+          <div style="font-family: sans-serif; font-size: 13px;">
+            <h3 style="margin: 0 0 5px 0; color: #1e293b;">Vol ${fids.flight} (${fids.type === 'departures' ? 'Départ' : 'Arrivée'})</h3>
+            <b>Destination/Origine :</b> ${fids.city}<br>
+            <b>Heure :</b> ${fids.time}<br>
+            <b>Statut :</b> ${fids.status}<br>
+            <b>Source :</b> <span style="color:#f59e0b; font-weight:bold;">📍 Position estimée (pas encore de signal radar)</span>
+          </div>
+        `;
+        const marker = L.marker([est.lat, est.lon], {
+          icon: yellowPlaneIcon,
+          opacity: 0.5
+        }).bindPopup(popupContent);
+        flightsLayerGroup.addLayer(marker);
 
-  planeMarkers[fids.flight] = marker;
-  planeMarkers[fids.parsed.raw] = marker;
-  if (fids.parsed.number) planeMarkers[fids.parsed.number] = marker;
-  return;
-}
+        planeMarkers[fids.flight] = marker;
+        planeMarkers[fids.parsed.raw] = marker;
+        if (fids.parsed.number) planeMarkers[fids.parsed.number] = marker;
+        return;
+      }
 
       const lat = matchLive.lat;
       const lon = matchLive.lon;
@@ -311,14 +297,12 @@ async function renderFidsPlanesOnMap(map, flightsLayerGroup) {
       const marker = L.marker([lat, lon], markerOptions).bindPopup(popupContent);
       flightsLayerGroup.addLayer(marker);
 
-      // Indexation multi-clés pour le clic depuis la table
       planeMarkers[fids.flight] = marker;
       planeMarkers[fids.parsed.raw] = marker;
       planeMarkers[targetIcaoCallsign] = marker;
       if (fids.parsed.number) planeMarkers[fids.parsed.number] = marker;
     });
 
-    // 4. Affichage des autres vols détectés par le radar en transit dans la zone
     livePlanes.forEach(plane => {
       if (processedFlights.has(plane.icao24)) return;
 
@@ -542,6 +526,38 @@ function msToKmh(ms) {
   return Math.round(ms * 3.6);
 }
 
+function drawCompass(canvasId, windDeg, windKmh) {
+  const canvas = document.getElementById(canvasId);
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return;
+
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  const centerX = canvas.width / 2;
+  const centerY = canvas.height / 2;
+  const radius = Math.min(centerX, centerY) - 5;
+
+  ctx.beginPath();
+  ctx.arc(centerX, centerY, radius, 0, 2 * Math.PI);
+  ctx.strokeStyle = "rgba(255, 255, 255, 0.3)";
+  ctx.lineWidth = 2;
+  ctx.stroke();
+
+  ctx.save();
+  ctx.translate(centerX, centerY);
+  ctx.rotate((windDeg * Math.PI) / 180);
+
+  ctx.beginPath();
+  ctx.moveTo(0, -radius + 4);
+  ctx.lineTo(-6, 8);
+  ctx.lineTo(6, 8);
+  ctx.closePath();
+  ctx.fillStyle = "#38bdf8";
+  ctx.fill();
+
+  ctx.restore();
+}
+
 async function fetchFlightsData(specificAirport = null) {
   const ebciBody = document.getElementById("ebci-flights-body");
   const eblgBody = document.getElementById("eblg-flights-body");
@@ -568,48 +584,54 @@ async function loadFlightType(type, elementContainer, airport) {
     const response = await fetch(`${WORKER_BASE_URL}/api/fids?airport=${airport}&type=${cleanType}`);
     if (!response.ok) return;
 
-    const data = await response.json();
-    if (data && Array.isArray(data.flights) && data.flights.length > 0) {
-      
-      elementContainer.innerHTML = data.flights
-  .map((f) => {
-    const statusLower = (f.status || "").toLowerCase();
-    const notTrackable = /land|atterr|cancel|annul|delay|retard/.test(statusLower);
+    const rawData = await response.json();
+    const flights = Array.isArray(rawData) ? rawData : (rawData.flights || []);
 
-    if (notTrackable) {
-      return `
-        <tr style="opacity:0.5;" title="Position radar indisponible">
-          <td><strong>${f.flight}</strong></td>
-          <td>${f.city}</td>
-          <td>${f.time}</td>
-          <td><span class="badge">${f.status}</span></td>
-        </tr>
-      `;
-    }
+    if (flights.length > 0) {
+      elementContainer.innerHTML = flights
+        .map((f) => {
+          const flightNum = f.flight || f.flightNumber || f.callsign || "—";
+          const city = f.city || f.destination || f.origin || "—";
+          const time = f.time || f.scheduledTime || "—";
+          const status = f.status || "Programmé";
 
-    return `
-      <tr onclick="selectFlightOnMap('${f.flight}')" style="cursor: pointer;">
-        <td><strong>${f.flight}</strong></td>
-        <td>${f.city}</td>
-        <td>${f.time}</td>
-        <td><span class="badge">${f.status}</span></td>
-      </tr>
-    `;
-  })
-  .join("");
-      
+          const statusLower = status.toLowerCase();
+          const notTrackable = /land|atterr|cancel|annul|delay|retard/.test(statusLower);
+
+          if (notTrackable) {
+            return `
+              <tr style="opacity:0.5;" title="Position radar indisponible">
+                <td><strong>${flightNum}</strong></td>
+                <td>${city}</td>
+                <td>${time}</td>
+                <td><span class="badge">${status}</span></td>
+              </tr>
+            `;
+          }
+
+          return `
+            <tr onclick="selectFlightOnMap('${flightNum}')" style="cursor: pointer;">
+              <td><strong>${flightNum}</strong></td>
+              <td>${city}</td>
+              <td>${time}</td>
+              <td><span class="badge">${status}</span></td>
+            </tr>
+          `;
+        })
+        .join("");
     } else {
       elementContainer.innerHTML = `<tr><td colspan="4" style="text-align:center;">Aucun vol trouvé pour ${airport}</td></tr>`;
     }
   } catch (error) {
     console.error(`Erreur vols (${type}) pour ${airport}:`, error);
+    elementContainer.innerHTML = `<tr><td colspan="4" style="text-align:center; color:#ef4444;">Erreur de chargement</td></tr>`;
   }
 }
 
 function switchFlightTab(airport, type, btnElement) {
   const parentTabContainer = btnElement.parentElement;
   if (parentTabContainer) {
-    const buttons = parentTabContainer.querySelectorAll('.tab-btn');
+    const buttons = parentTabContainer.querySelectorAll('.tab-btn, button');
     buttons.forEach(btn => btn.classList.remove('active'));
     btnElement.classList.add('active');
   }
@@ -634,24 +656,24 @@ async function loadAirportWeather(lat, lon, station, tempElemId, metarElemId, fo
     const resWeather = await fetch(`${WORKER_BASE_URL}/api/weather?lat=${lat}&lon=${lon}`);
     const resMetar = await fetch(`${WORKER_BASE_URL}/api/metar?station=${station}`);
 
-   if (resWeather.ok) {
-  const weather = await resWeather.json();
-  const tempEl = document.getElementById(tempElemId);
+    if (resWeather.ok) {
+      const weather = await resWeather.json();
+      const tempEl = document.getElementById(tempElemId);
 
-  if (tempEl && weather.main) {
-    const windMs = weather.wind?.speed || 0;
-    const windKmh = msToKmh(windMs);
-    const windDeg = weather.wind?.direction || 0;
+      if (tempEl && weather.main) {
+        const windMs = weather.wind?.speed || 0;
+        const windKmh = msToKmh(windMs);
+        const windDeg = weather.wind?.deg || 0;
 
-    tempEl.innerHTML = `
-      <strong>${Math.round(weather.main.temp)}°C</strong> 
-      <span style="font-size: 0.85em; opacity: 0.8;">| 💨 ${windMs} m/s (${windKmh} km/h)</span>
-    `;
+        tempEl.innerHTML = `
+          <strong>${Math.round(weather.main.temp)}°C</strong> 
+          <span style="font-size: 0.85em; opacity: 0.8;">| 💨 ${windMs} m/s (${windKmh} km/h)</span>
+        `;
 
-    // Met à jour la rose des vents avec les données réelles
-    drawCompass(`compass-${station.toLowerCase()}`, windDeg, Math.round(windKmh));
-  }
-}
+        drawCompass(`compass-${station.toLowerCase()}`, windDeg, Math.round(windKmh));
+      }
+    }
+
     if (resMetar.ok) {
       const metar = await resMetar.json();
       const metarEl = document.getElementById(metarElemId);
