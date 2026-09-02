@@ -22,130 +22,136 @@
       --text-muted: #94a3b8;
       --border: #334155;
     }
+
+    /* --- ANIMATION EN DIRECT DES AVIONS --- */
+    .leaflet-marker-icon {
+      transition: transform 4.8s linear !important;
+    }
+
     .filter-btn {
-  background: #0f172a;
-  border: 1px solid var(--border);
-  color: var(--text-muted);
-  padding: 8px 16px;
-  border-radius: 6px;
-  cursor: pointer;
-  transition: 0.2s;
-  font-weight: 500;
-}
+      background: #0f172a;
+      border: 1px solid var(--border);
+      color: var(--text-muted);
+      padding: 8px 16px;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: 0.2s;
+      font-weight: 500;
+    }
 
-.filter-btn.active {
-  background: var(--accent);
-  color: #000;
-  font-weight: bold;
-  border-color: var(--accent);
-}
+    .filter-btn.active {
+      background: var(--accent);
+      color: #000;
+      font-weight: bold;
+      border-color: var(--accent);
+    }
+
     .control-bar-inline {
-  display: flex !important;
-  flex-direction: row !important;
-  align-items: center !important;
-  flex-wrap: nowrap !important; /* Empêche le retour à la ligne */
-  gap: 15px;
-  background: #0f172a;
-  padding: 10px 15px;
-  border-radius: 8px;
-  border: 1px solid var(--border);
-  margin-bottom: 20px;
-  overflow-x: auto; /* Permet un défilement propre sur petit écran si besoin */
-}
+      display: flex !important;
+      flex-direction: row !important;
+      align-items: center !important;
+      flex-wrap: nowrap !important;
+      gap: 15px;
+      background: #0f172a;
+      padding: 10px 15px;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      margin-bottom: 20px;
+      overflow-x: auto;
+    }
 
-.control-group {
-  display: flex;
-  flex-direction: row;
-  align-items: center;
-  gap: 8px;
-  white-space: nowrap;
-}
+    .control-group {
+      display: flex;
+      flex-direction: row;
+      align-items: center;
+      gap: 8px;
+      white-space: nowrap;
+    }
 
-.control-label {
-  color: var(--accent);
-  font-weight: 600;
-  font-size: 0.9rem;
-}
+    .control-label {
+      color: var(--accent);
+      font-weight: 600;
+      font-size: 0.9rem;
+    }
 
-.control-divider {
-  width: 1px;
-  height: 22px;
-  background-color: var(--border);
-  flex-shrink: 0;
-}
+    .control-divider {
+      width: 1px;
+      height: 22px;
+      background-color: var(--border);
+      flex-shrink: 0;
+    }
 
-.filter-btn, .tab-btn {
-  white-space: nowrap;
-}
+    .filter-btn, .tab-btn {
+      white-space: nowrap;
+    }
+
     /* --- REGLES DE BASE RESPONSIVES --- */
-html, body {
-  margin: 0;
-  padding: 0;
-  height: 100%;
-  width: 100%;
-  overflow-x: hidden;
-}
+    html, body {
+      margin: 0;
+      padding: 0;
+      height: 100%;
+      width: 100%;
+      overflow-x: hidden;
+    }
 
-/* Container de la carte Leaflet */
-#map {
-  width: 100%;
-  height: 70vh; /* Par défaut sur PC */
-  min-height: 350px;
-  border-radius: 8px;
-}
+    /* Container de la carte Leaflet */
+    #map {
+      width: 100%;
+      height: 70vh;
+      min-height: 350px;
+      border-radius: 8px;
+    }
 
-/* En-tête / Barre de titre */
-header, .radar-header {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: space-between;
-  align-items: center;
-  padding: 10px 15px;
-  gap: 10px;
-}
+    /* En-tête / Barre de titre */
+    header, .radar-header {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: space-between;
+      align-items: center;
+      padding: 10px 15px;
+      gap: 10px;
+    }
 
-/* --- ADAPTATION MOBILE ET TABLETTE (Écrans < 768px) --- */
-@media (max-width: 768px) {
-  #map {
-    height: 60vh; /* Ajuste la hauteur de carte sur mobile */
-  }
+    /* --- ADAPTATION MOBILE ET TABLETTE (Écrans < 768px) --- */
+    @media (max-width: 768px) {
+      #map {
+        height: 60vh;
+      }
 
-  /* Ajuster la taille des popups sur petit écran */
-  .leaflet-popup-content-wrapper {
-    font-size: 12px;
-    padding: 4px;
-  }
+      .leaflet-popup-content-wrapper {
+        font-size: 12px;
+        padding: 4px;
+      }
 
-  .leaflet-popup-content {
-    margin: 8px 10px;
-    line-height: 1.4;
-  }
+      .leaflet-popup-content {
+        margin: 8px 10px;
+        line-height: 1.4;
+      }
 
-  /* Repositionner ou réduire le bouton Recentrer / Zoom */
-  .leaflet-control-zoom {
-    display: none; /* Optionnel : masque les boutons +/- sur mobile (le pinch-to-zoom tactile suffit) */
-  }
+      .leaflet-control-zoom {
+        display: none;
+      }
 
-  /* Adapter les panneaux d'informations / tableaux FIDS */
-  .fids-container, .weather-container {
-    width: 100%;
-    overflow-x: auto; /* Défilement horizontal si le tableau dépasse */
-  }
+      .fids-container, .weather-container {
+        width: 100%;
+        overflow-x: auto;
+      }
 
-  table {
-    width: 100%;
-    font-size: 12px;
-  }
-}
-    /* Effet visuel au survol du tableau */
-.fids-table tbody tr {
-  transition: background-color 0.2s ease;
-}
+      table {
+        width: 100%;
+        font-size: 12px;
+      }
+    }
 
-.fids-table tbody tr:hover {
-  background-color: rgba(255, 255, 255, 0.15);
-  cursor: pointer;
-}
+    .fids-table tbody tr {
+      transition: background-color 0.2s ease;
+    }
+
+    .fids-table tbody tr:hover {
+      background-color: rgba(255, 255, 255, 0.15);
+      cursor: pointer;
+    }
+
     * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
     body { background-color: var(--bg-main); color: var(--text-light); padding: 20px; }
 
@@ -230,17 +236,17 @@ header, .radar-header {
   <div class="grid-container">
    
     <!-- EBCI WEATHER -->
-   <div class="card" data-airport="EBCI">
-  <div class="card-header">
-    <span class="card-title">Charleroi (EBCI / CRL) - Météo</span>
+    <div class="card" data-airport="EBCI">
+      <div class="card-header">
+        <span class="card-title">Charleroi (EBCI / CRL) - Météo</span>
         <span class="badge badge-dep">METAR Direct</span>
       </div>
       <div class="weather-box">
         <div class="metar-info">
           <div class="temp-large" id="ebci-temp">--°C</div>
           <!-- Tendance Météo Charleroi -->
-<div id="ebci-forecast" style="display: flex; gap: 8px; justify-content: space-around; margin-top: 8px;"></div>
-                    <div class="metar-code" id="ebci-metar">Chargement du METAR...</div>
+          <div id="ebci-forecast" style="display: flex; gap: 8px; justify-content: space-around; margin-top: 8px;"></div>
+          <div class="metar-code" id="ebci-metar">Chargement du METAR...</div>
         </div>
         <div class="compass-container">
           <canvas id="compass-ebci" class="compass" width="130" height="130"></canvas>
@@ -251,16 +257,16 @@ header, .radar-header {
 
     <!-- EBLG WEATHER -->
     <div class="card" data-airport="EBLG">
-  <div class="card-header">
-    <span class="card-title">Liège (EBLG / LGG) - Météo</span>
+      <div class="card-header">
+        <span class="card-title">Liège (EBLG / LGG) - Météo</span>
         <span class="badge badge-arr">METAR Direct</span>
       </div>
       <div class="weather-box">
         <div class="metar-info">
           <div class="temp-large" id="eblg-temp">--°C</div>
           <!-- Tendance Météo Liège -->
-<div id="eblg-forecast" style="display: flex; gap: 8px; justify-content: space-around; margin-top: 8px;"></div>
-       <div class="metar-code" id="eblg-metar">Chargement du METAR...</div>
+          <div id="eblg-forecast" style="display: flex; gap: 8px; justify-content: space-around; margin-top: 8px;"></div>
+          <div class="metar-code" id="eblg-metar">Chargement du METAR...</div>
         </div>
         <div class="compass-container">
           <canvas id="compass-eblg" class="compass" width="130" height="130"></canvas>
@@ -283,8 +289,8 @@ header, .radar-header {
   <div class="grid-container">
     <!-- EBCI FLIGHTS -->
     <div class="card" data-airport="EBCI">
-  <div class="card-header">
-    <span class="card-title" id="ebci-title">Vols - Charleroi (EBCI)</span>
+      <div class="card-header">
+        <span class="card-title" id="ebci-title">Vols - Charleroi (EBCI)</span>
         <div class="tab-container">
           <button class="tab-btn active" onclick="switchFlightTab('ebci', 'dep', this)">Départs</button>
           <button class="tab-btn" onclick="switchFlightTab('ebci', 'arr', this)">Arrivées</button>
@@ -302,8 +308,8 @@ header, .radar-header {
 
     <!-- EBLG FLIGHTS -->
     <div class="card" data-airport="EBLG">
-  <div class="card-header">
-    <span class="card-title" id="eblg-title">Vols - Liège (EBLG)</span>
+      <div class="card-header">
+        <span class="card-title" id="eblg-title">Vols - Liège (EBLG)</span>
         <div class="tab-container">
           <button class="tab-btn active" onclick="switchFlightTab('eblg', 'dep', this)">Départs</button>
           <button class="tab-btn" onclick="switchFlightTab('eblg', 'arr', this)">Arrivées</button>
@@ -343,8 +349,8 @@ header, .radar-header {
     // Feather Icons & Horloge UTC
     feather.replace();
     setInterval(() => {
-  document.getElementById('clock').innerText = new Date().toLocaleTimeString('fr-BE');
-}, 1000);
+      document.getElementById('clock').innerText = new Date().toLocaleTimeString('fr-BE');
+    }, 1000);
 
     // Dessin dynamique des roses des vents
     function drawCompass(canvasId, windDeg, windSpeed) {
