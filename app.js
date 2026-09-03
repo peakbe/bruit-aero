@@ -109,8 +109,11 @@ function calculateEstimatedCoords(airportKey, cityStr, type) {
   const lon = airport.lon + (targetCoords[1] - airport.lon) * factor;
   
   const dLon = targetCoords[1] - airport.lon;
-  const y = Math.sin(dLon) * Math.cos(targetCoords[0]);
-  const x = Math.cos(airport.lat) * Math.sin(targetCoords[0]) - Math.sin(airport.lat) * Math.cos(targetCoords[0]) * Math.cos(dLon);
+  const toRad = deg => deg * Math.PI / 180;
+  const dLonRad = toRad(targetCoords[1] - airport.lon);
+  const y = Math.sin(dLonRad) * Math.cos(toRad(targetCoords[0]));
+  const x = Math.cos(toRad(airport.lat)) * Math.sin(toRad(targetCoords[0])) - Math.sin(toRad(airport.lat)) * Math.cos(toRad(targetCoords[0])) * Math.cos(dLonRad);
+  const heading = ((Math.atan2(y, x) * 180 / Math.PI) + 360) % 360;
   const heading = ((Math.atan2(y, x) * 180 / Math.PI) + 360) % 360;
 
   return { lat, lon, heading };
@@ -209,13 +212,17 @@ async function renderFidsPlanesOnMap(map, flightsLayerGroup) {
       }
 
       // Mise à jour sur la carte avec les coordonnées GPS réelles
-      const m = updateOrAddMarker(primaryKey, plane.lat, plane.lon, plane.heading, popupContent, flightsLayerGroup, hasRotationPlugin);
+            const m = updateOrAddMarker(primaryKey, plane.lat, plane.lon, plane.heading, popupContent, flightsLayerGroup, hasRotationPlugin);
       currentActiveKeys.add(primaryKey);
 
       planeMarkers[primaryKey] = m;
-      if (plane.callsign) planeMarkers[plane.callsign] = m;
-      if (plane.numberOnly) planeMarkers[plane.numberOnly] = m;
-      if (matchingFids) planeMarkers[matchingFids.flight.replace(/\s+/g, '')] = m;
+      if (plane.callsign) { planeMarkers[plane.callsign] = m; currentActiveKeys.add(plane.callsign); }
+      if (plane.numberOnly) { planeMarkers[plane.numberOnly] = m; currentActiveKeys.add(plane.numberOnly); }
+      if (matchingFids) {
+        const cleanMatchKey = matchingFids.flight.replace(/\s+/g, '');
+        planeMarkers[cleanMatchKey] = m;
+        currentActiveKeys.add(cleanMatchKey);
+      }
     });
 
     // B. FALLBACK FIDS (Uniquement pour les vols sans signal GPS direct)
@@ -239,13 +246,12 @@ async function renderFidsPlanesOnMap(map, flightsLayerGroup) {
           </div>
         `;
 
-        const m = updateOrAddMarker(cleanFlight, est.lat, est.lon, est.heading, popupContent, flightsLayerGroup, hasRotationPlugin);
+               const m = updateOrAddMarker(cleanFlight, est.lat, est.lon, est.heading, popupContent, flightsLayerGroup, hasRotationPlugin);
         currentActiveKeys.add(cleanFlight);
 
         planeMarkers[cleanFlight] = m;
-        if (fids.parsed.number) planeMarkers[fids.parsed.number] = m;
-        if (radarCallsign) planeMarkers[radarCallsign] = m;
-      }
+        if (fids.parsed.number) { planeMarkers[fids.parsed.number] = m; currentActiveKeys.add(fids.parsed.number); }
+        if (radarCallsign) { planeMarkers[radarCallsign] = m; currentActiveKeys.add(radarCallsign); }
     });
 
     // Nettoyage des marqueurs inactifs
