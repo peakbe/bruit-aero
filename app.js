@@ -117,7 +117,7 @@ function calculateEstimatedCoords(airportKey, cityStr, type) {
 }
 
 // =================================================================
-// 4. RADAR TEMPS RÉEL + GESTION DES MARQUEURS
+// 4. RADAR TEMPS RÉEL GPS (PRIORITÉ ABSOLUE AUX POSITIONS DIRECTES)
 // =================================================================
 async function renderFidsPlanesOnMap(map, flightsLayerGroup) {
   if (!flightsLayerGroup) return;
@@ -137,13 +137,13 @@ async function renderFidsPlanesOnMap(map, flightsLayerGroup) {
         callsign: callsign,
         prefix: parsed.prefix,
         numberOnly: parsed.number,
-        lat: state[6],
-        lon: state[5],
+        lat: state[6],   // Position Latitude GPS exacte
+        lon: state[5],   // Position Longitude GPS exacte
         heading: state[10] || 0,
         altitude: state[7],
         speed: state[9]
       };
-    }).filter(p => p.lat && p.lon);
+    }).filter(p => p.lat !== null && p.lon !== null);
 
     const combinations = [
       { airport: 'EBLG', type: 'departures' }, { airport: 'EBLG', type: 'arrivals' },
@@ -162,9 +162,9 @@ async function renderFidsPlanesOnMap(map, flightsLayerGroup) {
       } catch (e) {}
     }
 
-    // 1. Placement des vols GPS
+    // A. TRAITEMENT DES POSITIONS GPS RÉELLES
     livePlanes.forEach(plane => {
-      const markerKey = plane.callsign || plane.icao24;
+      const primaryKey = plane.callsign || plane.icao24;
 
       const matchingFids = fidsList.find(f => {
         const icaoPrefix = IATA_TO_ICAO[f.parsed.prefix] || f.parsed.prefix;
@@ -180,7 +180,7 @@ async function renderFidsPlanesOnMap(map, flightsLayerGroup) {
           <h3 style="margin: 0 0 5px 0; color: #1e293b;">Vol ${plane.callsign || "Inconnu"}</h3>
           <b>Altitude :</b> ${altText}<br>
           <b>Vitesse :</b> ${speedText}<br>
-          <b>Source :</b> <span style="color: #22c55e; font-weight: bold;">📡 Radar Direct</span>
+          <b>Source :</b> <span style="color: #22c55e; font-weight: bold;">📡 Position GPS Directe</span>
         </div>
       `;
 
@@ -192,28 +192,30 @@ async function renderFidsPlanesOnMap(map, flightsLayerGroup) {
             <b>Destination/Origine :</b> ${matchingFids.city}<br>
             <b>Heure :</b> ${matchingFids.time}<br>
             <b>Altitude :</b> ${altText} | <b>Vitesse :</b> ${speedText}<br>
-            <b>Statut :</b> ${matchingFids.status}<br>
-            <b>Source :</b> <span style="color: #22c55e; font-weight: bold;">📡 Radar Direct</span>
+            <b>Source :</b> <span style="color: #22c55e; font-weight: bold;">📡 Position GPS Directe</span>
           </div>
         `;
       }
 
-      const m = updateOrAddMarker(markerKey, plane.lat, plane.lon, plane.heading, popupContent, flightsLayerGroup, hasRotationPlugin);
-      currentActiveKeys.add(markerKey);
+      // Mise à jour sur la carte avec les coordonnées GPS réelles
+      const m = updateOrAddMarker(primaryKey, plane.lat, plane.lon, plane.heading, popupContent, flightsLayerGroup, hasRotationPlugin);
+      currentActiveKeys.add(primaryKey);
 
-      planeMarkers[markerKey] = m;
+      planeMarkers[primaryKey] = m;
       if (plane.callsign) planeMarkers[plane.callsign] = m;
       if (plane.numberOnly) planeMarkers[plane.numberOnly] = m;
       if (matchingFids) planeMarkers[matchingFids.flight.replace(/\s+/g, '')] = m;
     });
 
-    // 2. Fallback FIDS pour afficher tous les vols du tableau
+    // B. FALLBACK FIDS (Uniquement pour les vols sans signal GPS direct)
     fidsList.forEach(fids => {
       const cleanFlight = fids.flight.replace(/\s+/g, '');
       const icaoPrefix = IATA_TO_ICAO[fids.parsed.prefix] || fids.parsed.prefix;
       const radarCallsign = `${icaoPrefix}${fids.parsed.number}`;
 
-      if (!currentActiveKeys.has(radarCallsign) && !currentActiveKeys.has(cleanFlight)) {
+      const alreadyHasGps = currentActiveKeys.has(radarCallsign) || currentActiveKeys.has(cleanFlight) || currentActiveKeys.has(fids.parsed.number);
+
+      if (!alreadyHasGps) {
         const est = calculateEstimatedCoords(fids.airport, fids.city, fids.type);
         const popupContent = `
           <div style="font-family: sans-serif; font-size: 13px;">
@@ -222,7 +224,7 @@ async function renderFidsPlanesOnMap(map, flightsLayerGroup) {
             <b>Destination/Origine :</b> ${fids.city}<br>
             <b>Heure :</b> ${fids.time}<br>
             <b>Statut :</b> ${fids.status}<br>
-            <b>Source :</b> <span style="color: #eab308; font-weight: bold;">⏱️ Trajectoire Estimée</span>
+            <b>Source :</b> <span style="color: #ef4444; font-weight: bold;">⚠️ Pas de Signal GPS (Position Estimée)</span>
           </div>
         `;
 
@@ -235,7 +237,7 @@ async function renderFidsPlanesOnMap(map, flightsLayerGroup) {
       }
     });
 
-    // Nettoyage des marqueurs obsolètes
+    // Nettoyage des marqueurs inactifs
     Object.keys(planeMarkers).forEach(key => {
       if (!currentActiveKeys.has(key) && planeMarkers[key]) {
         flightsLayerGroup.removeLayer(planeMarkers[key]);
@@ -244,7 +246,7 @@ async function renderFidsPlanesOnMap(map, flightsLayerGroup) {
     });
 
   } catch (err) {
-    console.error("Erreur radar :", err);
+    console.error("Erreur mise à jour radar GPS :", err);
   }
 }
 
@@ -270,7 +272,7 @@ function updateOrAddMarker(key, lat, lon, heading, popupContent, layerGroup, has
 }
 
 // =================================================================
-// 5. SELECTION DU VOL DEPUIS LE TABLEAU
+// 5. SÉLECTION DU VOL DEPUIS LE TABLEAU
 // =================================================================
 function selectFlightOnMap(flightNum) {
   const cleanKey = flightNum.replace(/\s+/g, '').toUpperCase();
@@ -280,20 +282,6 @@ function selectFlightOnMap(flightNum) {
   const targetCallsign = `${icaoPrefix}${parsed.number}`;
 
   let marker = planeMarkers[cleanKey] || planeMarkers[targetCallsign] || planeMarkers[parsed.number];
-
-  if (!marker) {
-    // Si l'avion n'a pas encore été chargé sur la carte, on le crée instantanément sur place
-    const est = calculateEstimatedCoords('EBCI', '', 'departures');
-    const popupContent = `
-      <div style="font-family: sans-serif; font-size: 13px;">
-        <h3 style="margin: 0 0 5px 0; color: #1e293b;">Vol ${flightNum}</h3>
-        <b>Statut :</b> Sélectionné<br>
-        <b>Source :</b> <span style="color: #eab308; font-weight: bold;">⏱️ Trajectoire Estimée</span>
-      </div>
-    `;
-    marker = updateOrAddMarker(cleanKey, est.lat, est.lon, est.heading, popupContent, flightsGroup, typeof L.Marker.prototype.setRotationAngle === "function");
-    planeMarkers[cleanKey] = marker;
-  }
 
   if (marker) {
     if (!flightsGroup.hasLayer(marker)) {
