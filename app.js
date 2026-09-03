@@ -247,9 +247,10 @@ async function renderFidsPlanesOnMap(map, flightsLayerGroup) {
                const m = updateOrAddMarker(cleanFlight, est.lat, est.lon, est.heading, popupContent, flightsLayerGroup, hasRotationPlugin);
         currentActiveKeys.add(cleanFlight);
 
-        planeMarkers[cleanFlight] = m;
+                planeMarkers[cleanFlight] = m;
         if (fids.parsed.number) { planeMarkers[fids.parsed.number] = m; currentActiveKeys.add(fids.parsed.number); }
         if (radarCallsign) { planeMarkers[radarCallsign] = m; currentActiveKeys.add(radarCallsign); }
+      }
     });
 
     // Nettoyage des marqueurs inactifs
