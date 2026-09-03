@@ -114,8 +114,7 @@ function calculateEstimatedCoords(airportKey, cityStr, type) {
   const y = Math.sin(dLonRad) * Math.cos(toRad(targetCoords[0]));
   const x = Math.cos(toRad(airport.lat)) * Math.sin(toRad(targetCoords[0])) - Math.sin(toRad(airport.lat)) * Math.cos(toRad(targetCoords[0])) * Math.cos(dLonRad);
   const heading = ((Math.atan2(y, x) * 180 / Math.PI) + 360) % 360;
-  const heading = ((Math.atan2(y, x) * 180 / Math.PI) + 360) % 360;
-
+  
   return { lat, lon, heading };
 }
 
