@@ -95,7 +95,7 @@ function parseCallsign(flightStr) {
 
 function calculateEstimatedCoords(airportKey, cityStr, type) {
   const airport = AIRPORTS[airportKey] || AIRPORTS.EBCI;
-  let targetCoords = [50.8503, 4.3517];
+  let targetCoords = [50.8503, 4.3517]; // Bruxelles par défaut si ville inconnue
 
   for (const [code, coords] of Object.entries(CITY_COORDS)) {
     if (cityStr && cityStr.includes(code)) {
@@ -104,28 +104,35 @@ function calculateEstimatedCoords(airportKey, cityStr, type) {
     }
   }
 
-  const factor = type === 'departures' ? 0.08 : 0.12;
-  const lat = airport.lat + (targetCoords[0] - airport.lat) * factor;
-  const lon = airport.lon + (targetCoords[1] - airport.lon) * factor;
-
   const toRad = deg => deg * Math.PI / 180;
+  const toDeg = rad => rad * 180 / Math.PI;
+
+  // Cap réel vers la destination
   const dLonRad = toRad(targetCoords[1] - airport.lon);
   const y = Math.sin(dLonRad) * Math.cos(toRad(targetCoords[0]));
   const x = Math.cos(toRad(airport.lat)) * Math.sin(toRad(targetCoords[0])) - Math.sin(toRad(airport.lat)) * Math.cos(toRad(targetCoords[0])) * Math.cos(dLonRad);
-  const heading = ((Math.atan2(y, x) * 180 / Math.PI) + 360) % 360;
+  const heading = (toDeg(Math.atan2(y, x)) + 360) % 360;
 
-  return { lat, lon, heading };
-}
+  // Distance FIXE en km depuis l'aéroport (pas un % du trajet total)
+  // -> reste réaliste même pour un vol long-courrier (Houston, New York, Zhengzhou...)
+  const fixedDistanceKm = type === 'departures' ? 8 : 15;
 
-// Distance approximative en km entre deux points GPS (formule de Haversine)
-function haversineKm(lat1, lon1, lat2, lon2) {
-  const R = 6371;
-  const dLat = (lat2 - lat1) * Math.PI / 180;
-  const dLon = (lon2 - lon1) * Math.PI / 180;
-  const a = Math.sin(dLat / 2) ** 2 +
-            Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
-            Math.sin(dLon / 2) ** 2;
-  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  // Point de destination à distance/cap donnés (formule du grand cercle)
+  const angDist = fixedDistanceKm / 6371;
+  const lat1 = toRad(airport.lat);
+  const lon1 = toRad(airport.lon);
+  const headingRad = toRad(heading);
+
+  const lat2 = Math.asin(
+    Math.sin(lat1) * Math.cos(angDist) +
+    Math.cos(lat1) * Math.sin(angDist) * Math.cos(headingRad)
+  );
+  const lon2 = lon1 + Math.atan2(
+    Math.sin(headingRad) * Math.sin(angDist) * Math.cos(lat1),
+    Math.cos(angDist) - Math.sin(lat1) * Math.sin(lat2)
+  );
+
+  return { lat: toDeg(lat2), lon: toDeg(lon2), heading };
 }
 
 // =================================================================
@@ -231,7 +238,10 @@ async function renderFidsPlanesOnMap(map, flightsLayerGroup) {
 
       const alreadyHasGps = currentActiveKeys.has(radarCallsign) || currentActiveKeys.has(cleanFlight) || currentActiveKeys.has(fids.parsed.number);
 
-      if (!alreadyHasGps) {
+            const statusLower = (fids.status || "").toLowerCase();
+      const isScheduled = /programm|scheduled/.test(statusLower);
+
+      if (!alreadyHasGps && isScheduled) {
         const est = calculateEstimatedCoords(fids.airport, fids.city, fids.type);
         const popupContent = `
           <div style="font-family: sans-serif; font-size: 13px;">
