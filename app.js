@@ -478,5 +478,27 @@ window.filterAirportView = function(airport) {
   }
 };
 
+// =================================================================
+// 9. GESTION DES ONGLETS VOLS (DÉPARTS / ARRIVÉES)
+// =================================================================
+window.switchFlightTab = function(airport, type, btnElement) {
+  // 1. Mise à jour visuelle des boutons de l'onglet
+  if (btnElement && btnElement.parentElement) {
+    const buttons = btnElement.parentElement.querySelectorAll('.tab-btn, button');
+    buttons.forEach(btn => btn.classList.remove('active'));
+    btnElement.classList.add('active');
+  }
+
+  // 2. Identification du tableau cible dans le HTML
+  const targetBodyId = `${airport.toLowerCase()}-flights-body`;
+  const container = document.getElementById(targetBodyId);
+
+  // 3. Rechargement des données pour l'aéroport et le type sélectionné
+  if (container) {
+    container.innerHTML = `<tr><td colspan="4" style="text-align:center;">Chargement...</td></tr>`;
+    loadFlightType(type, container, airport);
+  }
+};
+
 // Initialisation globale au chargement de la page
 document.addEventListener("DOMContentLoaded", initMap);
