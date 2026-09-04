@@ -738,7 +738,38 @@ function setRunwayEBLG(runwayNum, map) { currentRunwayEBLG = runwayNum; renderSo
 // =================================================================
 function msToKmh(ms) { return Math.round(ms * 3.6); }
 
-function drawCompass(canvasId, windDeg) {
+// =================================================================
+// [AJOUT] Direction cardinale du vent (rose à 8 points, notation FR)
+// =================================================================
+const WIND_CARDINALS = [
+  { abbr: "N",   full: "Nord" },
+  { abbr: "N-E", full: "Nord-Est" },
+  { abbr: "E",   full: "Est" },
+  { abbr: "S-E", full: "Sud-Est" },
+  { abbr: "S",   full: "Sud" },
+  { abbr: "S-O", full: "Sud-Ouest" },
+  { abbr: "O",   full: "Ouest" },
+  { abbr: "N-O", full: "Nord-Ouest" }
+];
+
+function degToCardinal(deg) {
+  const normalized = ((deg % 360) + 360) % 360;
+  const index = Math.round(normalized / 45) % 8;
+  return WIND_CARDINALS[index];
+}
+
+// =================================================================
+// [CORRECTION] La rose des vents était définie deux fois : une version
+// "riche" (N/E/S/O, vitesse) directement dans le <script> du HTML, et
+// cette version simplifiée ici dans app.js. Comme app.js est chargé
+// APRÈS le script inline, cette dernière écrasait silencieusement la
+// version riche dès que les données météo réelles arrivaient — la rose
+// perdait ses repères N/E/S/O et l'affichage de la vitesse. Il n'y a
+// désormais plus qu'une seule version, ici, qui reprend les repères
+// cardinaux et ajoute le texte de direction (N, S, S-E, ...) sous la
+// rose, via l'élément #wind-dir-<station> s'il existe dans le HTML.
+// =================================================================
+function drawCompass(canvasId, windDeg, windSpeedKmh = null) {
   const canvas = document.getElementById(canvasId);
   if (!canvas) return;
   const ctx = canvas.getContext('2d');
@@ -749,18 +780,30 @@ function drawCompass(canvasId, windDeg) {
   const centerY = canvas.height / 2;
   const radius = Math.min(centerX, centerY) - 5;
 
+  // Cercle extérieur
   ctx.beginPath();
   ctx.arc(centerX, centerY, radius, 0, 2 * Math.PI);
   ctx.strokeStyle = "rgba(255, 255, 255, 0.3)";
   ctx.lineWidth = 2;
   ctx.stroke();
 
+  // Repères N / E / S / O (fixes, ne tournent pas avec le vent)
+  ctx.fillStyle = "#94a3b8";
+  ctx.font = "10px sans-serif";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText("N", centerX, centerY - radius + 10);
+  ctx.fillText("S", centerX, centerY + radius - 10);
+  ctx.fillText("E", centerX + radius - 10, centerY);
+  ctx.fillText("O", centerX - radius + 10, centerY);
+
+  // Flèche de direction (pointe vers d'où vient le vent, convention météo)
   ctx.save();
   ctx.translate(centerX, centerY);
   ctx.rotate((windDeg * Math.PI) / 180);
 
   ctx.beginPath();
-  ctx.moveTo(0, -radius + 4);
+  ctx.moveTo(0, -radius + 16);
   ctx.lineTo(-6, 8);
   ctx.lineTo(6, 8);
   ctx.closePath();
@@ -768,6 +811,22 @@ function drawCompass(canvasId, windDeg) {
   ctx.fill();
 
   ctx.restore();
+
+  // Vitesse au centre, si fournie
+  if (windSpeedKmh !== null && windSpeedKmh !== undefined) {
+    ctx.fillStyle = "#f8fafc";
+    ctx.font = "bold 12px sans-serif";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(`${Math.round(windSpeedKmh)} km/h`, centerX, centerY + radius * 0.55);
+  }
+
+  // Mise à jour du libellé texte de direction cardinale (N, S, S-E, ...)
+  const cardinal = degToCardinal(windDeg);
+  const labelEl = document.getElementById(canvasId.replace("compass-", "wind-dir-"));
+  if (labelEl) {
+    labelEl.textContent = `Vent du ${cardinal.full} (${cardinal.abbr}) — ${Math.round(windDeg)}°`;
+  }
 }
 
 async function fetchFlightsData(specificAirport = null) {
@@ -853,7 +912,7 @@ async function loadAirportWeather(lat, lon, station, tempElemId, metarElemId, fo
 
       if (tempEl && weather.main) {
         tempEl.innerHTML = `<strong>${Math.round(weather.main.temp)}°C</strong> | 💨 ${msToKmh(weather.wind?.speed || 0)} km/h`;
-        drawCompass(`compass-${station.toLowerCase()}`, weather.wind?.deg || 0);
+        drawCompass(`compass-${station.toLowerCase()}`, weather.wind?.deg || 0, msToKmh(weather.wind?.speed || 0));
       }
 
       autoSelectRunway(station, weather.wind?.deg || 0, weather.wind?.speed || 0);
