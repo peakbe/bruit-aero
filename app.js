@@ -789,6 +789,38 @@ async function fetchWeatherData() {
 }
 
 window.filterAirportView = function(airport) {
+  // Coordonnées GPS des aéroports
+const AIRPORT_COORDS = {
+  EBCI: [50.4592, 4.4538], // Charleroi
+  EBLG: [50.6374, 5.4432], // Liège
+  ALL:  [50.55, 4.95]       // Vue d'ensemble (centre Belgique)
+};
+
+window.filterAirportView = function(airport) {
+  // 1. Visuel des boutons
+  const buttons = document.querySelectorAll('.control-bar-inline .airport-icon-btn');
+  buttons.forEach(btn => btn.classList.remove('active'));
+  if (window.event && window.event.currentTarget) {
+    window.event.currentTarget.classList.add('active');
+  }
+
+  // 2. Affichage/masquage des cartes
+  const cards = document.querySelectorAll('.card[data-airport]');
+  cards.forEach(card => {
+    const cardAirport = card.getAttribute('data-airport');
+    if (airport === 'ALL' || cardAirport === airport) {
+      card.style.display = 'block';
+    } else {
+      card.style.display = 'none';
+    }
+  });
+
+  // 3. Recentrage de la carte Leaflet
+  if (window.myMap && AIRPORT_COORDS[airport]) {
+    const zoomLevel = airport === 'ALL' ? 9 : 12;
+    window.myMap.setView(AIRPORT_COORDS[airport], zoomLevel);
+  }
+};
   // 1. Gestion visuelle des boutons
   const buttons = document.querySelectorAll('.control-bar-inline .airport-icon-btn');
   buttons.forEach(btn => btn.classList.remove('active'));
