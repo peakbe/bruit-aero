@@ -473,6 +473,7 @@ async function loadFlightType(type, elementContainer, airport) {
 async function fetchWeatherData() {
   for (const [code, apt] of Object.entries(AIRPORTS)) {
     try {
+      // 1. Météo actuelle
       const res = await fetch(`${WORKER_BASE_URL}/api/weather?lat=${apt.lat}&lon=${apt.lon}`);
       if (!res.ok) continue;
 
@@ -490,8 +491,11 @@ async function fetchWeatherData() {
       if (tempEl) tempEl.textContent = `${temp}°C`;
       if (windEl) windEl.textContent = `Vent: ${windSpeedKmh} km/h (${windDeg}°)`;
 
-      // Mise à jour graphique de la Rose des Vents HTML
+      // Mise à jour de la Rose des Vents
       updateCompassUI(prefix, windDeg, windSpeedKmh);
+
+      // 2. Tendance Météo (Prévisions à venir)
+      fetchWeatherForecast(code, apt.lat, apt.lon);
 
     } catch (e) {
       console.error(`Erreur météo ${code} :`, e);
@@ -499,6 +503,60 @@ async function fetchWeatherData() {
   }
 }
 
+async function fetchWeatherForecast(airportCode, lat, lon) {
+  const prefix = airportCode.toLowerCase();
+  const card = document.querySelector(`.card[data-airport="${airportCode}"]`);
+  if (!card) return;
+
+  // Emplacement du conteneur de tendance (créé dynamiquement s'il n'existe pas)
+  let forecastEl = card.querySelector('.weather-forecast-box');
+  if (!forecastEl) {
+    forecastEl = document.createElement('div');
+    forecastEl.className = 'weather-forecast-box';
+    forecastEl.style.cssText = "margin-top: 10px; padding-top: 8px; border-top: 1px solid rgba(255,255,255,0.1); font-size: 12px; color: #cbd5e1;";
+    card.appendChild(forecastEl);
+  }
+
+  try {
+    const res = await fetch(`${WORKER_BASE_URL}/api/forecast?lat=${lat}&lon=${lon}`);
+    if (!res.ok) {
+      forecastEl.innerHTML = `<span style="opacity: 0.7;">Tendance : non disponible</span>`;
+      return;
+    }
+
+    const data = await res.json();
+    // Récupération des 3 prochains créneaux (ex: +3h, +6h, +9h)
+    const list = data.list ? data.list.slice(0, 3) : [];
+
+    if (list.length > 0) {
+      const itemsHtml = list.map(item => {
+        const time = new Date(item.dt * 1000).toLocaleTimeString([], { hour: '2d', minute: '2d' });
+        const temp = Math.round(item.main.temp);
+        const icon = item.weather[0]?.icon ? `https://openweathermap.org/img/wn/${item.weather[0].icon}.png` : '';
+        const pop = Math.round((item.pop || 0) * 100); // Probabilité de pluie %
+
+        return `
+          <div style="text-align: center; flex: 1;">
+            <div style="color: #94a3b8; font-size: 10px;">${time}</div>
+            ${icon ? `<img src="${icon}" style="width:28px; height:28px; margin:-4px 0;" title="${item.weather[0].description}" />` : ''}
+            <div style="font-weight: bold;">${temp}°C</div>
+            ${pop > 20 ? `<div style="color: #38bdf8; font-size: 10px;">🌧️ ${pop}%</div>` : ''}
+          </div>
+        `;
+      }).join('');
+
+      forecastEl.innerHTML = `
+        <div style="font-weight: 600; margin-bottom: 4px; color: #f8fafc;">Tendance à venir :</div>
+        <div style="display: flex; justify-content: space-between; align-items: center; background: rgba(0,0,0,0.2); padding: 6px; border-radius: 6px;">
+          ${itemsHtml}
+        </div>
+      `;
+    }
+  } catch (err) {
+    console.error(`Erreur tendance ${airportCode}:`, err);
+    forecastEl.innerHTML = `<span style="opacity: 0.7;">Tendance indisponible</span>`;
+  }
+}
 // Fonction pour dessiner/orienter la Rose des Vents
 function updateCompassUI(prefix, windDeg, speed) {
   // Recherche des conteneurs "Rose des vents"
