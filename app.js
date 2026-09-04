@@ -7,6 +7,7 @@ var map = map || null;
 var planeMarkers = planeMarkers || {}; 
 var currentAirport = currentAirport || "EBLG";
 var flightsGroup = flightsGroup || null;
+var radarMode = "all"; // all | approach | departure | enroute
 
 var AIRPORTS = {
   EBLG: { lat: 50.6374, lon: 5.4432, name: "Liège Airport" },
@@ -133,6 +134,60 @@ function calculateEstimatedCoords(airportKey, cityStr, type) {
   );
 
   return { lat: toDeg(lat2), lon: toDeg(lon2), heading };
+}
+// 👉 AJOUTE ICI la fonction PRO+++ pour dessiner un cône ILS
+function drawILSCone(lat, lon, heading, lengthKm = 15, angleDeg = 3) {
+  const kmToDeg = lengthKm / 111;
+
+  const rad = heading * Math.PI / 180;
+  const leftRad = (heading - angleDeg) * Math.PI / 180;
+  const rightRad = (heading + angleDeg) * Math.PI / 180;
+
+  const endLat = lat + kmToDeg * Math.cos(rad);
+  const endLon = lon + kmToDeg * Math.sin(rad);
+
+  const leftLat = lat + kmToDeg * Math.cos(leftRad);
+  const leftLon = lon + kmToDeg * Math.sin(leftRad);
+
+  const rightLat = lat + kmToDeg * Math.cos(rightRad);
+  const rightLon = lon + kmToDeg * Math.sin(rightRad);
+
+  const cone = L.polygon([
+    [lat, lon],
+    [leftLat, leftLon],
+    [endLat, endLon],
+    [rightLat, rightLon]
+  ], {
+    color: "cyan",
+    weight: 2,
+    opacity: 0.8,
+    fillOpacity: 0.1
+  });
+
+  cone.addTo(map);
+  return cone;
+}
+
+// =================================================================
+// CLASSIFICATION IFR : approche / départ / en‑route (PRO+++)
+// =================================================================
+function classifyFlightPhase(plane, airport) {
+  if (!plane || !plane.lat || !plane.lon) return "enroute";
+
+  const apt = AIRPORTS[airport];
+  const d = distKm(plane.lat, plane.lon, apt.lat, apt.lon);
+
+  const alt = plane.altitude || 0;
+  const gs = plane.speed ? plane.speed * 3.6 : 0; // m/s → km/h
+
+  // APPROCHE : proche + altitude basse + vitesse modérée
+  if (d < 18 && alt < 2000 && gs < 350) return "approach";
+
+  // DÉPART : proche + montée + vitesse en augmentation
+  if (d < 10 && alt < 3000 && gs > 200) return "departure";
+
+  // EN‑ROUTE : tout le reste
+  return "enroute";
 }
 
 // =================================================================
@@ -370,6 +425,42 @@ function dmsToDecimal(dmsStr) {
   return (parts[3] === "S" || parts[3] === "W") ? -dd : dd;
 }
 
+// =================================================================
+// AUTO : Détection piste active selon vent (logique ATC réelle)
+// =================================================================
+function autoSelectRunway(airport, windDeg, windSpeed) {
+  const RWYS = {
+    EBLG: [
+      { num: "22", heading: 220 },
+      { num: "04", heading: 40 }
+    ],
+    EBCI: [
+      { num: "24", heading: 240 },
+      { num: "06", heading: 60 }
+    ]
+  }[airport];
+
+  let bestRunway = RWYS[0];
+  let bestHeadwind = -999;
+
+  RWYS.forEach(rwy => {
+    const diff = Math.abs(windDeg - rwy.heading);
+    const angle = diff > 180 ? 360 - diff : diff;
+    const headwind = windSpeed * Math.cos(angle * Math.PI / 180);
+
+    if (headwind > bestHeadwind) {
+      bestHeadwind = headwind;
+      bestRunway = rwy;
+    }
+  });
+
+  if (airport === "EBLG") currentRunwayEBLG = bestRunway.num;
+  if (airport === "EBCI") currentRunwayEBCI = bestRunway.num;
+
+  // Mise à jour immédiate des sonomètres
+  if (map) renderSonometersOnMap(map);
+}
+
 function getSonometerColor(id, airport) {
   if (airport === "EBLG") {
     if (currentRunwayEBLG === "22") return "#10b981"; 
@@ -430,6 +521,34 @@ function renderSonometersOnMap(map) {
         }
       } catch (err) {}
     });
+    
+// =================================================================
+// ILS : Affichage automatique du cône selon piste active
+// =================================================================
+
+// Nettoyage ancien cône
+if (window.ilsConeLayer) {
+  window.ilsConeLayer.clearLayers();
+} else {
+  window.ilsConeLayer = L.layerGroup().addTo(map);
+}
+
+function addCone(lat, lon, heading) {
+  const cone = drawILSCone(lat, lon, heading);
+  window.ilsConeLayer.addLayer(cone);
+}
+
+// EBLG
+if (s.airport === "EBLG") {
+  if (currentRunwayEBLG === "22") addCone(AIRPORTS.EBLG.lat, AIRPORTS.EBLG.lon, 220);
+  if (currentRunwayEBLG === "04") addCone(AIRPORTS.EBLG.lat, AIRPORTS.EBLG.lon, 40);
+}
+
+// EBCI
+if (s.airport === "EBCI") {
+  if (currentRunwayEBCI === "24") addCone(AIRPORTS.EBCI.lat, AIRPORTS.EBCI.lon, 240);
+  if (currentRunwayEBCI === "06") addCone(AIRPORTS.EBCI.lat, AIRPORTS.EBCI.lon, 60);
+}
 
     sonometerMarkers.push(marker);
   });
@@ -556,10 +675,18 @@ async function loadAirportWeather(lat, lon, station, tempElemId, metarElemId, fo
 
     if (resMetar.ok) {
       const metar = await resMetar.json();
+      
       const metarEl = document.getElementById(metarElemId);
       if (metarEl) metarEl.innerText = metar.raw || metar.sanitized || metar.metar || "";
     }
-
+    
+autoSelectRunway(station, weather.wind?.deg || 0, weather.wind?.speed || 0);
+ const tempEl = document.getElementById(tempElemId);
+  if (tempEl && weather.main) {
+    tempEl.innerHTML = `<strong>${Math.round(weather.main.temp)}°C</strong> | 💨 ${msToKmh(weather.wind?.speed || 0)} km/h`;
+    drawCompass(`compass-${station.toLowerCase()}`, weather.wind?.deg || 0);
+  }
+}
     const forecastEl = document.getElementById(forecastElemId);
     if (forecastEl) {
       const resForecast = await fetch(`${WORKER_BASE_URL}/api/forecast?lat=${lat}&lon=${lon}`);
