@@ -61,9 +61,17 @@ function initMap() {
   const mapContainer = document.getElementById("map");
   if (!mapContainer) return;
 
+  // Si la carte existe déjà, on la détruit proprement avant de la re-créer
+  if (map !== null) {
+    map.remove();
+    map = null;
+  }
+
   map = L.map("map").setView([50.55, 4.95], 8);
   window.myMap = map; 
   flightsGroup = L.layerGroup().addTo(map);
+
+  // ... Reste de votre fonction initMap ...
 
   L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
     maxZoom: 19,
