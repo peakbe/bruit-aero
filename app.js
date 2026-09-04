@@ -636,6 +636,17 @@ function autoSelectRunway(airport, windDeg, windSpeed) {
   if (airport === "EBLG") currentRunwayEBLG = bestRunway.num;
   if (airport === "EBCI") currentRunwayEBCI = bestRunway.num;
 
+  // Mise à jour affichage météo
+if (airport === "EBLG") {
+  const el = document.getElementById("eblg-runway");
+  if (el) el.textContent = `Piste ${bestRunway.num}`;
+}
+
+if (airport === "EBCI") {
+  const el = document.getElementById("ebci-runway");
+  if (el) el.textContent = `Piste ${bestRunway.num}`;
+}
+
   // Mise à jour immédiate des sonomètres
   if (map) renderSonometersOnMap(map);
 }
