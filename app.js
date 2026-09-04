@@ -7,8 +7,7 @@ var map = map || null;
 var planeMarkers = planeMarkers || {};
 // Traces historiques ADS-B (PRO+++)
 var adsbTracks = {}; // key = callsign/icao24, value = { positions: [], lastUpdate: timestamp }
-// [CORRECTION BUG 3] objets Leaflet des traces / trajectoires futures, indexés par clé,
-// pour pouvoir les mettre à jour au lieu de les recréer à chaque cycle
+// Obj de suivi des traces / trajectoires futures, indexés par clé
 var trackLines = {};
 var futureLines = {};
 var currentAirport = currentAirport || "EBLG";
@@ -102,7 +101,7 @@ function parseCallsign(flightStr) {
 
 function calculateEstimatedCoords(airportKey, cityStr, type) {
   const airport = AIRPORTS[airportKey] || AIRPORTS.EBCI;
-  let targetCoords = [50.8503, 4.3517]; // Bruxelles par défaut si ville inconnue
+  let targetCoords = [50.8503, 4.3517];
 
   for (const [code, coords] of Object.entries(CITY_COORDS)) {
     if (cityStr && cityStr.includes(code)) {
@@ -114,17 +113,12 @@ function calculateEstimatedCoords(airportKey, cityStr, type) {
   const toRad = deg => deg * Math.PI / 180;
   const toDeg = rad => rad * 180 / Math.PI;
 
-  // Cap réel vers la destination
   const dLonRad = toRad(targetCoords[1] - airport.lon);
   const y = Math.sin(dLonRad) * Math.cos(toRad(targetCoords[0]));
   const x = Math.cos(toRad(airport.lat)) * Math.sin(toRad(targetCoords[0])) - Math.sin(toRad(airport.lat)) * Math.cos(toRad(targetCoords[0])) * Math.cos(dLonRad);
   const heading = (toDeg(Math.atan2(y, x)) + 360) % 360;
 
-  // Distance FIXE en km depuis l'aéroport (pas un % du trajet total)
-  // -> reste réaliste même pour un vol long-courrier (Houston, New York, Zhengzhou...)
   const fixedDistanceKm = type === 'departures' ? 8 : 15;
-
-  // Point de destination à distance/cap donnés (formule du grand cercle)
   const angDist = fixedDistanceKm / 6371;
   const lat1 = toRad(airport.lat);
   const lon1 = toRad(airport.lon);
@@ -142,7 +136,6 @@ function calculateEstimatedCoords(airportKey, cityStr, type) {
   return { lat: toDeg(lat2), lon: toDeg(lon2), heading };
 }
 
-// fonction PRO+++ pour dessiner un cône ILS
 function drawILSCone(lat, lon, heading, lengthKm = 15, angleDeg = 3) {
   const kmToDeg = lengthKm / 111;
 
@@ -193,7 +186,7 @@ function computeFuturePath(lat, lon, headingDeg, speedMs, secondsAhead = 60) {
   if (!lat || !lon || !headingDeg || !speedMs) return [];
 
   const headingRad = headingDeg * Math.PI / 180;
-  const distanceKm = (speedMs * secondsAhead) / 1000; // m/s → km
+  const distanceKm = (speedMs * secondsAhead) / 1000;
   const kmToDeg = distanceKm / 111;
 
   const futureLat = lat + kmToDeg * Math.cos(headingRad);
@@ -214,29 +207,22 @@ function isOnFinal(plane, airport) {
   const apt = AIRPORTS[airport];
   const d = distKm(plane.lat, plane.lon, apt.lat, apt.lon);
 
-  // Trop loin → pas en finale
   if (d > 12) return false;
 
   const alt = plane.altitude || 0;
   const gs = plane.speed ? plane.speed * 3.6 : 0;
 
-  // Altitude trop haute → pas en finale
   if (alt > 2500) return false;
-
-  // Vitesse trop élevée → pas en finale
   if (gs > 350) return false;
 
-  // Déterminer heading de la piste active
   const rwyHeading =
     airport === "EBLG"
       ? (currentRunwayEBLG === "22" ? 220 : 40)
       : (currentRunwayEBCI === "24" ? 240 : 60);
 
-  // Angle avion → axe de piste
   const diff = Math.abs(plane.heading - rwyHeading);
   const angle = diff > 180 ? 360 - diff : diff;
 
-  // Trop décalé → pas en finale
   if (angle > 15) return false;
 
   return true;
@@ -249,10 +235,10 @@ function computeCrosswind(windDeg, windSpeed, runwayHeading) {
   const angle = (windDeg - runwayHeading + 360) % 360;
   const rad = angle * Math.PI / 180;
 
-  const cross = Math.abs(windSpeed * Math.sin(rad));   // vent de travers
-  const head = windSpeed * Math.cos(rad);              // vent de face (peut être négatif)
+  const cross = Math.abs(windSpeed * Math.sin(rad));
+  const head = windSpeed * Math.cos(rad);
 
-  const side = angle > 180 ? "droite" : "gauche";      // direction du travers
+  const side = angle > 180 ? "droite" : "gauche";
 
   return { cross: Math.round(cross), head: Math.round(head), side };
 }
@@ -267,20 +253,16 @@ function classifyFlightPhase(plane, airport) {
   const d = distKm(plane.lat, plane.lon, apt.lat, apt.lon);
 
   const alt = plane.altitude || 0;
-  const gs = plane.speed ? plane.speed * 3.6 : 0; // m/s → km/h
+  const gs = plane.speed ? plane.speed * 3.6 : 0;
 
-  // APPROCHE : proche + altitude basse + vitesse modérée
   if (d < 18 && alt < 2000 && gs < 350) return "approach";
-
-  // DÉPART : proche + montée + vitesse en augmentation
   if (d < 10 && alt < 3000 && gs > 200) return "departure";
 
-  // EN‑ROUTE : tout le reste
   return "enroute";
 }
 
 // =================================================================
-// 4. RADAR TEMPS RÉEL GPS (PRIORITÉ ABSOLUE AUX POSITIONS DIRECTES)
+// 4. RADAR TEMPS RÉEL GPS
 // =================================================================
 async function renderFidsPlanesOnMap(map, flightsLayerGroup) {
   if (!flightsLayerGroup) return;
@@ -288,12 +270,10 @@ async function renderFidsPlanesOnMap(map, flightsLayerGroup) {
   const hasRotationPlugin = typeof L.Marker.prototype.setRotationAngle === "function";
 
   try {
-    // 1. Appel vers votre nouveau Worker multi-source (adsb.lol / adsb.fi / OpenSky)
     const resRadar = await fetch(`${WORKER_BASE_URL}/api/adsb`).catch(() => null);
     const radarData = resRadar && resRadar.ok ? await resRadar.json() : { aircraft: [] };
     const livePlanes = radarData.aircraft || [];
 
-    // 2. Récupération des FIDS pour l'enrichissement des données (noms de lignes, origines...)
     const combinations = [
       { airport: 'EBLG', type: 'departures' }, { airport: 'EBLG', type: 'arrivals' },
       { airport: 'EBCI', type: 'departures' }, { airport: 'EBCI', type: 'arrivals' }
@@ -311,9 +291,7 @@ async function renderFidsPlanesOnMap(map, flightsLayerGroup) {
       } catch (e) {}
     }
 
-    // 3. Traitement et affichage des avions ADS-B réels
     livePlanes.forEach(plane => {
-      // Normalisation du callsign
       const callsign = (plane.callsign || "").replace(/\s+/g, '').toUpperCase();
       const primaryKey = callsign || plane.registration || Math.random().toString();
       const parsed = parseCallsign(callsign);
@@ -324,11 +302,9 @@ async function renderFidsPlanesOnMap(map, flightsLayerGroup) {
         return callsign === targetCallsign || callsign === f.parsed.raw || (parsed.number && parsed.number === f.parsed.number);
       });
 
-      // Filtrage selon le mode radar sélectionné
       const phase = classifyFlightPhase(plane, matchingFids ? matchingFids.airport : currentAirport);
       if (radarMode !== "all" && radarMode !== phase) return;
 
-      // Unités de conversion
       const altMeters = plane.altFt ? Math.round(plane.altFt * 0.3048) : null;
       const speedKmh = plane.speedKt ? Math.round(plane.speedKt * 1.852) : null;
 
@@ -359,7 +335,6 @@ async function renderFidsPlanesOnMap(map, flightsLayerGroup) {
         `;
       }
 
-      // Historique des trajectoires (traces bleues/cyan)
       const trackKey = primaryKey;
       if (!adsbTracks[trackKey]) {
         adsbTracks[trackKey] = { positions: [], lastUpdate: Date.now() };
@@ -375,7 +350,6 @@ async function renderFidsPlanesOnMap(map, flightsLayerGroup) {
         trackLines[trackKey] = L.polyline(adsbTracks[trackKey].positions, { color: "#00e1ff", weight: 2, opacity: 0.7 }).addTo(flightsLayerGroup);
       }
 
-      // Projection trajectoire future
       const speedMs = plane.speedKt ? plane.speedKt * 0.514444 : 0;
       const futurePath = computeFuturePath(plane.lat, plane.lng, plane.track, speedMs);
       if (futurePath.length === 2) {
@@ -387,7 +361,6 @@ async function renderFidsPlanesOnMap(map, flightsLayerGroup) {
         }
       }
 
-      // Positionnement du symbole jaune de l'avion sur la carte
       const m = updateOrAddMarker(primaryKey, plane.lat, plane.lng, plane.track, popupContent, flightsLayerGroup, hasRotationPlugin);
       currentActiveKeys.add(primaryKey);
 
@@ -395,7 +368,6 @@ async function renderFidsPlanesOnMap(map, flightsLayerGroup) {
       if (callsign) { planeMarkers[callsign] = m; currentActiveKeys.add(callsign); }
     });
 
-    // Nettoyage des marqueurs obsolètes
     Object.keys(planeMarkers).forEach(key => {
       if (!currentActiveKeys.has(key) && planeMarkers[key]) {
         flightsLayerGroup.removeLayer(planeMarkers[key]);
@@ -534,18 +506,16 @@ function autoSelectRunway(airport, windDeg, windSpeed) {
   if (airport === "EBLG") currentRunwayEBLG = bestRunway.num;
   if (airport === "EBCI") currentRunwayEBCI = bestRunway.num;
 
-  // Mise à jour affichage météo
-if (airport === "EBLG") {
-  const el = document.getElementById("eblg-runway");
-  if (el) el.textContent = `Piste ${bestRunway.num}`;
-}
+  if (airport === "EBLG") {
+    const el = document.getElementById("eblg-runway");
+    if (el) el.textContent = `Piste ${bestRunway.num}`;
+  }
 
-if (airport === "EBCI") {
-  const el = document.getElementById("ebci-runway");
-  if (el) el.textContent = `Piste ${bestRunway.num}`;
-}
+  if (airport === "EBCI") {
+    const el = document.getElementById("ebci-runway");
+    if (el) el.textContent = `Piste ${bestRunway.num}`;
+  }
 
-  // Mise à jour immédiate des sonomètres
   if (map) renderSonometersOnMap(map);
 }
 
@@ -570,7 +540,6 @@ const sonometerMarkers = [];
 function renderSonometersOnMap(map) {
   sonometerMarkers.forEach(m => map.removeLayer(m));
   sonometerMarkers.length = 0;
-
 
   if (window.ilsConeLayer) {
     window.ilsConeLayer.clearLayers();
@@ -652,23 +621,17 @@ function setRadarMode(mode, btnElement) {
 // =================================================================
 function msToKmh(ms) { return Math.round(ms * 3.6); }
 
-// =================================================================
-// Badges météo (icônes OpenWeather) — PRO+++
-// =================================================================
 function getWeatherIcon(code) {
-  if (code >= 200 && code < 300) return "⛈️"; // orage
-  if (code >= 300 && code < 400) return "🌦️"; // bruine
-  if (code >= 500 && code < 600) return "🌧️"; // pluie
-  if (code >= 600 && code < 700) return "❄️"; // neige
-  if (code >= 700 && code < 800) return "🌫️"; // brume / poussière
-  if (code === 800) return "☀️"; // ciel clair
-  if (code > 800 && code < 803) return "⛅"; // nuages légers
-  return "☁️"; // nuages denses
+  if (code >= 200 && code < 300) return "⛈️";
+  if (code >= 300 && code < 400) return "🌦️";
+  if (code >= 500 && code < 600) return "🌧️";
+  if (code >= 600 && code < 700) return "❄️";
+  if (code >= 700 && code < 800) return "🌫️";
+  if (code === 800) return "☀️";
+  if (code > 800 && code < 803) return "⛅";
+  return "☁️";
 }
 
-// =================================================================
-// [AJOUT] Direction cardinale du vent (rose à 8 points, notation FR)
-// =================================================================
 const WIND_CARDINALS = [
   { abbr: "N",   full: "Nord" },
   { abbr: "N-E", full: "Nord-Est" },
@@ -697,14 +660,12 @@ function drawCompass(canvasId, windDeg, windSpeedKmh = null) {
   const centerY = canvas.height / 2;
   const radius = Math.min(centerX, centerY) - 5;
 
-  // Cercle extérieur
   ctx.beginPath();
   ctx.arc(centerX, centerY, radius, 0, 2 * Math.PI);
   ctx.strokeStyle = "rgba(255, 255, 255, 0.3)";
   ctx.lineWidth = 2;
   ctx.stroke();
 
-  // Repères N / E / S / O (fixes, ne tournent pas avec le vent)
   ctx.fillStyle = "#94a3b8";
   ctx.font = "10px sans-serif";
   ctx.textAlign = "center";
@@ -714,7 +675,6 @@ function drawCompass(canvasId, windDeg, windSpeedKmh = null) {
   ctx.fillText("E", centerX + radius - 10, centerY);
   ctx.fillText("O", centerX - radius + 10, centerY);
 
-  // Flèche de direction (pointe vers d'où vient le vent, convention météo)
   ctx.save();
   ctx.translate(centerX, centerY);
   ctx.rotate((windDeg * Math.PI) / 180);
@@ -729,7 +689,6 @@ function drawCompass(canvasId, windDeg, windSpeedKmh = null) {
 
   ctx.restore();
 
-  // Vitesse au centre, si fournie
   if (windSpeedKmh !== null && windSpeedKmh !== undefined) {
     ctx.fillStyle = "#f8fafc";
     ctx.font = "bold 12px sans-serif";
@@ -738,7 +697,6 @@ function drawCompass(canvasId, windDeg, windSpeedKmh = null) {
     ctx.fillText(`${Math.round(windSpeedKmh)} km/h`, centerX, centerY + radius * 0.55);
   }
 
-  // Mise à jour du libellé texte de direction cardinale (N, S, S-E, ...)
   const cardinal = degToCardinal(windDeg);
   const labelEl = document.getElementById(canvasId.replace("compass-", "wind-dir-"));
   if (labelEl) {
@@ -788,115 +746,47 @@ async function loadFlightType(type, elementContainer, airport) {
     } else {
       elementContainer.innerHTML = `<tr><td colspan="4" style="text-align:center;">Aucun vol trouvé</td></tr>`;
     }
-  } catch (error) {
-    elementContainer.innerHTML = `<tr><td colspan="4" style="text-align:center; color:#ef4444;">Erreur de chargement</td></tr>`;
+  } catch (e) {
+    console.error("Erreur chargement FIDS :", e);
+    elementContainer.innerHTML = `<tr><td colspan="4" style="text-align:center; color:#ef4444;">Erreur données</td></tr>`;
   }
-}
-
-function switchFlightTab(airport, type, btnElement) {
-  const parent = btnElement.parentElement;
-  if (parent) {
-    parent.querySelectorAll('.tab-btn, button').forEach(btn => btn.classList.remove('active'));
-    btnElement.classList.add('active');
-  }
-
-  const container = document.getElementById(`${airport.toLowerCase()}-flights-body`);
-  if (container) loadFlightType((type === 'dep' || type === 'departures') ? 'departures' : 'arrivals', container, airport.toUpperCase());
 }
 
 async function fetchWeatherData() {
-  loadAirportWeather(AIRPORTS.EBLG.lat, AIRPORTS.EBLG.lon, "EBLG", "eblg-temp", "eblg-metar", "eblg-forecast");
-  await sleep(300);
-  loadAirportWeather(AIRPORTS.EBCI.lat, AIRPORTS.EBCI.lon, "EBCI", "ebci-temp", "ebci-metar", "ebci-forecast");
-}
+  for (const [code, apt] of Object.entries(AIRPORTS)) {
+    try {
+      const res = await fetch(`${WORKER_BASE_URL}/api/weather?lat=${apt.lat}&lon=${apt.lon}`);
+      if (!res.ok) continue;
 
-async function loadAirportWeather(lat, lon, station, tempElemId, metarElemId, forecastElemId) {
-  try {
-    const resWeather = await fetch(`${WORKER_BASE_URL}/api/weather?lat=${lat}&lon=${lon}`);
-    const resMetar = await fetch(`${WORKER_BASE_URL}/api/metar?station=${station}`);
+      const weather = await res.json();
+      const temp = Math.round(weather.main?.temp ?? 0);
+      const windSpeed = weather.wind?.speed ?? 0;
+      const windSpeedKmh = msToKmh(windSpeed);
+      const windDeg = weather.wind?.deg ?? 0;
+      const weatherCode = weather.weather?.[0]?.id ?? 800;
 
-    if (resWeather.ok) {
-      const weather = await resWeather.json();
-      const tempEl = document.getElementById(tempElemId);
+      // Auto selection de la piste active
+      autoSelectRunway(code, windDeg, windSpeed);
 
-      if (tempEl && weather.main) {
-        tempEl.innerHTML = `<strong>${Math.round(weather.main.temp)}°C</strong> | 💨 ${msToKmh(weather.wind?.speed || 0)} km/h`;
-        drawCompass(`compass-${station.toLowerCase()}`, weather.wind?.deg || 0, msToKmh(weather.wind?.speed || 0));
-      }
+      // Composantes vent
+      const rwyHeading = code === "EBLG" ? (currentRunwayEBLG === "22" ? 220 : 40) : (currentRunwayEBCI === "24" ? 240 : 60);
+      const windInfo = computeCrosswind(windDeg, windSpeedKmh, rwyHeading);
 
-      autoSelectRunway(station, weather.wind?.deg || 0, weather.wind?.speed || 0);
+      const prefix = code.toLowerCase();
+      const tempEl = document.getElementById(`${prefix}-temp`);
+      const windEl = document.getElementById(`${prefix}-wind`);
+      const iconEl = document.getElementById(`${prefix}-weather-icon`);
+
+      if (tempEl) tempEl.textContent = `${temp}°C`;
+      if (windEl) windEl.textContent = `${windSpeedKmh} km/h (Travers : ${windInfo.cross} km/h)`;
+      if (iconEl) iconEl.textContent = getWeatherIcon(weatherCode);
+
+      drawCompass(`compass-${prefix}`, windDeg, windSpeedKmh);
+    } catch (e) {
+      console.error(`Erreur météo ${code} :`, e);
     }
-    
-// Vent de travers au sol
-const windDeg = weather.wind?.deg || 0;
-const windMs = weather.wind?.speed || 0;
-const windKt = Math.round(windMs * 1.94384); // conversion m/s → kt
-
-let rwyHeading = 0;
-
-if (station === "EBCI") {
-  rwyHeading = currentRunwayEBCI === "24" ? 240 : 60;
-  const cw = computeCrosswind(windDeg, windKt, rwyHeading);
-  const el = document.getElementById("ebci-crosswind");
-  if (el) el.textContent = `Vent de travers : ${cw.cross} kt ${cw.side} — Vent de face : ${cw.head} kt`;
-}
-
-if (station === "EBLG") {
-  rwyHeading = currentRunwayEBLG === "22" ? 220 : 40;
-  const cw = computeCrosswind(windDeg, windKt, rwyHeading);
-  const el = document.getElementById("eblg-crosswind");
-  if (el) el.textContent = `Vent de travers : ${cw.cross} kt ${cw.side} — Vent de face : ${cw.head} kt`;
-}
-    if (resMetar.ok) {
-      const metar = await resMetar.json();
-      const metarEl = document.getElementById(metarElemId);
-      if (metarEl) metarEl.innerText = metar.raw || metar.sanitized || metar.metar || "";
-    }
-
-    const forecastEl = document.getElementById(forecastElemId);
-    if (forecastEl) {
-      const resForecast = await fetch(`${WORKER_BASE_URL}/api/forecast?lat=${lat}&lon=${lon}`);
-      if (resForecast.ok) {
-        const forecastData = await resForecast.json();
-        if (forecastData && Array.isArray(forecastData.list)) {
-          forecastEl.innerHTML = forecastData.list.slice(0, 4).map(item => {
-  const icon = getWeatherIcon(item.weather?.[0]?.id || 800);
-  const time = new Date(item.dt * 1000).toLocaleTimeString('fr-BE', { hour: '2-digit', minute: '2-digit' });
-  const temp = Math.round(item.main.temp);
-
-  return `
-    <div style="text-align:center; font-size:0.8rem; padding:4px;">
-      <div>${time}</div>
-      <div>${icon} <strong>${temp}°C</strong></div>
-    </div>
-  `;
-}).join('');
-
-        }
-      }
-    }
-  } catch (err) {}
-}
-
-function filterAirportView(selectedAirport) {
-  document.querySelectorAll('.filter-btn').forEach(btn => {
-    btn.classList.toggle('active', btn.getAttribute('onclick')?.includes(`'${selectedAirport}'`));
-  });
-
-  document.querySelectorAll('[data-airport]').forEach(el => {
-    const elAirport = el.getAttribute('data-airport');
-    el.style.display = (selectedAirport === 'ALL' || elAirport === selectedAirport) ? '' : 'none';
-  });
-
-  if (map) {
-    if (selectedAirport === 'EBLG') map.setView([50.6374, 5.4432], 11);
-    else if (selectedAirport === 'EBCI') map.setView([50.4592, 4.4538], 11);
-    else map.setView([50.55, 4.95], 8);
   }
 }
 
-if (document.readyState === "loading") {
-  document.addEventListener("DOMContentLoaded", initMap);
-} else {
-  initMap();
-}
+// Initialisation globale au chargement de la page
+document.addEventListener("DOMContentLoaded", initMap);
