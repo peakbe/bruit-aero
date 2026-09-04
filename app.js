@@ -688,15 +688,7 @@ function renderSonometersOnMap(map) {
   sonometerMarkers.forEach(m => map.removeLayer(m));
   sonometerMarkers.length = 0;
 
-  // =================================================================
-  // ILS : Affichage automatique du cône selon piste active
-  // [CORRECTION BUG 2] ce bloc était auparavant DANS la boucle forEach
-  // ci-dessous : il vidait window.ilsConeLayer à chaque sonomètre, ce qui
-  // effaçait systématiquement le cône EBCI dès qu'un sonomètre EBLG était
-  // traité (car EBCI est listé en premier dans allSonometers). Il est
-  // maintenant exécuté UNE SEULE FOIS, avant la boucle, pour les deux
-  // aéroports.
-  // =================================================================
+
   if (window.ilsConeLayer) {
     window.ilsConeLayer.clearLayers();
   } else {
@@ -759,36 +751,6 @@ function renderSonometersOnMap(map) {
 function setRunwayEBCI(runwayNum, map) { currentRunwayEBCI = runwayNum; renderSonometersOnMap(map); }
 function setRunwayEBLG(runwayNum, map) { currentRunwayEBLG = runwayNum; renderSonometersOnMap(map); }
 
-// Vent de travers au sol
-const windDeg = weather.wind?.deg || 0;
-const windMs = weather.wind?.speed || 0;
-const windKt = Math.round(windMs * 1.94384); // conversion m/s → kt
-
-let rwyHeading = 0;
-
-if (station === "EBCI") {
-  rwyHeading = currentRunwayEBCI === "24" ? 240 : 60;
-  const cw = computeCrosswind(windDeg, windKt, rwyHeading);
-  const el = document.getElementById("ebci-crosswind");
-  if (el) el.textContent = `Vent de travers : ${cw.cross} kt ${cw.side} — Vent de face : ${cw.head} kt`;
-}
-
-if (station === "EBLG") {
-  rwyHeading = currentRunwayEBLG === "22" ? 220 : 40;
-  const cw = computeCrosswind(windDeg, windKt, rwyHeading);
-  const el = document.getElementById("eblg-crosswind");
-  if (el) el.textContent = `Vent de travers : ${cw.cross} kt ${cw.side} — Vent de face : ${cw.head} kt`;
-}
-
-// =================================================================
-// [CORRECTION] Filtre radar (Tous / Approche / Départ / En-route)
-// Auparavant, les boutons se contentaient de faire `radarMode='approach'`
-// en HTML : la variable changeait bien, mais (1) rien ne se rafraîchissait
-// avant le prochain cycle automatique de 5s, et (2) aucun bouton ne
-// s'affichait comme "actif". Résultat : le clic semblait ne rien faire.
-// Cette fonction met à jour radarMode, redessine le radar immédiatement,
-// et bascule la classe active sur le bouton cliqué.
-// =================================================================
 function setRadarMode(mode, btnElement) {
   radarMode = mode;
 
@@ -827,17 +789,6 @@ function degToCardinal(deg) {
   return WIND_CARDINALS[index];
 }
 
-// =================================================================
-// [CORRECTION] La rose des vents était définie deux fois : une version
-// "riche" (N/E/S/O, vitesse) directement dans le <script> du HTML, et
-// cette version simplifiée ici dans app.js. Comme app.js est chargé
-// APRÈS le script inline, cette dernière écrasait silencieusement la
-// version riche dès que les données météo réelles arrivaient — la rose
-// perdait ses repères N/E/S/O et l'affichage de la vitesse. Il n'y a
-// désormais plus qu'une seule version, ici, qui reprend les repères
-// cardinaux et ajoute le texte de direction (N, S, S-E, ...) sous la
-// rose, via l'élément #wind-dir-<station> s'il existe dans le HTML.
-// =================================================================
 function drawCompass(canvasId, windDeg, windSpeedKmh = null) {
   const canvas = document.getElementById(canvasId);
   if (!canvas) return;
@@ -962,14 +913,6 @@ async function fetchWeatherData() {
   loadAirportWeather(AIRPORTS.EBCI.lat, AIRPORTS.EBCI.lon, "EBCI", "ebci-temp", "ebci-metar", "ebci-forecast");
 }
 
-// =================================================================
-// [CORRECTION BUG 1] Fonction réécrite : `weather` était utilisée en dehors
-// du bloc `if (resWeather.ok) { const weather = ... }` où elle était
-// déclarée, ce qui provoquait un ReferenceError à chaque appel (avalé
-// silencieusement par le catch global) et empêchait `autoSelectRunway`
-// de jamais s'exécuter. Le code dupliqué de mise à jour de tempEl a
-// aussi été supprimé.
-// =================================================================
 async function loadAirportWeather(lat, lon, station, tempElemId, metarElemId, forecastElemId) {
   try {
     const resWeather = await fetch(`${WORKER_BASE_URL}/api/weather?lat=${lat}&lon=${lon}`);
@@ -986,7 +929,27 @@ async function loadAirportWeather(lat, lon, station, tempElemId, metarElemId, fo
 
       autoSelectRunway(station, weather.wind?.deg || 0, weather.wind?.speed || 0);
     }
+    
+// Vent de travers au sol
+const windDeg = weather.wind?.deg || 0;
+const windMs = weather.wind?.speed || 0;
+const windKt = Math.round(windMs * 1.94384); // conversion m/s → kt
 
+let rwyHeading = 0;
+
+if (station === "EBCI") {
+  rwyHeading = currentRunwayEBCI === "24" ? 240 : 60;
+  const cw = computeCrosswind(windDeg, windKt, rwyHeading);
+  const el = document.getElementById("ebci-crosswind");
+  if (el) el.textContent = `Vent de travers : ${cw.cross} kt ${cw.side} — Vent de face : ${cw.head} kt`;
+}
+
+if (station === "EBLG") {
+  rwyHeading = currentRunwayEBLG === "22" ? 220 : 40;
+  const cw = computeCrosswind(windDeg, windKt, rwyHeading);
+  const el = document.getElementById("eblg-crosswind");
+  if (el) el.textContent = `Vent de travers : ${cw.cross} kt ${cw.side} — Vent de face : ${cw.head} kt`;
+}
     if (resMetar.ok) {
       const metar = await resMetar.json();
       const metarEl = document.getElementById(metarElemId);
