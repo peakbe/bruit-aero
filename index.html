@@ -94,12 +94,23 @@
       overflow-x: hidden;
     }
 
-    /* Container de la carte Leaflet */
+    /*
+      [CORRECTION] #map était défini DEUX FOIS dans cette feuille de style :
+      une première fois ici en hauteur responsive (70vh / min-height),
+      une seconde fois plus bas en hauteur fixe (480px). Comme la règle
+      fixe arrivait après la media query mobile dans le fichier, elle
+      l'emportait dans TOUS les cas (desktop ET mobile), rendant le
+      "@media (max-width: 768px) { #map { height: 60vh; } }" inopérant.
+      Il n'y a plus qu'une seule définition ici, et la media query
+      ci-dessous fonctionne à nouveau normalement.
+    */
     #map {
       width: 100%;
       height: 70vh;
       min-height: 350px;
+      max-height: 480px;
       border-radius: 8px;
+      border: 1px solid var(--border);
     }
 
     /* En-tête / Barre de titre */
@@ -173,6 +184,15 @@
     .compass-container { text-align: center; }
     canvas.compass { background: #0f172a; border-radius: 50%; border: 2px solid var(--border); }
 
+    /* [AJOUT] Libellé texte de la direction cardinale du vent (N, S, S-E, ...) */
+    .wind-dir-label {
+      font-size: 0.8rem;
+      font-weight: 600;
+      color: var(--accent);
+      margin-top: 6px;
+      min-height: 1.1em;
+    }
+
     /* Flight Tables */
     .tab-container { display: flex; gap: 10px; margin-bottom: 15px; }
     .tab-btn { background: #0f172a; border: 1px solid var(--border); color: var(--text-muted); padding: 8px 16px; border-radius: 6px; cursor: pointer; transition: 0.2s; }
@@ -184,9 +204,6 @@
     .badge { padding: 4px 8px; border-radius: 4px; font-size: 0.75rem; font-weight: bold; }
     .badge-dep { background: rgba(56, 189, 248, 0.2); color: var(--accent); }
     .badge-arr { background: rgba(16, 185, 129, 0.2); color: #10b981; }
-
-    /* Radar Map Pleine Largeur */
-    #map { height: 480px; width: 100%; border-radius: 8px; border: 1px solid var(--border); }
 
     /* Avion Custom Leaflet Marker */
     .custom-plane-icon { background: transparent; border: none; display: flex; align-items: center; justify-content: center; }
@@ -251,6 +268,8 @@
         <div class="compass-container">
           <canvas id="compass-ebci" class="compass" width="130" height="130"></canvas>
           <div style="font-size: 0.8rem; margin-top: 4px; color: var(--text-muted);">Rose des vents</div>
+          <!-- [AJOUT] Direction cardinale du vent, mise à jour par drawCompass() dans app.js -->
+          <div id="wind-dir-ebci" class="wind-dir-label">--</div>
         </div>
       </div>
     </div>
@@ -271,6 +290,8 @@
         <div class="compass-container">
           <canvas id="compass-eblg" class="compass" width="130" height="130"></canvas>
           <div style="font-size: 0.8rem; margin-top: 4px; color: var(--text-muted);">Rose des vents</div>
+          <!-- [AJOUT] Direction cardinale du vent, mise à jour par drawCompass() dans app.js -->
+          <div id="wind-dir-eblg" class="wind-dir-label">--</div>
         </div>
       </div>
     </div>
@@ -360,52 +381,19 @@
       document.getElementById('clock').innerText = new Date().toLocaleTimeString('fr-BE');
     }, 1000);
 
-    // Dessin dynamique des roses des vents
-    function drawCompass(canvasId, windDeg, windSpeed) {
-      const canvas = document.getElementById(canvasId);
-      if(!canvas) return;
-      const ctx = canvas.getContext('2d');
-      const radius = canvas.width / 2;
-
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-      ctx.beginPath();
-      ctx.arc(radius, radius, radius - 10, 0, 2 * Math.PI);
-      ctx.strokeStyle = '#334155';
-      ctx.lineWidth = 3;
-      ctx.stroke();
-
-      ctx.fillStyle = '#94a3b8';
-      ctx.font = '10px sans-serif';
-      ctx.textAlign = 'center';
-      ctx.fillText('N', radius, 18);
-      ctx.fillText('S', radius, canvas.height - 8);
-      ctx.fillText('E', canvas.width - 10, radius + 3);
-      ctx.fillText('O', 12, radius + 3);
-
-      ctx.save();
-      ctx.translate(radius, radius);
-      ctx.rotate((windDeg * Math.PI) / 180);
-
-      ctx.beginPath();
-      ctx.moveTo(0, -radius + 20);
-      ctx.lineTo(8, 15);
-      ctx.lineTo(0, 5);
-      ctx.lineTo(-8, 15);
-      ctx.closePath();
-      ctx.fillStyle = '#38bdf8';
-      ctx.fill();
-
-      ctx.restore();
-
-      ctx.fillStyle = '#f8fafc';
-      ctx.font = 'bold 12px sans-serif';
-      ctx.textAlign = 'center';
-      ctx.fillText(`${windSpeed} kt`, radius, radius + 4);
-    }
-
-    drawCompass('compass-ebci', 230, 12);
-    drawCompass('compass-eblg', 250, 8);
+    /*
+      [CORRECTION] La fonction drawCompass() était définie ICI en double
+      de celle d'app.js, avec une signature différente (canvasId, windDeg,
+      windSpeed) incluant les repères N/E/S/O. Comme app.js est chargé
+      APRÈS ce script, sa version (plus simple, sans repères ni vitesse)
+      écrasait silencieusement celle-ci dès qu'une mise à jour météo
+      réelle survenait — la rose perdait ses repères après quelques
+      secondes. La fonction est maintenant unique, dans app.js, et inclut
+      en plus l'affichage textuel de la direction cardinale (N, S, S-E...).
+      Les appels de démonstration ci-dessous sont donc supprimés : la
+      rose s'initialise directement avec les vraies données dès que
+      fetchWeatherData() (appelé dans app.js) reçoit sa première réponse.
+    */
   </script>
 
   <!-- Script principal unique backend -->
