@@ -8,6 +8,55 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "Content-Type",
 };
 
+// Configuration pour les endpoints ADS-B directes
+const AIRPORTS = {
+  ebci: { lat: 50.4594, lng: 4.4536 },
+  eblg: { lat: 50.6378, lng: 5.4444 },
+};
+const DIST_NM = 25;
+const UA = "AeroNoiseMonitor/1.0 (https://aero-sonic-pulse.base44.app)";
+
+const RELAYS = [
+  (u) => `https://api.allorigins.win/raw?url=${encodeURIComponent(u)}`,
+  (u) => `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(u)}`,
+];
+
+async function fetchReadsb(base, ap, relay) {
+  const target = `${base}/lat/${ap.lat}/lon/${ap.lng}/dist/${DIST_NM}`;
+  const url = relay !== null ? RELAYS[relay](target) : target;
+  const res = await fetch(url, { headers: { "User-Agent": UA, "Accept": "application/json" } });
+  if (!res.ok) return [];
+  const j = await res.json();
+  const list = Array.isArray(j) ? j : j.aircraft || j.ac || [];
+  
+  return list
+    .filter((a) => typeof a.lat === "number" && typeof a.lon === "number")
+    .map((a) => {
+      const altFt = typeof a.alt_baro === "number" ? a.alt_baro : a.alt_baro === "ground" ? 0 : 0;
+      const speedKt = typeof a.gs === "number" ? a.gs : 0;
+      
+      return [
+        a.hex || "unknown",                        // [0] ICAO Hex
+        (a.flight || a.r || "Inconnu").trim(),      // [1] Indicatif / Vol
+        "BE",                                      // [2] Pays
+        Math.floor(Date.now() / 1000),             // [3] Horodatage
+        Math.floor(Date.now() / 1000),             // [4] Dernier contact
+        a.lon,                                     // [5] Longitude
+        a.lat,                                     // [6] Latitude
+        altFt * 0.3048,                            // [7] Altitude (mètres)
+        a.alt_baro === "ground",                   // [8] Au sol
+        speedKt * 0.514444,                        // [9] Vitesse (m/s)
+        typeof a.track === "number" ? a.track : 0  // [10] Cap / Heading
+      ];
+    });
+}
+
+async function fetchBothAdsb(base, relay) {
+  const ebci = await fetchReadsb(base, AIRPORTS.ebci, relay).catch(() => []);
+  const eblg = await fetchReadsb(base, AIRPORTS.eblg, relay).catch(() => []);
+  return [...ebci, ...eblg];
+}
+
 export default {
   async fetch(request, env, ctx) {
     if (request.method === "OPTIONS") {
@@ -19,9 +68,46 @@ export default {
 
     try {
       // -------------------------------------------------------------
-      // 1. ENDPOINT RADAR AÉRIEN (FR24 -> OpenSky -> ADSB.lol)
+      // 1. ENDPOINT RADAR AÉRIEN (ADSB.lol/fi -> FR24 -> OpenSky)
       // -------------------------------------------------------------
-      if (path.includes("/api/opensky")) {
+      if (path.includes("/api/opensky") || path.includes("/api/adsb")) {
+        
+        // --- NIVEAU 0 : ADSB.LOL & ADSB.FI (Temps réel direct + Proxies) ---
+        try {
+          const LOL = "https://api.adsb.lol/v2";
+          const FI = "https://opendata.adsb.fi/api/v2";
+          let mappedStates = [];
+
+          for (const [base, relay] of [
+            [LOL, null],
+            [FI, null],
+            [LOL, 0],
+            [FI, 0],
+            [LOL, 1],
+          ]) {
+            mappedStates = await fetchBothAdsb(base, relay);
+            if (mappedStates.length > 0) break;
+          }
+
+          if (mappedStates.length > 0) {
+            // Déduplication par Hex / Indicatif
+            const seen = new Set();
+            const deduplicated = mappedStates.filter((s) => {
+              const k = `${s[0]}|${s[1]}`;
+              if (seen.has(k)) return false;
+              seen.add(k);
+              return true;
+            });
+
+            return new Response(JSON.stringify({ states: deduplicated }), {
+              status: 200,
+              headers: { ...corsHeaders, "Content-Type": "application/json" }
+            });
+          }
+        } catch (e) {
+          console.log("ADSB direct/proxy indisponible, bascule sur FR24...", e);
+        }
+
         // --- NIVEAU 1 : FLIGHTRADAR24 ---
         try {
           const fr24Url = "https://data-cloud.flightradar24.com/zones/fcgi/feed.json?bounds=52.0,49.0,2.0,7.0&faa=1&satellite=1&mlat=1&flarm=1&adsb=1&gnd=0&air=1&vehicles=0&estimated=0";
@@ -101,35 +187,7 @@ export default {
             }
           }
         } catch (e) {
-          console.log("OpenSky indisponible, bascule sur ADSB.lol...", e);
-        }
-
-        // --- NIVEAU 3 : ADSB.LOL ---
-        try {
-          const adsbRes = await fetch("https://api.adsb.lol/v2/lat/50.55/lon/4.95/dist/100");
-          if (adsbRes.ok) {
-            const adsbData = await adsbRes.json();
-            const mappedStates = (adsbData.ac || []).map((ac) => [
-              ac.hex,
-              ac.flight || "Inconnu",
-              "BE",
-              ac.seen,
-              ac.seen,
-              ac.lon,
-              ac.lat,
-              ac.alt_geom ? ac.alt_geom * 0.3048 : null,
-              false,
-              ac.gs ? ac.gs * 0.514444 : null,
-              ac.track || 0
-            ]);
-
-            return new Response(JSON.stringify({ states: mappedStates }), {
-              status: 200,
-              headers: { ...corsHeaders, "Content-Type": "application/json" }
-            });
-          }
-        } catch (e) {
-          console.error("Erreur fallback ADSB:", e);
+          console.log("OpenSky indisponible...", e);
         }
 
         return new Response(JSON.stringify({ states: [] }), {
@@ -343,7 +401,6 @@ export default {
                   formattedTime = date.toLocaleTimeString("fr-BE", { hour: "2-digit", minute: "2-digit", timeZone: "Europe/Brussels" });
                 }
 
-                // Logique réordonnée des statuts
                 const rawFr24Status = (f?.status?.text || "").toLowerCase();
                 let mappedStatus = "Programmé";
 
@@ -379,7 +436,7 @@ export default {
           console.error("Échec FR24 FIDS, bascule sur Mock...", e);
         }
 
-        // --- SOURCE 5 : DONNÉES FICTIVES DE SECOURS (MOCK) ---
+        // --- SOURCE 5 : MOCK ---
         const getDynamicTime = (offset) => {
           const now = new Date();
           now.setMinutes(now.getMinutes() + offset);
@@ -402,7 +459,7 @@ export default {
       }
 
       // -------------------------------------------------------------
-      // 3. ENDPOINT MÉTÉO ACTUELLE (Open-Meteo)
+      // 3. ENDPOINT MÉTÉO ACTUELLE
       // -------------------------------------------------------------
       if (path.includes("/api/weather")) {
         const lat = url.searchParams.get("lat") || "50.6374";
@@ -426,7 +483,7 @@ export default {
       }
 
       // -------------------------------------------------------------
-      // 4. ENDPOINT TENDANCE MÉTÉO (Open-Meteo)
+      // 4. ENDPOINT TENDANCE MÉTÉO
       // -------------------------------------------------------------
       if (path.includes("/api/forecast")) {
         const lat = url.searchParams.get("lat") || "50.6374";
@@ -462,7 +519,7 @@ export default {
       }
 
       // -------------------------------------------------------------
-      // 5. ENDPOINT METAR (VATSIM API)
+      // 5. ENDPOINT METAR
       // -------------------------------------------------------------
       if (path.includes("/api/metar")) {
         const station = (url.searchParams.get("station") || "EBLG").toUpperCase();
