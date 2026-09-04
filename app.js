@@ -391,26 +391,21 @@ function renderSonometersOnMap(mapInstance) {
     const lng = dmsToDecimal(s.lonDMS);
     
     const marker = L.circleMarker([lat, lng], {
-      radius: 7, 
-      fillColor: "#10b981", 
-      color: "#ffffff", 
-      weight: 2, 
-      fillOpacity: 0.9
+      radius: 7, fillColor: "#10b981", color: "#ffffff", weight: 2, fillOpacity: 0.9
     }).addTo(mapInstance);
 
-    // Pop-up initial
     marker.bindPopup(`<b>Sonomètre ${s.id} (${s.airport})</b><br>${s.address}<br><i>Chargement météo...</i>`);
 
-    // Écouteur au clic pour récupérer la météo
     marker.on('click', async () => {
       try {
         const res = await fetch(`${WORKER_BASE_URL}/api/weather?lat=${lat}&lon=${lng}`);
         if (res.ok) {
-          const weather = await res.json();
-          const temp = Math.round(weather.main?.temp ?? 0);
-          const windSpeed = msToKmh(weather.wind?.speed ?? 0);
-          const windDeg = weather.wind?.deg ?? 0;
-          const description = weather.weather?.[0]?.description ?? "";
+          const weatherData = await res.json();
+          const temp = Math.round(weatherData.main?.temp ?? 0);
+          const windSpeed = msToKmh(weatherData.wind?.speed ?? 0);
+          const windDeg = weatherData.wind?.deg ?? 0;
+          // Extraction correcte du tableau OpenWeather
+          const description = weatherData.weather && weatherData.weather[0] ? weatherData.weather[0].description : "Ciel dégagé";
 
           marker.getPopup().setContent(`
             <div style="font-family: sans-serif; font-size: 13px;">
@@ -419,11 +414,9 @@ function renderSonometersOnMap(mapInstance) {
               <hr style="border:0; border-top:1px solid #e2e8f0; margin: 4px 0;">
               <b>🌡️ Température :</b> ${temp}°C<br>
               <b>💨 Vent :</b> ${windSpeed} km/h (${windDeg}°)<br>
-              <b>☁️ Météo :</b> ${description || "N/C"}
+              <b>☁️ Météo :</b> ${description}
             </div>
           `);
-        } else {
-          marker.getPopup().setContent(`<b>Sonomètre ${s.id} (${s.airport})</b><br>${s.address}<br><span style="color:red;">Météo indisponible</span>`);
         }
       } catch (err) {
         console.error("Erreur météo sonomètre :", err);
@@ -496,9 +489,37 @@ async function fetchWeatherData() {
 
       if (tempEl) tempEl.textContent = `${temp}°C`;
       if (windEl) windEl.textContent = `Vent: ${windSpeedKmh} km/h (${windDeg}°)`;
+
+      // Mise à jour graphique de la Rose des Vents HTML
+      updateCompassUI(prefix, windDeg, windSpeedKmh);
+
     } catch (e) {
       console.error(`Erreur météo ${code} :`, e);
     }
+  }
+}
+
+// Fonction pour dessiner/orienter la Rose des Vents
+function updateCompassUI(prefix, windDeg, speed) {
+  // Recherche des conteneurs "Rose des vents"
+  const card = document.querySelector(`.card[data-airport="${prefix.toUpperCase()}"]`);
+  if (!card) return;
+
+  const compassContainer = card.querySelector('.rose-des-vents') || card.querySelectorAll('div')[1]; 
+  
+  if (compassContainer) {
+    compassContainer.innerHTML = `
+      <div style="text-align: center; margin-top: 5px;">
+        <div style="position: relative; width: 60px; height: 60px; margin: 0 auto; border: 2px solid #3b82f6; border-radius: 50%; background: #1e293b; display: flex; align-items: center; justify-content: center;">
+          <span style="position: absolute; top: 2px; font-size: 9px; color: #ef4444; font-weight: bold;">N</span>
+          <!-- Flèche indiquant le vent -->
+          <div style="transform: rotate(${windDeg}deg); transition: transform 0.5s ease; width: 100%; height: 100%; display: flex; align-items: center; justify-content: center;">
+            <div style="width: 0; height: 0; border-left: 5px solid transparent; border-right: 5px solid transparent; border-bottom: 22px solid #38bdf8;"></div>
+          </div>
+        </div>
+        <span style="font-size: 11px; color: #94a3b8; display: block; margin-top: 4px;">${windDeg}° - ${speed} km/h</span>
+      </div>
+    `;
   }
 }
 
