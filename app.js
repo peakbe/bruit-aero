@@ -770,6 +770,20 @@ function setRadarMode(mode, btnElement) {
 function msToKmh(ms) { return Math.round(ms * 3.6); }
 
 // =================================================================
+// Badges météo (icônes OpenWeather) — PRO+++
+// =================================================================
+function getWeatherIcon(code) {
+  if (code >= 200 && code < 300) return "⛈️"; // orage
+  if (code >= 300 && code < 400) return "🌦️"; // bruine
+  if (code >= 500 && code < 600) return "🌧️"; // pluie
+  if (code >= 600 && code < 700) return "❄️"; // neige
+  if (code >= 700 && code < 800) return "🌫️"; // brume / poussière
+  if (code === 800) return "☀️"; // ciel clair
+  if (code > 800 && code < 803) return "⛅"; // nuages légers
+  return "☁️"; // nuages denses
+}
+
+// =================================================================
 // [AJOUT] Direction cardinale du vent (rose à 8 points, notation FR)
 // =================================================================
 const WIND_CARDINALS = [
@@ -962,12 +976,19 @@ if (station === "EBLG") {
       if (resForecast.ok) {
         const forecastData = await resForecast.json();
         if (forecastData && Array.isArray(forecastData.list)) {
-          forecastEl.innerHTML = forecastData.list.slice(0, 4).map(item => `
-            <div style="text-align: center; font-size: 0.8rem; padding: 4px;">
-              <div>${new Date(item.dt * 1000).toLocaleTimeString('fr-BE', { hour: '2-digit', minute: '2-digit' })}</div>
-              <div><strong>${Math.round(item.main.temp)}°C</strong></div>
-            </div>
-          `).join('');
+          forecastEl.innerHTML = forecastData.list.slice(0, 4).map(item => {
+  const icon = getWeatherIcon(item.weather?.[0]?.id || 800);
+  const time = new Date(item.dt * 1000).toLocaleTimeString('fr-BE', { hour: '2-digit', minute: '2-digit' });
+  const temp = Math.round(item.main.temp);
+
+  return `
+    <div style="text-align:center; font-size:0.8rem; padding:4px;">
+      <div>${time}</div>
+      <div>${icon} <strong>${temp}°C</strong></div>
+    </div>
+  `;
+}).join('');
+
         }
       }
     }
