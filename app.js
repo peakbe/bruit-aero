@@ -437,10 +437,21 @@ function setRadarMode(mode, btnElement) {
 }
 
 // =================================================================
-// 7. MÉTÉO SATELLITE & TABLEAUX
+// 7. MÉTÉO SATELLITE, METAR & CÔNES D'APPROCHE
 // =================================================================
+
+const RUNWAY_HEADINGS = {
+  EBLG: 220, // Piste 22R/04L (Liège)
+  EBCI: 60   // Piste 06/24 (Charleroi)
+};
+
+let conePolygons = {};
+
 function msToKmh(ms) { return Math.round(ms * 3.6); }
 
+// -----------------------------------------------------------------
+// A. TABLEAUX DES VOLS (FIDS)
+// -----------------------------------------------------------------
 async function fetchFlightsData() {
   const ebciBody = document.getElementById("ebci-flights-body");
   const eblgBody = document.getElementById("eblg-flights-body");
@@ -470,21 +481,9 @@ async function loadFlightType(type, elementContainer, airport) {
   }
 }
 
-// =================================================================
-// CONSTANTES & CONFIGURATION
-// =================================================================
-const RUNWAY_HEADINGS = {
-  EBLG: 220, // Piste 22R/04L
-  EBCI: 60   // Piste 06/24
-};
-
-let conePolygons = {};
-
-function msToKmh(ms) { return Math.round(ms * 3.6); }
-
-// =================================================================
-// MÉTÉO, METAR & ROSE DES VENTS
-// =================================================================
+// -----------------------------------------------------------------
+// B. MÉTÉO ACTUELLE, METAR ET TRAITEMENT
+// -----------------------------------------------------------------
 async function fetchWeatherData() {
   for (const [code, apt] of Object.entries(AIRPORTS)) {
     try {
@@ -499,7 +498,7 @@ async function fetchWeatherData() {
       const windSpeedKt = Math.round(windSpeedMs * 1.94384);
       const windDeg = weather.wind?.deg ?? 0;
 
-      // Calcul du vent de travers
+      // Calcul de la composante du vent de travers
       const rwyHeading = RUNWAY_HEADINGS[code] || 0;
       const angleRad = Math.abs(windDeg - rwyHeading) * (Math.PI / 180);
       const crosswindKt = Math.round(windSpeedKt * Math.abs(Math.sin(angleRad)));
@@ -515,7 +514,7 @@ async function fetchWeatherData() {
       if (tempEl) tempEl.textContent = `${temp}°C`;
       if (windEl) windEl.textContent = `Vent: ${windSpeedKmh} km/h (${windDeg}°)`;
 
-      // Rose des vents enrichie avec Vent de travers
+      // Rose des vents enrichie avec le Vent de travers
       updateCompassUI(prefix, windDeg, windSpeedKmh, crosswindKt);
 
       // Dessin des cônes d'approche et de départ sur la carte Leaflet
@@ -524,7 +523,7 @@ async function fetchWeatherData() {
       // 2. METAR brut
       fetchMetarData(code);
 
-      // 3. Tendance Météo (Prévisions)
+      // 3. Tendance Météo (Prévisions à 3h)
       fetchWeatherForecast(code, apt.lat, apt.lon);
 
     } catch (e) {
@@ -533,7 +532,89 @@ async function fetchWeatherData() {
   }
 }
 
-// Récupération et affichage du METAR
+// -----------------------------------------------------------------
+// C. ROSE DES VENTS ET COMPOSANTE TRAVERSIÈRE
+// -----------------------------------------------------------------
+function updateCompassUI(prefix, windDeg, speedKmh, crosswindKt) {
+  const card = document.querySelector(`.card[data-airport="${prefix.toUpperCase()}"]`);
+  if (!card) return;
+
+  const compassContainer = card.querySelector('.rose-des-vents') || card.querySelectorAll('div')[1]; 
+  
+  if (compassContainer) {
+    compassContainer.innerHTML = `
+      <div style="text-align: center; margin-top: 5px;">
+        <div style="position: relative; width: 60px; height: 60px; margin: 0 auto; border: 2px solid #3b82f6; border-radius: 50%; background: #1e293b; display: flex; align-items: center; justify-content: center;">
+          <span style="position: absolute; top: 2px; font-size: 9px; color: #ef4444; font-weight: bold;">N</span>
+          <div style="transform: rotate(${windDeg}deg); transition: transform 0.5s ease; width: 100%; height: 100%; display: flex; align-items: center; justify-content: center;">
+            <div style="width: 0; height: 0; border-left: 5px solid transparent; border-right: 5px solid transparent; border-bottom: 22px solid #38bdf8;"></div>
+          </div>
+        </div>
+        <span style="font-size: 11px; color: #94a3b8; display: block; margin-top: 4px;">${windDeg}° - ${speedKmh} km/h</span>
+        <span style="font-size: 11px; font-weight: bold; color: #38bdf8; display: block; margin-top: 2px;">Travers: ${crosswindKt} kt</span>
+      </div>
+    `;
+  }
+}
+
+// -----------------------------------------------------------------
+// D. TENDANCE MÉTÉO (PRÉVISIONS À VENIR)
+// -----------------------------------------------------------------
+async function fetchWeatherForecast(airportCode, lat, lon) {
+  const card = document.querySelector(`.card[data-airport="${airportCode}"]`);
+  if (!card) return;
+
+  let forecastEl = card.querySelector('.weather-forecast-box');
+  if (!forecastEl) {
+    forecastEl = document.createElement('div');
+    forecastEl.className = 'weather-forecast-box';
+    forecastEl.style.cssText = "margin-top: 10px; padding-top: 8px; border-top: 1px solid rgba(255,255,255,0.1); font-size: 12px; color: #cbd5e1;";
+    card.appendChild(forecastEl);
+  }
+
+  try {
+    const res = await fetch(`${WORKER_BASE_URL}/api/forecast?lat=${lat}&lon=${lon}`);
+    if (!res.ok) {
+      forecastEl.innerHTML = `<span style="opacity: 0.7;">Tendance : non disponible</span>`;
+      return;
+    }
+
+    const data = await res.json();
+    const list = data.list ? data.list.slice(0, 3) : [];
+
+    if (list.length > 0) {
+      const itemsHtml = list.map(item => {
+        const time = new Date(item.dt * 1000).toLocaleTimeString("fr-BE", { hour: '2-digit', minute: '2-digit' });
+        const temp = Math.round(item.main.temp);
+        const icon = item.weather[0]?.icon ? `https://openweathermap.org/img/wn/${item.weather[0].icon}.png` : '';
+        const pop = Math.round((item.pop || 0) * 100);
+
+        return `
+          <div style="text-align: center; flex: 1;">
+            <div style="color: #94a3b8; font-size: 10px;">${time}</div>
+            ${icon ? `<img src="${icon}" style="width:28px; height:28px; margin:-4px 0;" title="${item.weather[0].description}" />` : ''}
+            <div style="font-weight: bold;">${temp}°C</div>
+            ${pop > 20 ? `<div style="color: #38bdf8; font-size: 10px;">🌧️ ${pop}%</div>` : ''}
+          </div>
+        `;
+      }).join('');
+
+      forecastEl.innerHTML = `
+        <div style="font-weight: 600; margin-bottom: 4px; color: #f8fafc;">Tendance à venir :</div>
+        <div style="display: flex; justify-content: space-between; align-items: center; background: rgba(0,0,0,0.2); padding: 6px; border-radius: 6px;">
+          ${itemsHtml}
+        </div>
+      `;
+    }
+  } catch (err) {
+    console.error(`Erreur tendance ${airportCode}:`, err);
+    forecastEl.innerHTML = `<span style="opacity: 0.7;">Tendance indisponible</span>`;
+  }
+}
+
+// -----------------------------------------------------------------
+// E. METAR BRUT
+// -----------------------------------------------------------------
 async function fetchMetarData(airportCode) {
   const card = document.querySelector(`.card[data-airport="${airportCode}"]`);
   if (!card) return;
@@ -558,36 +639,12 @@ async function fetchMetarData(airportCode) {
   }
 }
 
-// Mise à jour de la Rose des Vents avec composante traversière
-function updateCompassUI(prefix, windDeg, speedKmh, crosswindKt) {
-  const card = document.querySelector(`.card[data-airport="${prefix.toUpperCase()}"]`);
-  if (!card) return;
-
-  const compassContainer = card.querySelector('.rose-des-vents') || card.querySelectorAll('div')[1]; 
-  
-  if (compassContainer) {
-    compassContainer.innerHTML = `
-      <div style="text-align: center; margin-top: 5px;">
-        <div style="position: relative; width: 60px; height: 60px; margin: 0 auto; border: 2px solid #3b82f6; border-radius: 50%; background: #1e293b; display: flex; align-items: center; justify-content: center;">
-          <span style="position: absolute; top: 2px; font-size: 9px; color: #ef4444; font-weight: bold;">N</span>
-          <div style="transform: rotate(${windDeg}deg); transition: transform 0.5s ease; width: 100%; height: 100%; display: flex; align-items: center; justify-content: center;">
-            <div style="width: 0; height: 0; border-left: 5px solid transparent; border-right: 5px solid transparent; border-bottom: 22px solid #38bdf8;"></div>
-          </div>
-        </div>
-        <span style="font-size: 11px; color: #94a3b8; display: block; margin-top: 4px;">${windDeg}° - ${speedKmh} km/h</span>
-        <span style="font-size: 11px; font-weight: bold; color: #38bdf8; display: block; margin-top: 2px;">Travers: ${crosswindKt} kt</span>
-      </div>
-    `;
-  }
-}
-
-// =================================================================
-// CÔNES D'APPROCHE ET DE DÉPART (LEAFLET)
-// =================================================================
+// -----------------------------------------------------------------
+// F. DESSIN DES CÔNES D'APPROCHE & DÉPART (LEAFLET)
+// -----------------------------------------------------------------
 function drawApproachDepartureCones(airportCode, lat, lon, windDeg) {
   if (typeof map === 'undefined' || !map) return;
 
-  // Nettoyage des anciens cônes
   if (conePolygons[airportCode]) {
     conePolygons[airportCode].forEach(layer => map.removeLayer(layer));
   }
@@ -596,7 +653,6 @@ function drawApproachDepartureCones(airportCode, lat, lon, windDeg) {
   const rwyHeading = RUNWAY_HEADINGS[airportCode] || 0;
   const diff = Math.abs(((windDeg - rwyHeading + 180) % 360) - 180);
   
-  // Atterrissage face au vent
   const activeApproachBearing = diff > 90 ? (rwyHeading + 180) % 360 : rwyHeading;
 
   function createConePoints(originLat, originLng, bearing, distanceKm = 8, angleWidth = 25) {
