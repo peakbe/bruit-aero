@@ -5,6 +5,8 @@ var WORKER_BASE_URL = "https://bruit-aero-proxy.pnyr682w7f.workers.dev";
 
 var map = map || null;
 var planeMarkers = planeMarkers || {}; 
+// Traces historiques ADS-B (PRO+++)
+var adsbTracks = {}; // key = callsign/icao24, value = { positions: [], lastUpdate: timestamp }
 var currentAirport = currentAirport || "EBLG";
 var flightsGroup = flightsGroup || null;
 var radarMode = "all"; // all | approach | departure | enroute
@@ -135,7 +137,7 @@ function calculateEstimatedCoords(airportKey, cityStr, type) {
 
   return { lat: toDeg(lat2), lon: toDeg(lon2), heading };
 }
-// 👉 AJOUTE ICI la fonction PRO+++ pour dessiner un cône ILS
+// fonction PRO+++ pour dessiner un cône ILS
 function drawILSCone(lat, lon, heading, lengthKm = 15, angleDeg = 3) {
   const kmToDeg = lengthKm / 111;
 
@@ -166,6 +168,36 @@ function drawILSCone(lat, lon, heading, lengthKm = 15, angleDeg = 3) {
 
   cone.addTo(map);
   return cone;
+}
+
+function distKm(lat1, lon1, lat2, lon2) {
+  const R = 6371;
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLon = (lon2 - lon1) * Math.PI / 180;
+  const a =
+    Math.sin(dLat/2)**2 +
+    Math.cos(lat1*Math.PI/180) * Math.cos(lat2*Math.PI/180) *
+    Math.sin(dLon/2)**2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+}
+
+// =================================================================
+// FUTURE PATH IFR (PRO+++)
+// =================================================================
+function computeFuturePath(lat, lon, headingDeg, speedMs, secondsAhead = 60) {
+  if (!lat || !lon || !headingDeg || !speedMs) return [];
+
+  const headingRad = headingDeg * Math.PI / 180;
+  const distanceKm = (speedMs * secondsAhead) / 1000; // m/s → km
+  const kmToDeg = distanceKm / 111;
+
+  const futureLat = lat + kmToDeg * Math.cos(headingRad);
+  const futureLon = lon + kmToDeg * Math.sin(headingRad);
+
+  return [
+    [lat, lon],
+    [futureLat, futureLon]
+  ];
 }
 
 // =================================================================
@@ -271,9 +303,63 @@ async function renderFidsPlanesOnMap(map, flightsLayerGroup) {
         `;
       }
 
+      // =================================================================
+// TRACES HISTORIQUES ADS-B (PRO+++)
+// =================================================================
+const trackKey = primaryKey;
+
+// Initialiser la trace si absente
+if (!adsbTracks[trackKey]) {
+  adsbTracks[trackKey] = { positions: [], lastUpdate: Date.now() };
+}
+
+// Ajouter la nouvelle position
+adsbTracks[trackKey].positions.push([plane.lat, plane.lon]);
+adsbTracks[trackKey].lastUpdate = Date.now();
+
+// Limiter la longueur de la trace
+if (adsbTracks[trackKey].positions.length > 40) {
+  adsbTracks[trackKey].positions.shift();
+}
+
+// Dessiner la trace
+const trackColor = "#00e1ff"; // cyan Airbus ND
+const trackLine = L.polyline(adsbTracks[trackKey].positions, {
+  color: trackColor,
+  weight: 2,
+  opacity: 0.7
+}).addTo(flightsLayerGroup);
+
+      // =================================================================
+// FUTURE PATH IFR (PRO+++)
+// =================================================================
+const futurePath = computeFuturePath(
+  plane.lat,
+  plane.lon,
+  plane.heading,
+  plane.speed
+);
+
+if (futurePath.length === 2) {
+  const futureLine = L.polyline(futurePath, {
+    color: "#00e1ff", // cyan Airbus ND
+    weight: 2,
+    dashArray: "6, 6",
+    opacity: 0.9
+  }).addTo(flightsLayerGroup);
+}
+
+            // Déterminer phase de vol IFR
+            const phase = classifyFlightPhase(plane, matchingFids ? matchingFids.airport : currentAirport);
+
+      // Filtre radar
+            if (radarMode !== "all" && radarMode !== phase) return;
+      
       // Mise à jour sur la carte avec les coordonnées GPS réelles
             const m = updateOrAddMarker(primaryKey, plane.lat, plane.lon, plane.heading, popupContent, flightsLayerGroup, hasRotationPlugin);
       currentActiveKeys.add(primaryKey);
+      
+
 
       planeMarkers[primaryKey] = m;
       if (plane.callsign) { planeMarkers[plane.callsign] = m; currentActiveKeys.add(plane.callsign); }
@@ -309,6 +395,9 @@ async function renderFidsPlanesOnMap(map, flightsLayerGroup) {
           </div>
         `;
 
+        const phase = classifyFlightPhase(est, fids.airport);
+if (radarMode !== "all" && radarMode !== phase) return;
+
                const m = updateOrAddMarker(cleanFlight, est.lat, est.lon, est.heading, popupContent, flightsLayerGroup, hasRotationPlugin);
         currentActiveKeys.add(cleanFlight);
 
@@ -326,7 +415,14 @@ async function renderFidsPlanesOnMap(map, flightsLayerGroup) {
       }
     });
 
-  } catch (err) {
+    // Nettoyage des traces trop anciennes (60 secondes sans mise à jour)
+Object.keys(adsbTracks).forEach(key => {
+  if (Date.now() - adsbTracks[key].lastUpdate > 60000) {
+    delete adsbTracks[key];
+  }
+});
+
+      } catch (err) {
     console.error("Erreur mise à jour radar GPS :", err);
   }
 }
