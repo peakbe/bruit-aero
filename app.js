@@ -137,6 +137,7 @@ function calculateEstimatedCoords(airportKey, cityStr, type) {
 
   return { lat: toDeg(lat2), lon: toDeg(lon2), heading };
 }
+
 // fonction PRO+++ pour dessiner un cône ILS
 function drawILSCone(lat, lon, heading, lengthKm = 15, angleDeg = 3) {
   const kmToDeg = lengthKm / 111;
@@ -198,6 +199,43 @@ function computeFuturePath(lat, lon, headingDeg, speedMs, secondsAhead = 60) {
     [lat, lon],
     [futureLat, futureLon]
   ];
+}
+
+// =================================================================
+// ON FINAL : Détection automatique (PRO+++)
+// =================================================================
+function isOnFinal(plane, airport) {
+  if (!plane || !plane.lat || !plane.lon) return false;
+
+  const apt = AIRPORTS[airport];
+  const d = distKm(plane.lat, plane.lon, apt.lat, apt.lon);
+
+  // Trop loin → pas en finale
+  if (d > 12) return false;
+
+  const alt = plane.altitude || 0;
+  const gs = plane.speed ? plane.speed * 3.6 : 0;
+
+  // Altitude trop haute → pas en finale
+  if (alt > 2500) return false;
+
+  // Vitesse trop élevée → pas en finale
+  if (gs > 350) return false;
+
+  // Déterminer heading de la piste active
+  const rwyHeading =
+    airport === "EBLG"
+      ? (currentRunwayEBLG === "22" ? 220 : 40)
+      : (currentRunwayEBCI === "24" ? 240 : 60);
+
+  // Angle avion → axe de piste
+  const diff = Math.abs(plane.heading - rwyHeading);
+  const angle = diff > 180 ? 360 - diff : diff;
+
+  // Trop décalé → pas en finale
+  if (angle > 15) return false;
+
+  return true;
 }
 
 // =================================================================
@@ -354,12 +392,34 @@ if (futurePath.length === 2) {
 
       // Filtre radar
             if (radarMode !== "all" && radarMode !== phase) return;
-      
+
+      // =================================================================
+// ON FINAL : Détection IFR (PRO+++)
+// =================================================================
+const onFinal = isOnFinal(plane, matchingFids ? matchingFids.airport : currentAirport);
+
+if (onFinal) {
+  popupContent += `
+    <div style="margin-top:6px; padding:4px; background:#dcfce7; border-left:4px solid #16a34a;">
+      <b>🛬 On Final</b><br>
+      Approche stabilisée ILS
+    </div>
+  `;
+}
+
       // Mise à jour sur la carte avec les coordonnées GPS réelles
             const m = updateOrAddMarker(primaryKey, plane.lat, plane.lon, plane.heading, popupContent, flightsLayerGroup, hasRotationPlugin);
       currentActiveKeys.add(primaryKey);
-      
 
+      if (onFinal) {
+  L.circle([plane.lat, plane.lon], {
+    radius: 300,
+    color: "#16a34a",
+    weight: 2,
+    opacity: 0.6,
+    fillOpacity: 0.1
+  }).addTo(flightsLayerGroup);
+}
 
       planeMarkers[primaryKey] = m;
       if (plane.callsign) { planeMarkers[plane.callsign] = m; currentActiveKeys.add(plane.callsign); }
