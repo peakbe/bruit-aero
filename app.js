@@ -734,6 +734,28 @@ function setRunwayEBCI(runwayNum, map) { currentRunwayEBCI = runwayNum; renderSo
 function setRunwayEBLG(runwayNum, map) { currentRunwayEBLG = runwayNum; renderSonometersOnMap(map); }
 
 // =================================================================
+// [CORRECTION] Filtre radar (Tous / Approche / Départ / En-route)
+// Auparavant, les boutons se contentaient de faire `radarMode='approach'`
+// en HTML : la variable changeait bien, mais (1) rien ne se rafraîchissait
+// avant le prochain cycle automatique de 5s, et (2) aucun bouton ne
+// s'affichait comme "actif". Résultat : le clic semblait ne rien faire.
+// Cette fonction met à jour radarMode, redessine le radar immédiatement,
+// et bascule la classe active sur le bouton cliqué.
+// =================================================================
+function setRadarMode(mode, btnElement) {
+  radarMode = mode;
+
+  if (btnElement && btnElement.parentElement) {
+    btnElement.parentElement.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+    btnElement.classList.add('active');
+  }
+
+  if (map && flightsGroup) {
+    renderFidsPlanesOnMap(map, flightsGroup);
+  }
+}
+
+// =================================================================
 // 7. CHARGEMENT TABLEAUX ET MÉTÉO
 // =================================================================
 function msToKmh(ms) { return Math.round(ms * 3.6); }
