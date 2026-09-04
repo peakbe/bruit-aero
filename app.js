@@ -71,6 +71,23 @@ function initMap() {
   window.myMap = map; 
   flightsGroup = L.layerGroup().addTo(map);
 
+  // Ajout du contrôle "Rose des Vents" sur la carte
+const CompassControl = L.Control.extend({
+  options: { position: 'topright' },
+  onAdd: function() {
+    const div = L.DomUtil.create('div', 'leaflet-bar leaflet-compass-control');
+    div.style.backgroundColor = '#ffffff';
+    div.style.padding = '6px 10px';
+    div.style.fontWeight = 'bold';
+    div.style.fontSize = '14px';
+    div.style.boxShadow = '0 1px 5px rgba(0,0,0,0.4)';
+    div.style.borderRadius = '4px';
+    div.innerHTML = '🧭 <span style="color:#ef4444;">N</span>';
+    return div;
+  }
+});
+map.addControl(new CompassControl());
+  
   // ... Reste de votre fonction initMap ...
 
   L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
@@ -372,11 +389,47 @@ function renderSonometersOnMap(mapInstance) {
   allSonometers.forEach(s => {
     const lat = dmsToDecimal(s.latDMS);
     const lng = dmsToDecimal(s.lonDMS);
+    
     const marker = L.circleMarker([lat, lng], {
-      radius: 6, fillColor: "#10b981", color: "#ffffff", weight: 2, fillOpacity: 0.9
+      radius: 7, 
+      fillColor: "#10b981", 
+      color: "#ffffff", 
+      weight: 2, 
+      fillOpacity: 0.9
     }).addTo(mapInstance);
 
-    marker.bindPopup(`<b>Sonomètre ${s.id} (${s.airport})</b><br>${s.address}`);
+    // Pop-up initial
+    marker.bindPopup(`<b>Sonomètre ${s.id} (${s.airport})</b><br>${s.address}<br><i>Chargement météo...</i>`);
+
+    // Écouteur au clic pour récupérer la météo
+    marker.on('click', async () => {
+      try {
+        const res = await fetch(`${WORKER_BASE_URL}/api/weather?lat=${lat}&lon=${lng}`);
+        if (res.ok) {
+          const weather = await res.json();
+          const temp = Math.round(weather.main?.temp ?? 0);
+          const windSpeed = msToKmh(weather.wind?.speed ?? 0);
+          const windDeg = weather.wind?.deg ?? 0;
+          const description = weather.weather?.[0]?.description ?? "";
+
+          marker.getPopup().setContent(`
+            <div style="font-family: sans-serif; font-size: 13px;">
+              <h4 style="margin: 0 0 4px 0; color: #1e293b;">Sonomètre ${s.id} (${s.airport})</h4>
+              <p style="margin: 0 0 6px 0; font-size: 11px; color: #64748b;">${s.address}</p>
+              <hr style="border:0; border-top:1px solid #e2e8f0; margin: 4px 0;">
+              <b>🌡️ Température :</b> ${temp}°C<br>
+              <b>💨 Vent :</b> ${windSpeed} km/h (${windDeg}°)<br>
+              <b>☁️ Météo :</b> ${description || "N/C"}
+            </div>
+          `);
+        } else {
+          marker.getPopup().setContent(`<b>Sonomètre ${s.id} (${s.airport})</b><br>${s.address}<br><span style="color:red;">Météo indisponible</span>`);
+        }
+      } catch (err) {
+        console.error("Erreur météo sonomètre :", err);
+      }
+    });
+
     sonometerMarkers.push(marker);
   });
 }
