@@ -11,6 +11,7 @@ var futureLines = {};
 var currentAirport = "EBLG";
 var flightsGroup = null;
 var radarMode = "all";
+var isFetchingRadar = false; // Verrou pour éviter le chevauchement des requêtes
 
 var AIRPORTS = {
   EBLG: { lat: 50.6374, lon: 5.4432, name: "Liège Airport" },
@@ -48,6 +49,11 @@ const CITY_COORDS = {
   "DOH": [25.2731, 51.6081], "TLV": [32.0055, 34.8854], "QKD": [51.588, -0.528]
 };
 
+// Utilitaire de conversion Vitesse m/s -> km/h (s'il n'est pas dans Partie 2)
+function msToKmh(ms) {
+  return Math.round(ms * 3.6);
+}
+
 // =================================================================
 // 2. INITIALISATION
 // =================================================================
@@ -61,34 +67,33 @@ function initMap() {
   const mapContainer = document.getElementById("map");
   if (!mapContainer) return;
 
-  // Si la carte existe déjà, on la détruit proprement avant de la re-créer
+  // Réinitialisation propre des marqueurs et de la carte
   if (map !== null) {
     map.remove();
     map = null;
+    planeMarkers = {};
   }
 
   map = L.map("map").setView([50.55, 4.95], 8);
   window.myMap = map; 
   flightsGroup = L.layerGroup().addTo(map);
 
-  // Ajout du contrôle "Rose des Vents" sur la carte
-const CompassControl = L.Control.extend({
-  options: { position: 'topright' },
-  onAdd: function() {
-    const div = L.DomUtil.create('div', 'leaflet-bar leaflet-compass-control');
-    div.style.backgroundColor = '#ffffff';
-    div.style.padding = '6px 10px';
-    div.style.fontWeight = 'bold';
-    div.style.fontSize = '14px';
-    div.style.boxShadow = '0 1px 5px rgba(0,0,0,0.4)';
-    div.style.borderRadius = '4px';
-    div.innerHTML = '🧭 <span style="color:#ef4444;">N</span>';
-    return div;
-  }
-});
-map.addControl(new CompassControl());
-  
-  // ... Reste de votre fonction initMap ...
+  // Contrôle Rose des Vents
+  const CompassControl = L.Control.extend({
+    options: { position: 'topright' },
+    onAdd: function() {
+      const div = L.DomUtil.create('div', 'leaflet-bar leaflet-compass-control');
+      div.style.backgroundColor = '#ffffff';
+      div.style.padding = '6px 10px';
+      div.style.fontWeight = 'bold';
+      div.style.fontSize = '14px';
+      div.style.boxShadow = '0 1px 5px rgba(0,0,0,0.4)';
+      div.style.borderRadius = '4px';
+      div.innerHTML = '🧭 <span style="color:#ef4444;">N</span>';
+      return div;
+    }
+  });
+  map.addControl(new CompassControl());
 
   L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
     maxZoom: 19,
@@ -106,6 +111,8 @@ map.addControl(new CompassControl());
       const container = L.DomUtil.create("div", "leaflet-bar");
       const button = L.DomUtil.create("button", "leaflet-btn-recenter", container);
       button.type = "button";
+      button.style.cursor = "pointer";
+      button.style.padding = "5px 8px";
       button.innerHTML = "🎯 Recentrer";
       button.onclick = (e) => { e.preventDefault(); mapInstance.setView([50.55, 4.95], 8); };
       return container;
@@ -115,12 +122,12 @@ map.addControl(new CompassControl());
   map.addControl(new RecenterControl());
 
   renderFidsPlanesOnMap(map, flightsGroup);
-  fetchFlightsData();
-  fetchWeatherData();
+  if (typeof fetchFlightsData === "function") fetchFlightsData();
+  if (typeof fetchWeatherData === "function") fetchWeatherData();
 
   setInterval(() => renderFidsPlanesOnMap(map, flightsGroup), 5000);
-  setInterval(fetchFlightsData, 120000);
-  setInterval(fetchWeatherData, 300000);
+  if (typeof fetchFlightsData === "function") setInterval(fetchFlightsData, 120000);
+  if (typeof fetchWeatherData === "function") setInterval(fetchWeatherData, 300000);
 
   window.addEventListener("resize", () => { if (map) map.invalidateSize(); });
 }
@@ -161,17 +168,20 @@ function parseCallsign(flightStr) {
 }
 
 function drawILSCone(lat, lon, heading, lengthKm = 15, angleDeg = 3) {
-  const kmToDeg = lengthKm / 111;
+  const latRad = lat * Math.PI / 180;
+  const kmToDegLat = lengthKm / 110.574;
+  const kmToDegLon = lengthKm / (111.320 * Math.cos(latRad));
+
   const rad = heading * Math.PI / 180;
   const leftRad = (heading - angleDeg) * Math.PI / 180;
   const rightRad = (heading + angleDeg) * Math.PI / 180;
 
-  const endLat = lat + kmToDeg * Math.cos(rad);
-  const endLon = lon + kmToDeg * Math.sin(rad);
-  const leftLat = lat + kmToDeg * Math.cos(leftRad);
-  const leftLon = lon + kmToDeg * Math.sin(leftRad);
-  const rightLat = lat + kmToDeg * Math.cos(rightRad);
-  const rightLon = lon + kmToDeg * Math.sin(rightRad);
+  const endLat = lat + kmToDegLat * Math.cos(rad);
+  const endLon = lon + kmToDegLon * Math.sin(rad);
+  const leftLat = lat + kmToDegLat * Math.cos(leftRad);
+  const leftLon = lon + kmToDegLon * Math.sin(leftRad);
+  const rightLat = lat + kmToDegLat * Math.cos(rightRad);
+  const rightLon = lon + kmToDegLon * Math.sin(rightRad);
 
   const cone = L.polygon([
     [lat, lon], [leftLat, leftLon], [endLat, endLon], [rightLat, rightLon]
@@ -191,9 +201,14 @@ function distKm(lat1, lon1, lat2, lon2) {
 
 function computeFuturePath(lat, lon, headingDeg, speedMs, secondsAhead = 60) {
   if (!lat || !lon || !headingDeg || !speedMs) return [];
+  const latRad = lat * Math.PI / 180;
   const headingRad = headingDeg * Math.PI / 180;
-  const kmToDeg = ((speedMs * secondsAhead) / 1000) / 111;
-  return [[lat, lon], [lat + kmToDeg * Math.cos(headingRad), lon + kmToDeg * Math.sin(headingRad)]];
+  const distanceKm = (speedMs * secondsAhead) / 1000;
+  
+  const dLat = (distanceKm / 110.574) * Math.cos(headingRad);
+  const dLon = (distanceKm / (111.320 * Math.cos(latRad))) * Math.sin(headingRad);
+
+  return [[lat, lon], [lat + dLat, lon + dLon]];
 }
 
 function computeCrosswind(windDeg, windSpeed, runwayHeading) {
@@ -207,14 +222,19 @@ function computeCrosswind(windDeg, windSpeed, runwayHeading) {
 }
 
 function classifyFlightPhase(plane, airport) {
-  if (!plane || !plane.lat || !plane.lon) return "enroute";
-  const apt = AIRPORTS[airport];
-  const d = distKm(plane.lat, plane.lon, apt.lat, apt.lon);
-  const alt = plane.altitude || 0;
-  const gs = plane.speed ? plane.speed * 3.6 : 0;
+  const planeLat = plane.lat;
+  const planeLon = plane.lon ?? plane.lng;
+  if (!plane || !planeLat || !planeLon) return "enroute";
 
-  if (d < 18 && alt < 2000 && gs < 350) return "approach";
-  if (d < 10 && alt < 3000 && gs > 200) return "departure";
+  const apt = AIRPORTS[airport];
+  if (!apt) return "enroute";
+
+  const d = distKm(planeLat, planeLon, apt.lat, apt.lon);
+  const alt = plane.altFt || plane.altitude || 0;
+  const gs = plane.speedKt ? plane.speedKt * 1.852 : (plane.speed ? plane.speed * 3.6 : 0);
+
+  if (d < 18 && alt < 6500 && gs < 350) return "approach";
+  if (d < 10 && alt < 10000 && gs > 200) return "departure";
   return "enroute";
 }
 
@@ -222,7 +242,9 @@ function classifyFlightPhase(plane, airport) {
 // 5. RADAR ADS-B ET PLACEMENT DES AVIONS
 // =================================================================
 async function renderFidsPlanesOnMap(mapInstance, flightsLayerGroup) {
-  if (!flightsLayerGroup) return;
+  if (!flightsLayerGroup || isFetchingRadar) return;
+  isFetchingRadar = true;
+
   const currentActiveKeys = new Set();
   const hasRotationPlugin = typeof L.Marker.prototype.setRotationAngle === "function";
 
@@ -233,7 +255,8 @@ async function renderFidsPlanesOnMap(mapInstance, flightsLayerGroup) {
 
     livePlanes.forEach(plane => {
       const callsign = (plane.callsign || "").replace(/\s+/g, '').toUpperCase();
-      const primaryKey = callsign || plane.registration || Math.random().toString();
+      const primaryKey = callsign || plane.registration || plane.icao24 || Math.random().toString();
+      const planeLon = plane.lng ?? plane.lon;
       
       const phase = classifyFlightPhase(plane, currentAirport);
       if (radarMode !== "all" && radarMode !== phase) return;
@@ -252,7 +275,7 @@ async function renderFidsPlanesOnMap(mapInstance, flightsLayerGroup) {
           <b>Vitesse :</b> ${speedText}
         </div>`;
 
-      const m = updateOrAddMarker(primaryKey, plane.lat, plane.lng, plane.track, popupContent, flightsLayerGroup, hasRotationPlugin);
+      const m = updateOrAddMarker(primaryKey, plane.lat, planeLon, plane.track || 0, popupContent, flightsLayerGroup, hasRotationPlugin);
       currentActiveKeys.add(primaryKey);
       planeMarkers[primaryKey] = m;
     });
@@ -265,6 +288,8 @@ async function renderFidsPlanesOnMap(mapInstance, flightsLayerGroup) {
     });
   } catch (err) {
     console.error("Erreur mise à jour radar ADS-B :", err);
+  } finally {
+    isFetchingRadar = false;
   }
 }
 
@@ -404,7 +429,6 @@ function renderSonometersOnMap(mapInstance) {
           const temp = Math.round(weatherData.main?.temp ?? 0);
           const windSpeed = msToKmh(weatherData.wind?.speed ?? 0);
           const windDeg = weatherData.wind?.deg ?? 0;
-          // Extraction correcte du tableau OpenWeather
           const description = weatherData.weather && weatherData.weather[0] ? weatherData.weather[0].description : "Ciel dégagé";
 
           marker.getPopup().setContent(`
@@ -435,7 +459,6 @@ function setRadarMode(mode, btnElement) {
   }
   if (map && flightsGroup) renderFidsPlanesOnMap(map, flightsGroup);
 }
-
 // =================================================================
 // 7. MÉTÉO SATELLITE, METAR & CÔNES D'APPROCHE
 // =================================================================
@@ -447,12 +470,14 @@ const RUNWAY_HEADINGS = {
 
 let conePolygons = {};
 
-function msToKmh(ms) { return Math.round(ms * 3.6); }
+// Note: msToKmh est déjà déclarée dans la partie 1 si intégrée, conservée ici en garde-fou :
+if (typeof msToKmh !== "function") {
+  window.msToKmh = function(ms) { return Math.round(ms * 3.6); };
+}
 
 // -----------------------------------------------------------------
 // A. TABLEAUX DES VOLS (FIDS)
 // -----------------------------------------------------------------
-// Variable globale pour conserver l'état actuel de l'onglet par aéroport
 const activeFlightType = {
   EBCI: 'departures',
   EBLG: 'departures'
@@ -480,7 +505,7 @@ async function loadFlightType(type, elementContainer, airport) {
     const rawData = await response.json();
     const allFlights = Array.isArray(rawData) ? rawData : (rawData.flights || []);
 
-    // Selection des 10 premiers vols à venir
+    // Sélection des 10 premiers vols à venir
     const upcomingFlights = allFlights.slice(0, 10);
 
     if (upcomingFlights.length > 0) {
@@ -498,28 +523,6 @@ async function loadFlightType(type, elementContainer, airport) {
   } catch (e) {
     console.error(`Erreur chargement vols ${airport}:`, e);
     elementContainer.innerHTML = `<tr><td colspan="4" style="text-align:center; color:#ef4444;">Erreur de chargement</td></tr>`;
-  }
-}
-
-// -----------------------------------------------------------------
-// CHANGEMENT D'ONGLET (DÉPARTS / ARRIVÉES)
-// -----------------------------------------------------------------
-async function switchFlightTab(airport, type, btnElement) {
-  activeFlightType[airport] = type;
-
-  // Mise à jour visuelle des boutons
-  const parent = btnElement.closest('.card') || btnElement.parentElement;
-  if (parent) {
-    parent.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
-    btnElement.classList.add('active');
-  }
-
-  // Conteneur de tableau à rafraîchir
-  const containerId = `${airport.toLowerCase()}-flights-body`;
-  const container = document.getElementById(containerId);
-  if (container) {
-    container.innerHTML = `<tr><td colspan="4" style="text-align:center; color:#cbd5e1;">Chargement...</td></tr>`;
-    await loadFlightType(type, container, airport);
   }
 }
 
@@ -556,14 +559,14 @@ async function fetchWeatherData() {
       if (tempEl) tempEl.textContent = `${temp}°C`;
       if (windEl) windEl.textContent = `Vent: ${windSpeedKmh} km/h (${windDeg}°)`;
 
-      // Rose des vents enrichie avec le Vent de travers
+      // Rose des vents enrichie
       updateCompassUI(prefix, windDeg, windSpeedKmh, crosswindKt);
 
-      // Dessin des cônes d'approche et de départ sur la carte Leaflet
+      // Dessin des cônes d'approche et de départ sur Leaflet
       drawApproachDepartureCones(code, apt.lat, apt.lon, windDeg);
 
-      // 2. METAR brut
-      fetchMetarData(code);
+      // 2. METAR via API Worker
+      fetchSingleMetar(code);
 
       // 3. Tendance Météo (Prévisions à 3h)
       fetchWeatherForecast(code, apt.lat, apt.lon);
@@ -581,7 +584,10 @@ function updateCompassUI(prefix, windDeg, speedKmh, crosswindKt) {
   const card = document.querySelector(`.card[data-airport="${prefix.toUpperCase()}"]`);
   if (!card) return;
 
-  const compassContainer = card.querySelector('.rose-des-vents') || card.querySelectorAll('div')[1]; 
+  let compassContainer = card.querySelector('.rose-des-vents');
+  if (!compassContainer) {
+    compassContainer = card.querySelector('.compass-container') || card.querySelectorAll('div')[1];
+  }
   
   if (compassContainer) {
     compassContainer.innerHTML = `
@@ -655,9 +661,9 @@ async function fetchWeatherForecast(airportCode, lat, lon) {
 }
 
 // -----------------------------------------------------------------
-// E. METAR BRUT
+// E. METAR UNIFIÉ POUR UN AÉROPORT
 // -----------------------------------------------------------------
-async function fetchMetarData(airportCode) {
+async function fetchSingleMetar(airportCode) {
   const card = document.querySelector(`.card[data-airport="${airportCode}"]`);
   if (!card) return;
 
@@ -704,8 +710,8 @@ function drawApproachDepartureCones(airportCode, lat, lon, windDeg) {
 
     for (let a = startAngle; a <= endAngle; a += 5) {
       const rad = a * (Math.PI / 180);
-      const dLat = (distanceKm / 111) * Math.cos(rad);
-      const dLng = (distanceKm / (111 * Math.cos(originLat * (Math.PI / 180)))) * Math.sin(rad);
+      const dLat = (distanceKm / 110.574) * Math.cos(rad);
+      const dLng = (distanceKm / (111.320 * Math.cos(originLat * (Math.PI / 180)))) * Math.sin(rad);
       coords.push([originLat + dLat, originLng + dLng]);
     }
     return coords;
@@ -739,36 +745,7 @@ function drawApproachDepartureCones(airportCode, lat, lon, windDeg) {
 }
 
 // =================================================================
-// 8. FILTRAGE ET RECENTRAGE (BOUTONS HTML)
-// =================================================================
-window.filterAirportView = function(airport) {
-  // 1. Boutons UI
-  const buttons = document.querySelectorAll('.control-bar-inline .airport-icon-btn');
-  buttons.forEach(btn => btn.classList.remove('active'));
-  if (window.event && window.event.currentTarget) {
-    window.event.currentTarget.classList.add('active');
-  }
-
-  // 2. Visibilité des cartes METAR / VOLS
-  const cards = document.querySelectorAll('.card[data-airport]');
-  cards.forEach(card => {
-    const cardAirport = card.getAttribute('data-airport');
-    if (airport === 'ALL' || cardAirport === airport) {
-      card.style.display = 'block';
-    } else {
-      card.style.display = 'none';
-    }
-  });
-
-  // 3. Deplacement Carte Leaflet
-  if (window.myMap && AIRPORT_COORDS[airport]) {
-    const zoomLevel = airport === 'ALL' ? 8 : 11;
-    window.myMap.setView(AIRPORT_COORDS[airport], zoomLevel, { animate: true });
-  }
-};
-
-// =================================================================
-// 8. FILTRAGE ET RECENTRAGE (BOUTONS HTML)
+// 8. FILTRAGE ET RECENTRAGE (FONCTIONS GLOBALES POUNTÉES EN HTML)
 // =================================================================
 window.filterAirportView = function(airport) {
   // 1. Gestion visuelle des boutons
@@ -779,7 +756,7 @@ window.filterAirportView = function(airport) {
   }
 
   // 2. Affichage / masquage des cartes METAR et Vols
-  const cards = document.querySelectorAll('.card[data-airport]');
+  const cards = document.querySelectorCard ? document.querySelectorAll('.card[data-airport]') : document.querySelectorAll('[data-airport]');
   cards.forEach(card => {
     const cardAirport = card.getAttribute('data-airport');
     if (airport === 'ALL' || cardAirport === airport) {
@@ -796,27 +773,22 @@ window.filterAirportView = function(airport) {
   }
 };
 
-// =================================================================
-// 9. GESTION DES ONGLETS VOLS (DÉPARTS / ARRIVÉES)
-// =================================================================
 window.switchFlightTab = function(airport, type, btnElement) {
-  // 1. Mise à jour visuelle des boutons de l'onglet
+  activeFlightType[airport] = type;
+
+  // 1. Mise à jour visuelle des boutons d'onglet
   if (btnElement && btnElement.parentElement) {
     const buttons = btnElement.parentElement.querySelectorAll('.tab-btn, button');
     buttons.forEach(btn => btn.classList.remove('active'));
     btnElement.classList.add('active');
   }
 
-  // 2. Identification du tableau cible dans le HTML
+  // 2. Identification et rechargement du tableau HTML
   const targetBodyId = `${airport.toLowerCase()}-flights-body`;
   const container = document.getElementById(targetBodyId);
 
-  // 3. Rechargement des données pour l'aéroport et le type sélectionné
   if (container) {
     container.innerHTML = `<tr><td colspan="4" style="text-align:center;">Chargement...</td></tr>`;
     loadFlightType(type, container, airport);
   }
 };
-
-// Initialisation globale au chargement de la page
-document.addEventListener("DOMContentLoaded", initMap);
