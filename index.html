@@ -85,6 +85,15 @@
       white-space: nowrap;
     }
 
+    /* [AJOUT] Mise en page des boutons de filtre radar (Tous/Approche/Départ/En-route),
+       auparavant sans aucun style dédié */
+    .radar-filter {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-bottom: 20px;
+    }
+
     /* --- REGLES DE BASE RESPONSIVES --- */
     html, body {
       margin: 0;
@@ -299,10 +308,10 @@
   
 <!-- Boutons de filtre -->
   <div class="radar-filter">
-  <button onclick="radarMode='all'">Tous</button>
-  <button onclick="radarMode='approach'">Approche</button>
-  <button onclick="radarMode='departure'">Départ</button>
-  <button onclick="radarMode='enroute'">En‑route</button>
+  <button class="tab-btn active" onclick="setRadarMode('all', this)">Tous</button>
+  <button class="tab-btn" onclick="setRadarMode('approach', this)">Approche</button>
+  <button class="tab-btn" onclick="setRadarMode('departure', this)">Départ</button>
+  <button class="tab-btn" onclick="setRadarMode('enroute', this)">En‑route</button>
 </div>
 
   <!-- RADAR MAP SECTION (Pleine Largeur) -->
