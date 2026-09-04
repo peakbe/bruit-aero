@@ -288,26 +288,12 @@ async function renderFidsPlanesOnMap(map, flightsLayerGroup) {
   const hasRotationPlugin = typeof L.Marker.prototype.setRotationAngle === "function";
 
   try {
-    const resRadar = await fetch(`${WORKER_BASE_URL}/api/opensky?lamin=49.0&lomin=1.5&lamax=52.0&lomax=8.0`).catch(() => null);
-    const radarData = resRadar && resRadar.ok ? await resRadar.json() : { states: [] };
-    const liveStates = radarData.states || [];
+    // 1. Appel vers votre nouveau Worker multi-source (adsb.lol / adsb.fi / OpenSky)
+    const resRadar = await fetch(`${WORKER_BASE_URL}/api/adsb`).catch(() => null);
+    const radarData = resRadar && resRadar.ok ? await resRadar.json() : { aircraft: [] };
+    const livePlanes = radarData.aircraft || [];
 
-    const livePlanes = liveStates.map(state => {
-      const callsign = (state[1] || "").trim().toUpperCase();
-      const parsed = parseCallsign(callsign);
-      return {
-        icao24: state[0],
-        callsign: callsign,
-        prefix: parsed.prefix,
-        numberOnly: parsed.number,
-        lat: state[6],   // Position Latitude GPS exacte
-        lon: state[5],   // Position Longitude GPS exacte
-        heading: state[10] || 0,
-        altitude: state[7],
-        speed: state[9]
-      };
-    }).filter(p => p.lat !== null && p.lon !== null);
-
+    // 2. Récupération des FIDS pour l'enrichissement des données (noms de lignes, origines...)
     const combinations = [
       { airport: 'EBLG', type: 'departures' }, { airport: 'EBLG', type: 'arrivals' },
       { airport: 'EBCI', type: 'departures' }, { airport: 'EBCI', type: 'arrivals' }
@@ -325,32 +311,38 @@ async function renderFidsPlanesOnMap(map, flightsLayerGroup) {
       } catch (e) {}
     }
 
-    // A. TRAITEMENT DES POSITIONS GPS RÉELLES
+    // 3. Traitement et affichage des avions ADS-B réels
     livePlanes.forEach(plane => {
-      const primaryKey = plane.callsign || plane.icao24;
+      // Normalisation du callsign
+      const callsign = (plane.callsign || "").replace(/\s+/g, '').toUpperCase();
+      const primaryKey = callsign || plane.registration || Math.random().toString();
+      const parsed = parseCallsign(callsign);
 
       const matchingFids = fidsList.find(f => {
         const icaoPrefix = IATA_TO_ICAO[f.parsed.prefix] || f.parsed.prefix;
         const targetCallsign = `${icaoPrefix}${f.parsed.number}`;
-        return plane.callsign === targetCallsign || plane.callsign === f.parsed.raw || (plane.numberOnly && plane.numberOnly === f.parsed.number);
+        return callsign === targetCallsign || callsign === f.parsed.raw || (parsed.number && parsed.number === f.parsed.number);
       });
 
-      // Déterminer phase de vol IFR et appliquer le filtre radar AVANT de dessiner
-      // [CORRECTION BUG 3] on calcule la phase et on applique le filtre radarMode
-      // avant de toucher aux traces / trajectoires, pour ne jamais dessiner ce qui
-      // doit être filtré.
+      // Filtrage selon le mode radar sélectionné
       const phase = classifyFlightPhase(plane, matchingFids ? matchingFids.airport : currentAirport);
       if (radarMode !== "all" && radarMode !== phase) return;
 
-      const altText = plane.altitude ? `${Math.round(plane.altitude)} m` : "En vol";
-      const speedText = plane.speed ? `${Math.round(plane.speed * 3.6)} km/h` : "N/C";
+      // Unités de conversion
+      const altMeters = plane.altFt ? Math.round(plane.altFt * 0.3048) : null;
+      const speedKmh = plane.speedKt ? Math.round(plane.speedKt * 1.852) : null;
+
+      const altText = altMeters !== null ? `${altMeters} m (${plane.altFt} ft)` : "Sol / Inconnu";
+      const speedText = speedKmh !== null ? `${speedKmh} km/h` : "N/C";
 
       let popupContent = `
         <div style="font-family: sans-serif; font-size: 13px;">
-          <h3 style="margin: 0 0 5px 0; color: #1e293b;">Vol ${plane.callsign || "Inconnu"}</h3>
+          <h3 style="margin: 0 0 5px 0; color: #1e293b;">Vol ${callsign || "Inconnu"}</h3>
+          <b>Type :</b> ${plane.type || "N/C"}<br>
+          <b>Immatriculation :</b> ${plane.registration || "N/C"}<br>
           <b>Altitude :</b> ${altText}<br>
           <b>Vitesse :</b> ${speedText}<br>
-          <b>Source :</b> <span style="color: #22c55e; font-weight: bold;">📡 Position GPS Directe</span>
+          <b>Source :</b> <span style="color: #22c55e; font-weight: bold;">📡 ADS-B Réel (${radarData.source || 'Direct'})</span>
         </div>
       `;
 
@@ -362,146 +354,48 @@ async function renderFidsPlanesOnMap(map, flightsLayerGroup) {
             <b>Destination/Origine :</b> ${matchingFids.city}<br>
             <b>Heure :</b> ${matchingFids.time}<br>
             <b>Altitude :</b> ${altText} | <b>Vitesse :</b> ${speedText}<br>
-            <b>Source :</b> <span style="color: #22c55e; font-weight: bold;">📡 Position GPS Directe</span>
+            <b>Source :</b> <span style="color: #22c55e; font-weight: bold;">📡 ADS-B Réel (${radarData.source || 'Direct'})</span>
           </div>
         `;
       }
 
-      // =================================================================
-      // TRACES HISTORIQUES ADS-B (PRO+++)
-      // [CORRECTION BUG 3] on met à jour la polyline existante au lieu d'en
-      // recréer une nouvelle à chaque cycle (évite l'accumulation infinie)
-      // =================================================================
+      // Historique des trajectoires (traces bleues/cyan)
       const trackKey = primaryKey;
-
       if (!adsbTracks[trackKey]) {
         adsbTracks[trackKey] = { positions: [], lastUpdate: Date.now() };
       }
-
-      adsbTracks[trackKey].positions.push([plane.lat, plane.lon]);
+      adsbTracks[trackKey].positions.push([plane.lat, plane.lng]);
       adsbTracks[trackKey].lastUpdate = Date.now();
+      if (adsbTracks[trackKey].positions.length > 40) adsbTracks[trackKey].positions.shift();
 
-      if (adsbTracks[trackKey].positions.length > 40) {
-        adsbTracks[trackKey].positions.shift();
-      }
-
-      const trackColor = "#00e1ff"; // cyan Airbus ND
       if (trackLines[trackKey]) {
         trackLines[trackKey].setLatLngs(adsbTracks[trackKey].positions);
-        if (!flightsLayerGroup.hasLayer(trackLines[trackKey])) {
-          flightsLayerGroup.addLayer(trackLines[trackKey]);
-        }
+        if (!flightsLayerGroup.hasLayer(trackLines[trackKey])) flightsLayerGroup.addLayer(trackLines[trackKey]);
       } else {
-        trackLines[trackKey] = L.polyline(adsbTracks[trackKey].positions, {
-          color: trackColor,
-          weight: 2,
-          opacity: 0.7
-        }).addTo(flightsLayerGroup);
+        trackLines[trackKey] = L.polyline(adsbTracks[trackKey].positions, { color: "#00e1ff", weight: 2, opacity: 0.7 }).addTo(flightsLayerGroup);
       }
 
-      // =================================================================
-      // FUTURE PATH IFR (PRO+++)
-      // [CORRECTION BUG 3] idem : mise à jour au lieu de recréation
-      // =================================================================
-      const futurePath = computeFuturePath(
-        plane.lat,
-        plane.lon,
-        plane.heading,
-        plane.speed
-      );
-
+      // Projection trajectoire future
+      const speedMs = plane.speedKt ? plane.speedKt * 0.514444 : 0;
+      const futurePath = computeFuturePath(plane.lat, plane.lng, plane.track, speedMs);
       if (futurePath.length === 2) {
         if (futureLines[trackKey]) {
           futureLines[trackKey].setLatLngs(futurePath);
-          if (!flightsLayerGroup.hasLayer(futureLines[trackKey])) {
-            flightsLayerGroup.addLayer(futureLines[trackKey]);
-          }
+          if (!flightsLayerGroup.hasLayer(futureLines[trackKey])) flightsLayerGroup.addLayer(futureLines[trackKey]);
         } else {
-          futureLines[trackKey] = L.polyline(futurePath, {
-            color: "#00e1ff", // cyan Airbus ND
-            weight: 2,
-            dashArray: "6, 6",
-            opacity: 0.9
-          }).addTo(flightsLayerGroup);
+          futureLines[trackKey] = L.polyline(futurePath, { color: "#00e1ff", weight: 2, dashArray: "6, 6", opacity: 0.9 }).addTo(flightsLayerGroup);
         }
       }
 
-      // =================================================================
-      // ON FINAL : Détection IFR (PRO+++)
-      // =================================================================
-      const onFinal = isOnFinal(plane, matchingFids ? matchingFids.airport : currentAirport);
-
-      if (onFinal) {
-        popupContent += `
-          <div style="margin-top:6px; padding:4px; background:#dcfce7; border-left:4px solid #16a34a;">
-            <b>🛬 On Final</b><br>
-            Approche stabilisée ILS
-          </div>
-        `;
-      }
-
-      // Mise à jour sur la carte avec les coordonnées GPS réelles
-      const m = updateOrAddMarker(primaryKey, plane.lat, plane.lon, plane.heading, popupContent, flightsLayerGroup, hasRotationPlugin);
+      // Positionnement du symbole jaune de l'avion sur la carte
+      const m = updateOrAddMarker(primaryKey, plane.lat, plane.lng, plane.track, popupContent, flightsLayerGroup, hasRotationPlugin);
       currentActiveKeys.add(primaryKey);
 
-      if (onFinal) {
-        L.circle([plane.lat, plane.lon], {
-          radius: 300,
-          color: "#16a34a",
-          weight: 2,
-          opacity: 0.6,
-          fillOpacity: 0.1
-        }).addTo(flightsLayerGroup);
-      }
-
       planeMarkers[primaryKey] = m;
-      if (plane.callsign) { planeMarkers[plane.callsign] = m; currentActiveKeys.add(plane.callsign); }
-      if (plane.numberOnly) { planeMarkers[plane.numberOnly] = m; currentActiveKeys.add(plane.numberOnly); }
-      if (matchingFids) {
-        const cleanMatchKey = matchingFids.flight.replace(/\s+/g, '');
-        planeMarkers[cleanMatchKey] = m;
-        currentActiveKeys.add(cleanMatchKey);
-      }
+      if (callsign) { planeMarkers[callsign] = m; currentActiveKeys.add(callsign); }
     });
 
-    // B. FALLBACK FIDS (Uniquement pour les vols sans signal GPS direct)
-    fidsList.forEach(fids => {
-      const cleanFlight = fids.flight.replace(/\s+/g, '');
-      const icaoPrefix = IATA_TO_ICAO[fids.parsed.prefix] || fids.parsed.prefix;
-      const radarCallsign = `${icaoPrefix}${fids.parsed.number}`;
-
-      const alreadyHasGps = currentActiveKeys.has(radarCallsign) || currentActiveKeys.has(cleanFlight) || currentActiveKeys.has(fids.parsed.number);
-
-      const statusLower = (fids.status || "").toLowerCase();
-      const isScheduled = /programm|scheduled/.test(statusLower);
-
-      if (!alreadyHasGps && isScheduled) {
-        const est = calculateEstimatedCoords(fids.airport, fids.city, fids.type);
-
-        const phase = classifyFlightPhase(est, fids.airport);
-        if (radarMode !== "all" && radarMode !== phase) return;
-
-        const popupContent = `
-          <div style="font-family: sans-serif; font-size: 13px;">
-            <h3 style="margin: 0 0 5px 0; color: #1e293b;">Vol ${fids.flight} (${fids.type === 'departures' ? 'Départ' : 'Arrivée'})</h3>
-            <b>Aéroport :</b> ${fids.airport}<br>
-            <b>Destination/Origine :</b> ${fids.city}<br>
-            <b>Heure :</b> ${fids.time}<br>
-            <b>Statut :</b> ${fids.status}<br>
-            <b>Source :</b> <span style="color: #ef4444; font-weight: bold;">⚠️ Pas de Signal GPS (Position Estimée)</span>
-          </div>
-        `;
-
-        const m = updateOrAddMarker(cleanFlight, est.lat, est.lon, est.heading, popupContent, flightsLayerGroup, hasRotationPlugin);
-        currentActiveKeys.add(cleanFlight);
-
-        planeMarkers[cleanFlight] = m;
-        if (fids.parsed.number) { planeMarkers[fids.parsed.number] = m; currentActiveKeys.add(fids.parsed.number); }
-        if (radarCallsign) { planeMarkers[radarCallsign] = m; currentActiveKeys.add(radarCallsign); }
-      }
-    });
-
-    // Nettoyage des marqueurs inactifs
+    // Nettoyage des marqueurs obsolètes
     Object.keys(planeMarkers).forEach(key => {
       if (!currentActiveKeys.has(key) && planeMarkers[key]) {
         flightsLayerGroup.removeLayer(planeMarkers[key]);
@@ -509,19 +403,8 @@ async function renderFidsPlanesOnMap(map, flightsLayerGroup) {
       }
     });
 
-    // Nettoyage des traces trop anciennes (60 secondes sans mise à jour)
-    // [CORRECTION BUG 3] on retire aussi les polylines de la carte, pas seulement
-    // l'entrée adsbTracks — sinon les lignes restaient affichées pour toujours
-    Object.keys(adsbTracks).forEach(key => {
-      if (Date.now() - adsbTracks[key].lastUpdate > 60000) {
-        if (trackLines[key]) { flightsLayerGroup.removeLayer(trackLines[key]); delete trackLines[key]; }
-        if (futureLines[key]) { flightsLayerGroup.removeLayer(futureLines[key]); delete futureLines[key]; }
-        delete adsbTracks[key];
-      }
-    });
-
   } catch (err) {
-    console.error("Erreur mise à jour radar GPS :", err);
+    console.error("Erreur mise à jour radar ADS-B :", err);
   }
 }
 
