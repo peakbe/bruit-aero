@@ -444,12 +444,6 @@ window.filterAirportView = function(airport) {
 // =================================================================
 // 8. FILTRAGE ET RECENTRAGE (BOUTONS HTML)
 // =================================================================
-const AIRPORT_COORDS = {
-  EBCI: [50.4592, 4.4538],
-  EBLG: [50.6374, 5.4432],
-  ALL:  [50.55, 4.95]
-};
-
 window.filterAirportView = function(airport) {
   // 1. Gestion visuelle des boutons
   const buttons = document.querySelectorAll('.control-bar-inline .airport-icon-btn');
