@@ -243,6 +243,21 @@ function isOnFinal(plane, airport) {
 }
 
 // =================================================================
+// VENT DE TRAVERS / FACE (PRO+++)
+// =================================================================
+function computeCrosswind(windDeg, windSpeed, runwayHeading) {
+  const angle = (windDeg - runwayHeading + 360) % 360;
+  const rad = angle * Math.PI / 180;
+
+  const cross = Math.abs(windSpeed * Math.sin(rad));   // vent de travers
+  const head = windSpeed * Math.cos(rad);              // vent de face (peut être négatif)
+
+  const side = angle > 180 ? "droite" : "gauche";      // direction du travers
+
+  return { cross: Math.round(cross), head: Math.round(head), side };
+}
+
+// =================================================================
 // CLASSIFICATION IFR : approche / départ / en‑route (PRO+++)
 // =================================================================
 function classifyFlightPhase(plane, airport) {
@@ -743,6 +758,27 @@ function renderSonometersOnMap(map) {
 
 function setRunwayEBCI(runwayNum, map) { currentRunwayEBCI = runwayNum; renderSonometersOnMap(map); }
 function setRunwayEBLG(runwayNum, map) { currentRunwayEBLG = runwayNum; renderSonometersOnMap(map); }
+
+// Vent de travers au sol
+const windDeg = weather.wind?.deg || 0;
+const windMs = weather.wind?.speed || 0;
+const windKt = Math.round(windMs * 1.94384); // conversion m/s → kt
+
+let rwyHeading = 0;
+
+if (station === "EBCI") {
+  rwyHeading = currentRunwayEBCI === "24" ? 240 : 60;
+  const cw = computeCrosswind(windDeg, windKt, rwyHeading);
+  const el = document.getElementById("ebci-crosswind");
+  if (el) el.textContent = `Vent de travers : ${cw.cross} kt ${cw.side} — Vent de face : ${cw.head} kt`;
+}
+
+if (station === "EBLG") {
+  rwyHeading = currentRunwayEBLG === "22" ? 220 : 40;
+  const cw = computeCrosswind(windDeg, windKt, rwyHeading);
+  const el = document.getElementById("eblg-crosswind");
+  if (el) el.textContent = `Vent de travers : ${cw.cross} kt ${cw.side} — Vent de face : ${cw.head} kt`;
+}
 
 // =================================================================
 // [CORRECTION] Filtre radar (Tous / Approche / Départ / En-route)
