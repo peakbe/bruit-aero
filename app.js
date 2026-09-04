@@ -452,32 +452,74 @@ function msToKmh(ms) { return Math.round(ms * 3.6); }
 // -----------------------------------------------------------------
 // A. TABLEAUX DES VOLS (FIDS)
 // -----------------------------------------------------------------
+// Variable globale pour conserver l'état actuel de l'onglet par aéroport
+const activeFlightType = {
+  EBCI: 'departures',
+  EBLG: 'departures'
+};
+
+// -----------------------------------------------------------------
+// CHARGEMENT ET AFFICHAGE DES 10 PROCHAINS VOLS
+// -----------------------------------------------------------------
 async function fetchFlightsData() {
   const ebciBody = document.getElementById("ebci-flights-body");
   const eblgBody = document.getElementById("eblg-flights-body");
-  if (ebciBody) await loadFlightType("departures", ebciBody, "EBCI");
-  if (eblgBody) await loadFlightType("departures", eblgBody, "EBLG");
+  
+  if (ebciBody) await loadFlightType(activeFlightType.EBCI, ebciBody, "EBCI");
+  if (eblgBody) await loadFlightType(activeFlightType.EBLG, eblgBody, "EBLG");
 }
 
 async function loadFlightType(type, elementContainer, airport) {
   try {
     const response = await fetch(`${WORKER_BASE_URL}/api/fids?airport=${airport}&type=${type}`);
-    if (!response.ok) return;
+    if (!response.ok) {
+      elementContainer.innerHTML = `<tr><td colspan="4" style="text-align:center; color:#94a3b8;">Données indisponibles</td></tr>`;
+      return;
+    }
+    
     const rawData = await response.json();
-    const flights = Array.isArray(rawData) ? rawData : (rawData.flights || []);
+    const allFlights = Array.isArray(rawData) ? rawData : (rawData.flights || []);
 
-    if (flights.length > 0) {
-      elementContainer.innerHTML = flights.map((f) => `
+    // Selection des 10 premiers vols à venir
+    const upcomingFlights = allFlights.slice(0, 10);
+
+    if (upcomingFlights.length > 0) {
+      elementContainer.innerHTML = upcomingFlights.map((f) => `
         <tr onclick="selectFlightOnMap('${f.flight}')" style="cursor: pointer;">
           <td><strong>${f.flight || "—"}</strong></td>
-          <td>${f.city || "—"}</td>
+          <td>${f.city || f.destination || f.origin || "—"}</td>
           <td>${f.time || "—"}</td>
-          <td><span class="badge">${f.status || "Programmé"}</span></td>
+          <td><span class="badge ${f.status === 'Cancelled' ? 'badge-red' : ''}">${f.status || "Programmé"}</span></td>
         </tr>
       `).join("");
+    } else {
+      elementContainer.innerHTML = `<tr><td colspan="4" style="text-align:center; color:#94a3b8;">Aucun vol prévu</td></tr>`;
     }
   } catch (e) {
-    elementContainer.innerHTML = `<tr><td colspan="4" style="text-align:center;">Aucun vol trouvé</td></tr>`;
+    console.error(`Erreur chargement vols ${airport}:`, e);
+    elementContainer.innerHTML = `<tr><td colspan="4" style="text-align:center; color:#ef4444;">Erreur de chargement</td></tr>`;
+  }
+}
+
+// -----------------------------------------------------------------
+// CHANGEMENT D'ONGLET (DÉPARTS / ARRIVÉES)
+// -----------------------------------------------------------------
+async function switchFlightTab(airport, type, btnElement) {
+  activeFlightType[airport] = type;
+
+  // Mise à jour visuelle des boutons
+  const parent = btnElement.closest('.card') || btnElement.parentElement;
+  if (parent) {
+    parent.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+    btnElement.classList.add('active');
+  }
+
+  // Conteneur de tableau à rafraîchir
+  const containerId = `${airport.toLowerCase()}-flights-body`;
+  const container = document.getElementById(containerId);
+  if (container) {
+    container.innerHTML = `<tr><td colspan="4" style="text-align:center; color:#cbd5e1;">Chargement...</td></tr>`;
+    await loadFlightType(type, container, airport);
   }
 }
 
