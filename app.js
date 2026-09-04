@@ -227,7 +227,7 @@ async function renderFidsPlanesOnMap(mapInstance, flightsLayerGroup) {
   const hasRotationPlugin = typeof L.Marker.prototype.setRotationAngle === "function";
 
   try {
-    const resRadar = await fetch(`${WORKER_BASE_URL}/api/adsb`).catch(() => null);
+    const resRadar = await fetch(`${WORKER_BASE_URL}/api/opensky`).catch(() => null);
     const radarData = resRadar && resRadar.ok ? await resRadar.json() : { aircraft: [] };
     const livePlanes = radarData.aircraft || [];
 
@@ -504,11 +504,9 @@ async function fetchWeatherData() {
 }
 
 async function fetchWeatherForecast(airportCode, lat, lon) {
-  const prefix = airportCode.toLowerCase();
   const card = document.querySelector(`.card[data-airport="${airportCode}"]`);
   if (!card) return;
 
-  // Emplacement du conteneur de tendance (créé dynamiquement s'il n'existe pas)
   let forecastEl = card.querySelector('.weather-forecast-box');
   if (!forecastEl) {
     forecastEl = document.createElement('div');
@@ -525,15 +523,15 @@ async function fetchWeatherForecast(airportCode, lat, lon) {
     }
 
     const data = await res.json();
-    // Récupération des 3 prochains créneaux (ex: +3h, +6h, +9h)
     const list = data.list ? data.list.slice(0, 3) : [];
 
     if (list.length > 0) {
       const itemsHtml = list.map(item => {
-        const time = new Date(item.dt * 1000).toLocaleTimeString([], { hour: '2d', minute: '2d' });
+        // Correction de '2d' en '2-digit' ici :
+        const time = new Date(item.dt * 1000).toLocaleTimeString("fr-BE", { hour: '2-digit', minute: '2-digit' });
         const temp = Math.round(item.main.temp);
         const icon = item.weather[0]?.icon ? `https://openweathermap.org/img/wn/${item.weather[0].icon}.png` : '';
-        const pop = Math.round((item.pop || 0) * 100); // Probabilité de pluie %
+        const pop = Math.round((item.pop || 0) * 100);
 
         return `
           <div style="text-align: center; flex: 1;">
@@ -557,6 +555,7 @@ async function fetchWeatherForecast(airportCode, lat, lon) {
     forecastEl.innerHTML = `<span style="opacity: 0.7;">Tendance indisponible</span>`;
   }
 }
+
 // Fonction pour dessiner/orienter la Rose des Vents
 function updateCompassUI(prefix, windDeg, speed) {
   // Recherche des conteneurs "Rose des vents"
