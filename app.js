@@ -4,9 +4,13 @@
 var WORKER_BASE_URL = "https://bruit-aero-proxy.pnyr682w7f.workers.dev";
 
 var map = map || null;
-var planeMarkers = planeMarkers || {}; 
+var planeMarkers = planeMarkers || {};
 // Traces historiques ADS-B (PRO+++)
 var adsbTracks = {}; // key = callsign/icao24, value = { positions: [], lastUpdate: timestamp }
+// [CORRECTION BUG 3] objets Leaflet des traces / trajectoires futures, indexés par clé,
+// pour pouvoir les mettre à jour au lieu de les recréer à chaque cycle
+var trackLines = {};
+var futureLines = {};
 var currentAirport = currentAirport || "EBLG";
 var flightsGroup = flightsGroup || null;
 var radarMode = "all"; // all | approach | departure | enroute
@@ -28,16 +32,16 @@ const yellowPlaneIcon = L.divIcon({
 const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
 const IATA_TO_ICAO = {
-  "FR": "RYR", "TB": "TUI", "SN": "BEL", "LH": "DLH", 
+  "FR": "RYR", "TB": "TUI", "SN": "BEL", "LH": "DLH",
   "HV": "TRA", "W6": "WZZ", "3V": "TAY", "FQ": "BAW", "VY": "VLG", "FX": "FDX", "QR": "QTR"
 };
 
 const CITY_COORDS = {
-  "LIS": [38.7742, -9.1342], "NAP": [40.8860, 14.2908], "OTP": [44.5711, 26.0850], 
-  "SOF": [42.6952, 23.4062], "BDS": [40.6576, 17.9470], "SUF": [38.9054, 16.2423], 
-  "IBZ": [38.8729, 1.3731], "DUB": [53.4264, -6.2499], "CDG": [49.0097, 2.5479], 
-  "BSL": [47.5896, 7.5299], "ACC": [5.6052, -0.1668], "ORD": [41.9742, -87.9073], 
-  "LOS": [6.5774, 3.3212], "DMM": [26.4712, 49.7979], "NBO": [-1.3192, 36.9275], 
+  "LIS": [38.7742, -9.1342], "NAP": [40.8860, 14.2908], "OTP": [44.5711, 26.0850],
+  "SOF": [42.6952, 23.4062], "BDS": [40.6576, 17.9470], "SUF": [38.9054, 16.2423],
+  "IBZ": [38.8729, 1.3731], "DUB": [53.4264, -6.2499], "CDG": [49.0097, 2.5479],
+  "BSL": [47.5896, 7.5299], "ACC": [5.6052, -0.1668], "ORD": [41.9742, -87.9073],
+  "LOS": [6.5774, 3.3212], "DMM": [26.4712, 49.7979], "NBO": [-1.3192, 36.9275],
   "DOH": [25.2731, 51.6081], "TLV": [32.0055, 34.8854], "QKD": [51.588, -0.528]
 };
 
@@ -316,6 +320,13 @@ async function renderFidsPlanesOnMap(map, flightsLayerGroup) {
         return plane.callsign === targetCallsign || plane.callsign === f.parsed.raw || (plane.numberOnly && plane.numberOnly === f.parsed.number);
       });
 
+      // Déterminer phase de vol IFR et appliquer le filtre radar AVANT de dessiner
+      // [CORRECTION BUG 3] on calcule la phase et on applique le filtre radarMode
+      // avant de toucher aux traces / trajectoires, pour ne jamais dessiner ce qui
+      // doit être filtré.
+      const phase = classifyFlightPhase(plane, matchingFids ? matchingFids.airport : currentAirport);
+      if (radarMode !== "all" && radarMode !== phase) return;
+
       const altText = plane.altitude ? `${Math.round(plane.altitude)} m` : "En vol";
       const speedText = plane.speed ? `${Math.round(plane.speed * 3.6)} km/h` : "N/C";
 
@@ -342,84 +353,91 @@ async function renderFidsPlanesOnMap(map, flightsLayerGroup) {
       }
 
       // =================================================================
-// TRACES HISTORIQUES ADS-B (PRO+++)
-// =================================================================
-const trackKey = primaryKey;
+      // TRACES HISTORIQUES ADS-B (PRO+++)
+      // [CORRECTION BUG 3] on met à jour la polyline existante au lieu d'en
+      // recréer une nouvelle à chaque cycle (évite l'accumulation infinie)
+      // =================================================================
+      const trackKey = primaryKey;
 
-// Initialiser la trace si absente
-if (!adsbTracks[trackKey]) {
-  adsbTracks[trackKey] = { positions: [], lastUpdate: Date.now() };
-}
+      if (!adsbTracks[trackKey]) {
+        adsbTracks[trackKey] = { positions: [], lastUpdate: Date.now() };
+      }
 
-// Ajouter la nouvelle position
-adsbTracks[trackKey].positions.push([plane.lat, plane.lon]);
-adsbTracks[trackKey].lastUpdate = Date.now();
+      adsbTracks[trackKey].positions.push([plane.lat, plane.lon]);
+      adsbTracks[trackKey].lastUpdate = Date.now();
 
-// Limiter la longueur de la trace
-if (adsbTracks[trackKey].positions.length > 40) {
-  adsbTracks[trackKey].positions.shift();
-}
+      if (adsbTracks[trackKey].positions.length > 40) {
+        adsbTracks[trackKey].positions.shift();
+      }
 
-// Dessiner la trace
-const trackColor = "#00e1ff"; // cyan Airbus ND
-const trackLine = L.polyline(adsbTracks[trackKey].positions, {
-  color: trackColor,
-  weight: 2,
-  opacity: 0.7
-}).addTo(flightsLayerGroup);
+      const trackColor = "#00e1ff"; // cyan Airbus ND
+      if (trackLines[trackKey]) {
+        trackLines[trackKey].setLatLngs(adsbTracks[trackKey].positions);
+        if (!flightsLayerGroup.hasLayer(trackLines[trackKey])) {
+          flightsLayerGroup.addLayer(trackLines[trackKey]);
+        }
+      } else {
+        trackLines[trackKey] = L.polyline(adsbTracks[trackKey].positions, {
+          color: trackColor,
+          weight: 2,
+          opacity: 0.7
+        }).addTo(flightsLayerGroup);
+      }
 
       // =================================================================
-// FUTURE PATH IFR (PRO+++)
-// =================================================================
-const futurePath = computeFuturePath(
-  plane.lat,
-  plane.lon,
-  plane.heading,
-  plane.speed
-);
+      // FUTURE PATH IFR (PRO+++)
+      // [CORRECTION BUG 3] idem : mise à jour au lieu de recréation
+      // =================================================================
+      const futurePath = computeFuturePath(
+        plane.lat,
+        plane.lon,
+        plane.heading,
+        plane.speed
+      );
 
-if (futurePath.length === 2) {
-  const futureLine = L.polyline(futurePath, {
-    color: "#00e1ff", // cyan Airbus ND
-    weight: 2,
-    dashArray: "6, 6",
-    opacity: 0.9
-  }).addTo(flightsLayerGroup);
-}
-
-            // Déterminer phase de vol IFR
-            const phase = classifyFlightPhase(plane, matchingFids ? matchingFids.airport : currentAirport);
-
-      // Filtre radar
-            if (radarMode !== "all" && radarMode !== phase) return;
+      if (futurePath.length === 2) {
+        if (futureLines[trackKey]) {
+          futureLines[trackKey].setLatLngs(futurePath);
+          if (!flightsLayerGroup.hasLayer(futureLines[trackKey])) {
+            flightsLayerGroup.addLayer(futureLines[trackKey]);
+          }
+        } else {
+          futureLines[trackKey] = L.polyline(futurePath, {
+            color: "#00e1ff", // cyan Airbus ND
+            weight: 2,
+            dashArray: "6, 6",
+            opacity: 0.9
+          }).addTo(flightsLayerGroup);
+        }
+      }
 
       // =================================================================
-// ON FINAL : Détection IFR (PRO+++)
-// =================================================================
-const onFinal = isOnFinal(plane, matchingFids ? matchingFids.airport : currentAirport);
+      // ON FINAL : Détection IFR (PRO+++)
+      // =================================================================
+      const onFinal = isOnFinal(plane, matchingFids ? matchingFids.airport : currentAirport);
 
-if (onFinal) {
-  popupContent += `
-    <div style="margin-top:6px; padding:4px; background:#dcfce7; border-left:4px solid #16a34a;">
-      <b>🛬 On Final</b><br>
-      Approche stabilisée ILS
-    </div>
-  `;
-}
+      if (onFinal) {
+        popupContent += `
+          <div style="margin-top:6px; padding:4px; background:#dcfce7; border-left:4px solid #16a34a;">
+            <b>🛬 On Final</b><br>
+            Approche stabilisée ILS
+          </div>
+        `;
+      }
 
       // Mise à jour sur la carte avec les coordonnées GPS réelles
-            const m = updateOrAddMarker(primaryKey, plane.lat, plane.lon, plane.heading, popupContent, flightsLayerGroup, hasRotationPlugin);
+      const m = updateOrAddMarker(primaryKey, plane.lat, plane.lon, plane.heading, popupContent, flightsLayerGroup, hasRotationPlugin);
       currentActiveKeys.add(primaryKey);
 
       if (onFinal) {
-  L.circle([plane.lat, plane.lon], {
-    radius: 300,
-    color: "#16a34a",
-    weight: 2,
-    opacity: 0.6,
-    fillOpacity: 0.1
-  }).addTo(flightsLayerGroup);
-}
+        L.circle([plane.lat, plane.lon], {
+          radius: 300,
+          color: "#16a34a",
+          weight: 2,
+          opacity: 0.6,
+          fillOpacity: 0.1
+        }).addTo(flightsLayerGroup);
+      }
 
       planeMarkers[primaryKey] = m;
       if (plane.callsign) { planeMarkers[plane.callsign] = m; currentActiveKeys.add(plane.callsign); }
@@ -439,11 +457,15 @@ if (onFinal) {
 
       const alreadyHasGps = currentActiveKeys.has(radarCallsign) || currentActiveKeys.has(cleanFlight) || currentActiveKeys.has(fids.parsed.number);
 
-            const statusLower = (fids.status || "").toLowerCase();
+      const statusLower = (fids.status || "").toLowerCase();
       const isScheduled = /programm|scheduled/.test(statusLower);
 
       if (!alreadyHasGps && isScheduled) {
         const est = calculateEstimatedCoords(fids.airport, fids.city, fids.type);
+
+        const phase = classifyFlightPhase(est, fids.airport);
+        if (radarMode !== "all" && radarMode !== phase) return;
+
         const popupContent = `
           <div style="font-family: sans-serif; font-size: 13px;">
             <h3 style="margin: 0 0 5px 0; color: #1e293b;">Vol ${fids.flight} (${fids.type === 'departures' ? 'Départ' : 'Arrivée'})</h3>
@@ -455,13 +477,10 @@ if (onFinal) {
           </div>
         `;
 
-        const phase = classifyFlightPhase(est, fids.airport);
-if (radarMode !== "all" && radarMode !== phase) return;
-
-               const m = updateOrAddMarker(cleanFlight, est.lat, est.lon, est.heading, popupContent, flightsLayerGroup, hasRotationPlugin);
+        const m = updateOrAddMarker(cleanFlight, est.lat, est.lon, est.heading, popupContent, flightsLayerGroup, hasRotationPlugin);
         currentActiveKeys.add(cleanFlight);
 
-                planeMarkers[cleanFlight] = m;
+        planeMarkers[cleanFlight] = m;
         if (fids.parsed.number) { planeMarkers[fids.parsed.number] = m; currentActiveKeys.add(fids.parsed.number); }
         if (radarCallsign) { planeMarkers[radarCallsign] = m; currentActiveKeys.add(radarCallsign); }
       }
@@ -476,13 +495,17 @@ if (radarMode !== "all" && radarMode !== phase) return;
     });
 
     // Nettoyage des traces trop anciennes (60 secondes sans mise à jour)
-Object.keys(adsbTracks).forEach(key => {
-  if (Date.now() - adsbTracks[key].lastUpdate > 60000) {
-    delete adsbTracks[key];
-  }
-});
+    // [CORRECTION BUG 3] on retire aussi les polylines de la carte, pas seulement
+    // l'entrée adsbTracks — sinon les lignes restaient affichées pour toujours
+    Object.keys(adsbTracks).forEach(key => {
+      if (Date.now() - adsbTracks[key].lastUpdate > 60000) {
+        if (trackLines[key]) { flightsLayerGroup.removeLayer(trackLines[key]); delete trackLines[key]; }
+        if (futureLines[key]) { flightsLayerGroup.removeLayer(futureLines[key]); delete futureLines[key]; }
+        delete adsbTracks[key];
+      }
+    });
 
-      } catch (err) {
+  } catch (err) {
     console.error("Erreur mise à jour radar GPS :", err);
   }
 }
@@ -572,8 +595,8 @@ const sonometersEBLG = [
   { id: "F012", address: "Rue Barbe d'Or 13, 4317 Aineffe", latDMS: "50 37 18.9 N", lonDMS: "5 15 17.09 E" }
 ];
 
-let currentRunwayEBCI = "24"; 
-let currentRunwayEBLG = "22"; 
+let currentRunwayEBCI = "24";
+let currentRunwayEBLG = "22";
 
 function dmsToDecimal(dmsStr) {
   const parts = dmsStr.trim().split(/\s+/);
@@ -619,13 +642,13 @@ function autoSelectRunway(airport, windDeg, windSpeed) {
 
 function getSonometerColor(id, airport) {
   if (airport === "EBLG") {
-    if (currentRunwayEBLG === "22") return "#10b981"; 
+    if (currentRunwayEBLG === "22") return "#10b981";
     if (currentRunwayEBLG === "04") {
       return ["F004", "F005", "F006", "F010", "F012", "F016", "F017"].includes(id) ? "#ef4444" : "#10b981";
     }
   }
   if (airport === "EBCI") {
-    if (currentRunwayEBCI === "24") return "#10b981"; 
+    if (currentRunwayEBCI === "24") return "#10b981";
     if (currentRunwayEBCI === "06") {
       return ["F114", "F116", "F117", "F118"].includes(id) ? "#ef4444" : "#10b981";
     }
@@ -638,6 +661,31 @@ const sonometerMarkers = [];
 function renderSonometersOnMap(map) {
   sonometerMarkers.forEach(m => map.removeLayer(m));
   sonometerMarkers.length = 0;
+
+  // =================================================================
+  // ILS : Affichage automatique du cône selon piste active
+  // [CORRECTION BUG 2] ce bloc était auparavant DANS la boucle forEach
+  // ci-dessous : il vidait window.ilsConeLayer à chaque sonomètre, ce qui
+  // effaçait systématiquement le cône EBCI dès qu'un sonomètre EBLG était
+  // traité (car EBCI est listé en premier dans allSonometers). Il est
+  // maintenant exécuté UNE SEULE FOIS, avant la boucle, pour les deux
+  // aéroports.
+  // =================================================================
+  if (window.ilsConeLayer) {
+    window.ilsConeLayer.clearLayers();
+  } else {
+    window.ilsConeLayer = L.layerGroup().addTo(map);
+  }
+
+  function addCone(lat, lon, heading) {
+    const cone = drawILSCone(lat, lon, heading);
+    window.ilsConeLayer.addLayer(cone);
+  }
+
+  if (currentRunwayEBLG === "22") addCone(AIRPORTS.EBLG.lat, AIRPORTS.EBLG.lon, 220);
+  if (currentRunwayEBLG === "04") addCone(AIRPORTS.EBLG.lat, AIRPORTS.EBLG.lon, 40);
+  if (currentRunwayEBCI === "24") addCone(AIRPORTS.EBCI.lat, AIRPORTS.EBCI.lon, 240);
+  if (currentRunwayEBCI === "06") addCone(AIRPORTS.EBCI.lat, AIRPORTS.EBCI.lon, 60);
 
   const allSonometers = [
     ...sonometersEBCI.map(s => ({ ...s, airport: "EBCI" })),
@@ -677,34 +725,6 @@ function renderSonometersOnMap(map) {
         }
       } catch (err) {}
     });
-    
-// =================================================================
-// ILS : Affichage automatique du cône selon piste active
-// =================================================================
-
-// Nettoyage ancien cône
-if (window.ilsConeLayer) {
-  window.ilsConeLayer.clearLayers();
-} else {
-  window.ilsConeLayer = L.layerGroup().addTo(map);
-}
-
-function addCone(lat, lon, heading) {
-  const cone = drawILSCone(lat, lon, heading);
-  window.ilsConeLayer.addLayer(cone);
-}
-
-// EBLG
-if (s.airport === "EBLG") {
-  if (currentRunwayEBLG === "22") addCone(AIRPORTS.EBLG.lat, AIRPORTS.EBLG.lon, 220);
-  if (currentRunwayEBLG === "04") addCone(AIRPORTS.EBLG.lat, AIRPORTS.EBLG.lon, 40);
-}
-
-// EBCI
-if (s.airport === "EBCI") {
-  if (currentRunwayEBCI === "24") addCone(AIRPORTS.EBCI.lat, AIRPORTS.EBCI.lon, 240);
-  if (currentRunwayEBCI === "06") addCone(AIRPORTS.EBCI.lat, AIRPORTS.EBCI.lon, 60);
-}
 
     sonometerMarkers.push(marker);
   });
@@ -814,6 +834,14 @@ async function fetchWeatherData() {
   loadAirportWeather(AIRPORTS.EBCI.lat, AIRPORTS.EBCI.lon, "EBCI", "ebci-temp", "ebci-metar", "ebci-forecast");
 }
 
+// =================================================================
+// [CORRECTION BUG 1] Fonction réécrite : `weather` était utilisée en dehors
+// du bloc `if (resWeather.ok) { const weather = ... }` où elle était
+// déclarée, ce qui provoquait un ReferenceError à chaque appel (avalé
+// silencieusement par le catch global) et empêchait `autoSelectRunway`
+// de jamais s'exécuter. Le code dupliqué de mise à jour de tempEl a
+// aussi été supprimé.
+// =================================================================
 async function loadAirportWeather(lat, lon, station, tempElemId, metarElemId, forecastElemId) {
   try {
     const resWeather = await fetch(`${WORKER_BASE_URL}/api/weather?lat=${lat}&lon=${lon}`);
@@ -827,22 +855,16 @@ async function loadAirportWeather(lat, lon, station, tempElemId, metarElemId, fo
         tempEl.innerHTML = `<strong>${Math.round(weather.main.temp)}°C</strong> | 💨 ${msToKmh(weather.wind?.speed || 0)} km/h`;
         drawCompass(`compass-${station.toLowerCase()}`, weather.wind?.deg || 0);
       }
+
+      autoSelectRunway(station, weather.wind?.deg || 0, weather.wind?.speed || 0);
     }
 
     if (resMetar.ok) {
       const metar = await resMetar.json();
-      
       const metarEl = document.getElementById(metarElemId);
       if (metarEl) metarEl.innerText = metar.raw || metar.sanitized || metar.metar || "";
     }
-    
-autoSelectRunway(station, weather.wind?.deg || 0, weather.wind?.speed || 0);
- const tempEl = document.getElementById(tempElemId);
-  if (tempEl && weather.main) {
-    tempEl.innerHTML = `<strong>${Math.round(weather.main.temp)}°C</strong> | 💨 ${msToKmh(weather.wind?.speed || 0)} km/h`;
-    drawCompass(`compass-${station.toLowerCase()}`, weather.wind?.deg || 0);
-  }
-}
+
     const forecastEl = document.getElementById(forecastElemId);
     if (forecastEl) {
       const resForecast = await fetch(`${WORKER_BASE_URL}/api/forecast?lat=${lat}&lon=${lon}`);
