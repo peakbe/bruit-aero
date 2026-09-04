@@ -788,5 +788,24 @@ async function fetchWeatherData() {
   }
 }
 
+window.filterAirportView = function(airport) {
+  // 1. Gestion visuelle des boutons
+  const buttons = document.querySelectorAll('.control-bar-inline .airport-icon-btn');
+  buttons.forEach(btn => btn.classList.remove('active'));
+  if (event && event.currentTarget) {
+    event.currentTarget.classList.add('active');
+  }
+
+  // 2. Filtrage des cartes METAR et des cartes de Vols
+  const cards = document.querySelectorAll('.card[data-airport]');
+  cards.forEach(card => {
+    const cardAirport = card.getAttribute('data-airport');
+    if (airport === 'ALL' || cardAirport === airport) {
+      card.style.display = 'block';
+    } else {
+      card.style.display = 'none';
+    }
+  });
+};
 // Initialisation globale au chargement de la page
 document.addEventListener("DOMContentLoaded", initMap);
