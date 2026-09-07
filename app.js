@@ -1,9 +1,8 @@
 // ===============================================================
 // IMPORTS MODULES
 // ===============================================================
-import { map } from "./map.js";          // Carte Leaflet (unique)
-import { initRadarMap } from "./map.js"; // Initialisation radar ADS-B
-import { updateFIDS } from "./fids.js";  // FIDS Airplanes.live
+import { map, initRadarMap } from "./map.js";   // Carte Leaflet unique
+import { updateFIDS } from "./fids.js";         // FIDS Airplanes.live
 
 // ===============================================================
 // INITIALISATION GLOBALE
@@ -37,8 +36,6 @@ const AIRPORT_COORDS = {
   ALL:  [50.55, 4.95]
 };
 
-const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
-
 function msToKmh(ms) {
   return Math.round(ms * 3.6);
 }
@@ -71,8 +68,8 @@ async function fetchMetarData() {
 // =================================================================
 // 3. SONOMÈTRES
 // =================================================================
-const sonometersEBCI = [ /* … (inchangé) … */ ];
-const sonometersEBLG = [ /* … (inchangé) … */ ];
+const sonometersEBCI = [ /* … inchangé … */ ];
+const sonometersEBLG = [ /* … inchangé … */ ];
 
 function dmsToDecimal(dmsStr) {
   const parts = dmsStr.trim().split(/\s+/);
@@ -206,7 +203,7 @@ async function fetchWeatherData() {
 }
 
 // =================================================================
-// 6. ROSE DES VENTS
+// 6. ROSE DES VENTS — FIN DU BLOC
 // =================================================================
 function updateCompassUI(prefix, windDeg, speedKmh, crosswindKt) {
   const card = document.querySelector(`.card[data-airport="${prefix.toUpperCase()}"]`);
@@ -368,3 +365,43 @@ function drawApproachDepartureCones(airportCode, lat, lon, windDeg) {
 
 // =================================================================
 // 10. FILTRE AÉROPORT
+// =================================================================
+window.filterAirportView = function(airport) {
+  const buttons = document.querySelectorAll('.control-bar-inline .airport-icon-btn');
+  buttons.forEach(btn => btn.classList.remove('active'));
+
+  if (window.event && window.event.currentTarget) {
+    window.event.currentTarget.classList.add('active');
+  } else {
+    const activeBtn = document.querySelector(`.control-bar-inline .airport-icon-btn[onclick*="${airport}"]`);
+    if (activeBtn) activeBtn.classList.add('active');
+  }
+
+  currentAirport = airport;
+
+  const cards = document.querySelectorAll('[data-airport]');
+  cards.forEach(card => {
+    const cardAirport = card.getAttribute('data-airport');
+    card.style.display = (airport === 'ALL' || cardAirport === airport) ? 'block' : 'none';
+  });
+
+  if (map && AIRPORT_COORDS[airport]) {
+    const zoomLevel = airport === 'ALL' ? 8 : 11;
+    map.setView(AIRPORT_COORDS[airport], zoomLevel, { animate: true });
+  }
+
+  if (typeof updateFIDS === "function") {
+    updateFIDS();
+  }
+};
+
+// =================================================================
+// 11. EXPORTS (si nécessaire pour d'autres modules)
+// =================================================================
+export {
+  fetchWeatherData,
+  fetchMetarData,
+  renderSonometersOnMap,
+  autoSelectRunway,
+  drawApproachDepartureCones
+};
