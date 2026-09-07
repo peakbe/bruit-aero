@@ -458,3 +458,91 @@ export default {
     }
   }
 };
+
+      // -------------------------------------------------------------
+      // 6. ENDPOINT RADAR ADS-B (Airplanes.live direct)
+      // -------------------------------------------------------------
+      if (path.startsWith("/api/adsb")) {
+        try {
+          const res = await fetchWithTimeout("https://api.airplanes.live/v2/positions");
+          const data = await res.json();
+
+          return new Response(JSON.stringify(data), {
+            status: 200,
+            headers: { ...corsHeaders, "Content-Type": "application/json" }
+          });
+        } catch (e) {
+          return new Response(JSON.stringify({ aircraft: [] }), {
+            status: 200,
+            headers: { ...corsHeaders, "Content-Type": "application/json" }
+          });
+        }
+      }
+
+      // -------------------------------------------------------------
+      // 7. ENDPOINT FIDS Airplanes.live (Départs / Arrivées)
+      // -------------------------------------------------------------
+      if (path.startsWith("/api/fids-airport/")) {
+        const icao = path.split("/").pop().toUpperCase();
+
+        try {
+          const res = await fetchWithTimeout(`https://api.airplanes.live/v2/airport/${icao}`);
+          const data = await res.json();
+
+          return new Response(JSON.stringify(data), {
+            status: 200,
+            headers: { ...corsHeaders, "Content-Type": "application/json" }
+          });
+        } catch (e) {
+          return new Response(JSON.stringify({ departures: [], arrivals: [] }), {
+            status: 200,
+            headers: { ...corsHeaders, "Content-Type": "application/json" }
+          });
+        }
+      }
+
+      // -------------------------------------------------------------
+      // 8. ENDPOINT FIDS Liege Airport (Officiel)
+      // -------------------------------------------------------------
+      if (path.startsWith("/api/eblg/")) {
+        const type = path.split("/").pop(); // Arrivals / Departures
+
+        try {
+          const res = await fetchWithTimeout(`https://fids.liegeairport.com/api/flights/${type}`, {
+            headers: {
+              "User-Agent": "Mozilla/5.0",
+              "Accept": "application/json"
+            }
+          });
+
+          if (res.ok) {
+            const data = await res.json();
+            return new Response(JSON.stringify(data), {
+              status: 200,
+              headers: { ...corsHeaders, "Content-Type": "application/json" }
+            });
+          }
+        } catch (e) {
+          return new Response(JSON.stringify([]), {
+            status: 200,
+            headers: { ...corsHeaders, "Content-Type": "application/json" }
+          });
+        }
+      }
+
+      // -------------------------------------------------------------
+      // 9. DEFAULT 404
+      // -------------------------------------------------------------
+      return new Response(JSON.stringify({ error: "Endpoint non trouvé" }), {
+        status: 404,
+        headers: corsHeaders
+      });
+
+    } catch (err) {
+      return new Response(JSON.stringify({ error: err.message }), {
+        status: 500,
+        headers: { ...corsHeaders, "Content-Type": "application/json" }
+      });
+    }
+  }
+};
