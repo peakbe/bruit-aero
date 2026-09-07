@@ -110,6 +110,53 @@
       .leaflet-control-zoom { display: none; }
       table { font-size: 12px; }
     }
+
+    /* ===============================================================
+   FIDS — Style PRO+++ cockpit Airbus
+   =============================================================== */
+
+.fids-row {
+    display: grid;
+    grid-template-columns: 70px 90px 120px 100px;
+    padding: 6px 10px;
+    margin-bottom: 4px;
+    background: rgba(15, 23, 42, 0.6);
+    border-left: 3px solid #38bdf8;
+    border-radius: 4px;
+    color: #e2e8f0;
+    font-size: 13px;
+    cursor: pointer;
+    transition: background 0.2s ease;
+}
+
+.fids-row:hover {
+    background: rgba(30, 41, 59, 0.8);
+}
+
+.fids-time {
+    font-weight: bold;
+    color: #f8fafc;
+}
+
+.fids-flight {
+    font-weight: bold;
+    color: #38bdf8;
+}
+
+.fids-dest {
+    color: #cbd5e1;
+}
+
+.fids-status {
+    font-weight: bold;
+    color: #fbbf24;
+}
+
+.fids-status::before {
+    content: "• ";
+    color: #38bdf8;
+}
+
   </style>
 </head>
 <body>
