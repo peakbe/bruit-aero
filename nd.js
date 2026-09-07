@@ -1,6 +1,7 @@
 // ===============================================================
 // ND Airbus — centrage + surbrillance avion
 // ===============================================================
+import { setSelectedAircraft } from "./nd-panel.js";
 
 // map et planesLayer doivent être exposés par ton module radar ADS-B
 import { map, planesLayer } from "./map.js";
