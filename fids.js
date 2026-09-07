@@ -3,6 +3,7 @@
 // ===============================================================
 
 import { centerOnAircraft, highlightAircraft } from "./nd.js";
+import { setSelectedAircraft } from "./nd-panel.js";
 
 const API_URL = "https://api.airplanes.live/v2/airport/";
 const AIRPORTS = ["EBCI", "EBLG"];
@@ -63,6 +64,8 @@ function renderFIDS(icao, flights) {
             if (!f.hex) return;
             centerOnAircraft(f.hex);
             highlightAircraft(f.hex);
+            setSelectedAircraft(f.hex);
+
         });
 
         container.appendChild(div);
