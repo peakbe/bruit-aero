@@ -21,9 +21,6 @@ const RELAYS = [
   (u) => `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(u)}`,
 ];
 
-// -------------------------------------------------------------
-// Timeout helper
-// -------------------------------------------------------------
 async function fetchWithTimeout(url, options = {}, timeoutMs = 4000) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
@@ -34,9 +31,6 @@ async function fetchWithTimeout(url, options = {}, timeoutMs = 4000) {
   }
 }
 
-// -------------------------------------------------------------
-// Decode WMO weather codes → OpenWeather-like format
-// -------------------------------------------------------------
 function decodeWmoCode(code) {
   if (code === 0) return { desc: "Ciel dégagé", icon: "01d" };
   if (code >= 1 && code <= 3) return { desc: "Partiellement nuageux", icon: "02d" };
@@ -48,9 +42,6 @@ function decodeWmoCode(code) {
   return { desc: "Nuageux", icon: "03d" };
 }
 
-// -------------------------------------------------------------
-// ADS-B: readsb compatible fetch
-// -------------------------------------------------------------
 async function fetchReadsb(base, ap, relay) {
   const target = `${base}/lat/${ap.lat}/lon/${ap.lng}/dist/${DIST_NM}`;
   const url = relay !== null ? RELAYS[relay](target) : target;
@@ -94,13 +85,8 @@ async function fetchBothAdsb(base, relay) {
   return [...ebci, ...eblg];
 }
 
-// =================================================================
-// ROUTEUR PRINCIPAL
-// =================================================================
-
 export default {
   async fetch(request, env, ctx) {
-
     if (request.method === "OPTIONS") {
       return new Response(null, { headers: corsHeaders });
     }
@@ -109,12 +95,10 @@ export default {
     const path = url.pathname;
 
     try {
-
       // -------------------------------------------------------------
       // 1. ADS-B MULTI-SOURCES (adsb.lol → adsb.fi → FR24 → OpenSky)
       // -------------------------------------------------------------
       if (path.includes("/api/opensky") || path.includes("/api/adsb-multi")) {
-
         try {
           const LOL = "https://api.adsb.lol/v2";
           const FI = "https://opendata.adsb.fi/api/v2";
@@ -150,7 +134,6 @@ export default {
           console.log("ADSB direct/proxy indisponible, bascule FR24...", e);
         }
 
-        // FR24 fallback
         try {
           const fr24Url =
             "https://data-cloud.flightradar24.com/zones/fcgi/feed.json?bounds=52.0,49.0,2.0,7.0&faa=1&satellite=1&mlat=1&flarm=1&adsb=1&gnd=0&air=1&vehicles=0&estimated=0";
@@ -209,7 +192,6 @@ export default {
           console.log("FR24 indisponible, bascule OpenSky...", e);
         }
 
-        // OpenSky fallback final
         try {
           const openskyUrl =
             "https://opensky-network.org/api/states/all?lamin=49.0&lomin=2.0&lamax=52.0&lomax=7.0";
@@ -240,36 +222,34 @@ export default {
         });
       }
 
-     // -------------------------------------------------------------
-// ADS-B Airplanes.live (format compatible map.js)
-// -------------------------------------------------------------
-if (path.startsWith("/api/adsb")) {
-  try {
-    const res = await fetchWithTimeout("https://api.airplanes.live/v2/positions");
-    const data = await res.json();
+      // -------------------------------------------------------------
+      // 2. ADS-B Airplanes.live (radar map.js)
+      // -------------------------------------------------------------
+      if (path.startsWith("/api/adsb")) {
+        try {
+          const res = await fetchWithTimeout("https://api.airplanes.live/v2/positions");
+          const data = await res.json();
 
-    // Convertir au format attendu par map.js
-    const aircraft = (data.aircraft || []).map(p => ({
-      hex: p.hex,
-      lat: p.lat,
-      lon: p.lon,
-      alt: p.alt_baro || p.altitude || 0,
-      speed: p.gs || p.speed || 0,
-      track: p.track || 0
-    }));
+          const aircraft = (data.aircraft || []).map(p => ({
+            hex: p.hex,
+            lat: p.lat,
+            lon: p.lon,
+            alt: p.alt_baro || p.altitude || 0,
+            speed: p.gs || p.speed || 0,
+            track: p.track || 0
+          }));
 
-    return new Response(JSON.stringify({ aircraft }), {
-      status: 200,
-      headers: { ...corsHeaders, "Content-Type": "application/json" }
-    });
-
-  } catch (e) {
-    return new Response(JSON.stringify({ aircraft: [] }), {
-      status: 200,
-      headers: { ...corsHeaders, "Content-Type": "application/json" }
-    });
-  }
-}
+          return new Response(JSON.stringify({ aircraft }), {
+            status: 200,
+            headers: { ...corsHeaders, "Content-Type": "application/json" }
+          });
+        } catch (e) {
+          return new Response(JSON.stringify({ aircraft: [] }), {
+            status: 200,
+            headers: { ...corsHeaders, "Content-Type": "application/json" }
+          });
+        }
+      }
 
       // -------------------------------------------------------------
       // 3. METEO ACTUELLE (Open-Meteo → format OpenWeather)
@@ -364,63 +344,154 @@ if (path.startsWith("/api/adsb")) {
       }
 
       // -------------------------------------------------------------
-      // 6. FIDS Airplanes.live
+      // 6. FIDS UNIFIÉ (EBLG officiel + AirLabs + mock)
       // -------------------------------------------------------------
-      if (path.startsWith("/api/fids-airport/")) {
-        const icao = path.split("/").pop().toUpperCase();
+      if (path.includes("/api/fids")) {
+        const type = url.searchParams.get("type") || "departures";
+        const airportCode = (url.searchParams.get("airport") || "EBLG").toUpperCase();
+        const isDep = type === "departures";
 
-        try {
-          const res = await fetchWithTimeout(
-            `https://api.airplanes.live/v2/airport/${icao}`
-          );
-          const data = await res.json();
-
-          return new Response(JSON.stringify(data), {
-            status: 200,
-            headers: { ...corsHeaders, "Content-Type": "application/json" }
-          });
-        } catch (e) {
-          return new Response(JSON.stringify({ departures: [], arrivals: [] }), {
-            status: 200,
-            headers: { ...corsHeaders, "Content-Type": "application/json" }
-          });
+        const cache = caches.default;
+        const cacheKey = new Request(url.toString(), request);
+        let cachedResponse = await cache.match(cacheKey);
+        if (cachedResponse) {
+          return cachedResponse;
         }
-      }
 
-      // -------------------------------------------------------------
-      // 7. FIDS Liège Airport officiel
-      // -------------------------------------------------------------
-      if (path.startsWith("/api/eblg/")) {
-        const type = path.split("/").pop(); // Arrivals / Departures
+        // 6.1 FIDS officiel Liège Airport pour EBLG
+        if (airportCode === "EBLG") {
+          try {
+            const eblgType = isDep ? "Departures" : "Arrivals";
+            const eblgRes = await fetchWithTimeout(
+              `https://fids.liegeairport.com/api/flights/${eblgType}`,
+              {
+                headers: {
+                  "User-Agent": "Mozilla/5.0",
+                  "Accept": "application/json"
+                }
+              }
+            );
 
-        try {
-          const res = await fetchWithTimeout(
-            `https://fids.liegeairport.com/api/flights/${type}`,
-            {
-              headers: {
-                "User-Agent": "Mozilla/5.0",
-                "Accept": "application/json"
+            if (eblgRes.ok) {
+              const rawData = await eblgRes.json();
+              if (Array.isArray(rawData) && rawData.length > 0) {
+                const flights = rawData.slice(0, 10).map(f => ({
+                  flight: f.flightNumber || f.callsign || f.registration || "N/C",
+                  city: isDep
+                    ? (f.destination || f.airport || "Inconnu")
+                    : (f.origin || f.airport || "Inconnu"),
+                  time: f.scheduledTime || f.estimatedTime || f.time || "--:--",
+                  status: f.status || "Programmé",
+                  hex: f.hex || null
+                }));
+
+                const responseToCache = new Response(
+                  JSON.stringify({ airport: airportCode, type, flights }),
+                  {
+                    status: 200,
+                    headers: {
+                      ...corsHeaders,
+                      "Content-Type": "application/json",
+                      "Cache-Control": "public, max-age=180"
+                    }
+                  }
+                );
+                ctx.waitUntil(cache.put(cacheKey, responseToCache.clone()));
+                return responseToCache;
               }
             }
-          );
+          } catch (e) {
+            console.error("Échec API FIDS Liège Airport, passage à AirLabs...", e);
+          }
+        }
 
-          if (res.ok) {
-            const data = await res.json();
-            return new Response(JSON.stringify(data), {
-              status: 200,
-              headers: { ...corsHeaders, "Content-Type": "application/json" }
-            });
+        // 6.2 AirLabs pour EBCI (et fallback EBLG si FIDS officiel KO)
+        const airlabsKey = env.AIRLABS_API_KEY || "VOTRE_CLE_AIRLABS";
+        try {
+          const paramName = isDep ? "dep_icao" : "arr_icao";
+          const airlabsUrl =
+            `https://airlabs.co/api/v9/schedules?${paramName}=${airportCode}&api_key=${airlabsKey}`;
+
+          const resAirLabs = await fetchWithTimeout(airlabsUrl);
+          if (resAirLabs.ok) {
+            const data = await resAirLabs.json();
+            if (data && Array.isArray(data.response) && data.response.length > 0) {
+              const flights = data.response.slice(0, 10).map(f => {
+                const targetCode = isDep
+                  ? (f.arr_iata || f.arr_icao || "Inconnu")
+                  : (f.dep_iata || f.dep_icao || "Inconnu");
+                const timeRaw = isDep ? (f.dep_time || f.dep_estimated) : (f.arr_time || f.arr_estimated);
+
+                let formattedTime = "--:--";
+                if (timeRaw) {
+                  const match = timeRaw.match(/\d{2}:\d{2}/);
+                  if (match) formattedTime = match[0];
+                }
+
+                let status = "Programmé";
+                const rawStatus = (f.status || "").toLowerCase();
+                if (rawStatus.includes("active") || rawStatus.includes("en-route")) status = "En vol / Parti";
+                else if (rawStatus.includes("landed")) status = "Atterri";
+                else if (rawStatus.includes("cancelled")) status = "Annulé";
+
+                return {
+                  flight: f.flight_number || f.flight_iata || f.flight_icao || "N/C",
+                  city: targetCode,
+                  time: formattedTime,
+                  status: status,
+                  hex: f.hex || null
+                };
+              });
+
+              const responseToCache = new Response(
+                JSON.stringify({ airport: airportCode, type, flights }),
+                {
+                  status: 200,
+                  headers: {
+                    ...corsHeaders,
+                    "Content-Type": "application/json",
+                    "Cache-Control": "public, max-age=300"
+                  }
+                }
+              );
+              ctx.waitUntil(cache.put(cacheKey, responseToCache.clone()));
+              return responseToCache;
+            }
           }
         } catch (e) {
-          return new Response(JSON.stringify([]), {
-            status: 200,
-            headers: { ...corsHeaders, "Content-Type": "application/json" }
-          });
+          console.error("Échec AirLabs...", e);
         }
+
+        // 6.3 Mock dynamique si tout échoue
+        const getDynamicTime = (offset) => {
+          const now = new Date();
+          now.setMinutes(now.getMinutes() + offset);
+          return now.toLocaleTimeString("fr-BE", {
+            hour: "2-digit",
+            minute: "2-digit",
+            timeZone: "Europe/Brussels"
+          });
+        };
+
+        const mockEBCI = [
+          { flight: "FR2104", city: "Marseille (MRS)", time: getDynamicTime(15), status: "Embarquement", hex: null },
+          { flight: "W64512", city: "Bucarest (OTP)", time: getDynamicTime(45), status: "Programmé", hex: null }
+        ];
+        const mockEBLG = [
+          { flight: "3V801", city: "Alicante (ALC)", time: getDynamicTime(10), status: "Embarquement", hex: null },
+          { flight: "XQ120", city: "Antalya (AYT)", time: getDynamicTime(35), status: "Programmé", hex: null }
+        ];
+
+        const flights = airportCode === "EBCI" ? mockEBCI : mockEBLG;
+
+        return new Response(JSON.stringify({ airport: airportCode, type, flights }), {
+          status: 200,
+          headers: { ...corsHeaders, "Content-Type": "application/json" }
+        });
       }
 
       // -------------------------------------------------------------
-      // 8. DEFAULT 404
+      // 7. DEFAULT 404
       // -------------------------------------------------------------
       return new Response(JSON.stringify({ error: "Endpoint non trouvé" }), {
         status: 404,
