@@ -1,3 +1,12 @@
+import { initRadarMap } from "./map.js";
+import { updateFIDS } from "./fids.js";
+
+document.addEventListener("DOMContentLoaded", () => {
+    initRadarMap();
+    updateFIDS();
+    setInterval(updateFIDS, 30000);
+});
+
 // =================================================================
 // 1. CONFIGURATION ET VARIABLES GLOBALES
 // =================================================================
