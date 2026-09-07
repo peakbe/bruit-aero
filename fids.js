@@ -5,7 +5,7 @@
 import { centerOnAircraft, highlightAircraft } from "./nd.js";
 import { setSelectedAircraft } from "./nd-panel.js";
 
-const API_URL = "https://bruit-aero-proxy.pnyr682w7f.workers.dev/api/fids/";
+const API_URL = "https://bruit-aero-proxy.pnyr682w7f.workers.dev/api/fids-airport/";
 
 const AIRPORTS = ["EBCI", "EBLG"];
 
