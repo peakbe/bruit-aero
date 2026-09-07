@@ -21,6 +21,27 @@ const RELAYS = [
   (u) => `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(u)}`,
 ];
 
+// =================================================================
+// [CORRECTION] Timeout systématique sur tous les fetch externes.
+// Avant ce correctif, aucun appel réseau n'avait de limite de temps :
+// si adsb.lol, adsb.fi, ou un relais CORS (allorigins.win, codetabs.com)
+// restait bloqué ou répondait très lentement, le Worker entier restait
+// suspendu jusqu'à ce que Cloudflare le tue de force. Le client recevait
+// alors un 502 Bad Gateway généré par la plateforme elle-même — une
+// réponse qui ne passe jamais par notre code et n'a donc AUCUN en-tête
+// CORS, d'où le message "blocked by CORS policy" qui est en réalité un
+// symptôme du crash, pas un vrai problème de CORS.
+// =================================================================
+async function fetchWithTimeout(url, options = {}, timeoutMs = 4000) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...options, signal: controller.signal });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 // Helper pour convertir les codes météo WMO (Open-Meteo) en texte / icônes
 function decodeWmoCode(code) {
   if (code === 0) return { desc: "Ciel dégagé", icon: "01d" };
@@ -36,17 +57,17 @@ function decodeWmoCode(code) {
 async function fetchReadsb(base, ap, relay) {
   const target = `${base}/lat/${ap.lat}/lon/${ap.lng}/dist/${DIST_NM}`;
   const url = relay !== null ? RELAYS[relay](target) : target;
-  const res = await fetch(url, { headers: { "User-Agent": UA, "Accept": "application/json" } });
+  const res = await fetchWithTimeout(url, { headers: { "User-Agent": UA, "Accept": "application/json" } });
   if (!res.ok) return [];
   const j = await res.json();
   const list = Array.isArray(j) ? j : j.aircraft || j.ac || [];
-  
+
   return list
     .filter((a) => typeof a.lat === "number" && typeof a.lon === "number")
     .map((a) => {
       const altFt = typeof a.alt_baro === "number" ? a.alt_baro : a.alt_baro === "ground" ? 0 : 0;
       const speedKt = typeof a.gs === "number" ? a.gs : 0;
-      
+
       return [
         a.hex || "unknown",                         // [0] ICAO Hex
         (a.flight || a.r || "Inconnu").trim(),      // [1] Indicatif / Vol
@@ -63,9 +84,15 @@ async function fetchReadsb(base, ap, relay) {
     });
 }
 
+// [CORRECTION] EBCI et EBLG étaient interrogés l'un après l'autre (deux
+// `await` séquentiels) : le temps total de chaque tentative était donc
+// la SOMME des deux appels au lieu du plus lent des deux. Passage en
+// Promise.all pour les paralléliser.
 async function fetchBothAdsb(base, relay) {
-  const ebci = await fetchReadsb(base, AIRPORTS.ebci, relay).catch(() => []);
-  const eblg = await fetchReadsb(base, AIRPORTS.eblg, relay).catch(() => []);
+  const [ebci, eblg] = await Promise.all([
+    fetchReadsb(base, AIRPORTS.ebci, relay).catch(() => []),
+    fetchReadsb(base, AIRPORTS.eblg, relay).catch(() => []),
+  ]);
   return [...ebci, ...eblg];
 }
 
@@ -119,8 +146,8 @@ export default {
 
         try {
           const fr24Url = "https://data-cloud.flightradar24.com/zones/fcgi/feed.json?bounds=52.0,49.0,2.0,7.0&faa=1&satellite=1&mlat=1&flarm=1&adsb=1&gnd=0&air=1&vehicles=0&estimated=0";
-          
-          const fr24Res = await fetch(fr24Url, {
+
+          const fr24Res = await fetchWithTimeout(fr24Url, {
             headers: {
               "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
               "Accept": "application/json"
@@ -142,7 +169,7 @@ export default {
 
               const altitudeFeet = typeof f[4] === "number" ? f[4] : 0;
               const speedKts = typeof f[5] === "number" ? f[5] : 0;
-              
+
               const altitudeMeters = altitudeFeet * 0.3048;
               const speedKmh = speedKts * 1.852;
               const isGroundFlag = Boolean(f[8]);
@@ -177,7 +204,7 @@ export default {
 
         try {
           const openskyUrl = "https://opensky-network.org/api/states/all?lamin=49.0&lomin=2.0&lamax=52.0&lomax=7.0";
-          const openskyRes = await fetch(openskyUrl, {
+          const openskyRes = await fetchWithTimeout(openskyUrl, {
             headers: {
               "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
               "Accept": "application/json"
@@ -209,7 +236,7 @@ export default {
       if (path.includes("/api/fids")) {
         const type = url.searchParams.get("type") || "departures";
         const airportCode = (url.searchParams.get("airport") || "EBLG").toUpperCase();
-        
+
         const airlabsKey = env.AIRLABS_API_KEY || "VOTRE_CLE_AIRLABS";
         const aviationstackKey = env.AVIATIONSTACK_KEY || "VOTRE_CLE_AVIATIONSTACK";
         const rapidapiKey = env.RAPIDAPI_KEY || "VOTRE_CLE_RAPIDAPI";
@@ -229,14 +256,14 @@ export default {
           const paramName = isDep ? "dep_icao" : "arr_icao";
           const airlabsUrl = `https://airlabs.co/api/v9/schedules?${paramName}=${airportCode}&api_key=${airlabsKey}`;
 
-          const resAirLabs = await fetch(airlabsUrl);
+          const resAirLabs = await fetchWithTimeout(airlabsUrl);
           if (resAirLabs.ok) {
             const data = await resAirLabs.json();
             if (data && Array.isArray(data.response) && data.response.length > 0) {
               const flights = data.response.slice(0, 10).map(f => {
                 const targetCode = isDep ? (f.arr_iata || f.arr_icao || "Inconnu") : (f.dep_iata || f.dep_icao || "Inconnu");
                 const timeRaw = isDep ? (f.dep_time || f.dep_estimated) : (f.arr_time || f.arr_estimated);
-                
+
                 let formattedTime = "--:--";
                 if (timeRaw) {
                   const match = timeRaw.match(/\d{2}:\d{2}/);
@@ -298,15 +325,15 @@ export default {
         const lat = url.searchParams.get("lat") || "50.6374";
         const lon = url.searchParams.get("lon") || "5.4432";
 
-        const res = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current_weather=true`);
+        const res = await fetchWithTimeout(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current_weather=true`);
         if (res.ok) {
           const data = await res.json();
           const cw = data.current_weather || {};
           const wmoInfo = decodeWmoCode(cw.weathercode ?? 0);
 
           const responseData = {
-            main: { 
-              temp: cw.temperature ?? 20 
+            main: {
+              temp: cw.temperature ?? 20
             },
             wind: {
               speed: cw.windspeed ? Math.round((cw.windspeed / 3.6) * 10) / 10 : 0, // Converti km/h en m/s pour app.js
@@ -334,8 +361,8 @@ export default {
         const lat = url.searchParams.get("lat") || "50.6374";
         const lon = url.searchParams.get("lon") || "5.4432";
 
-        const res = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&hourly=temperature_2m,windspeed_10m,weathercode,precipitation_probability&forecast_days=1`);
-        
+        const res = await fetchWithTimeout(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&hourly=temperature_2m,windspeed_10m,weathercode,precipitation_probability&forecast_days=1`);
+
         if (res.ok) {
           const data = await res.json();
           const list = [];
@@ -371,8 +398,8 @@ export default {
       // -------------------------------------------------------------
       if (path.includes("/api/metar")) {
         const station = (url.searchParams.get("station") || "EBLG").toUpperCase();
-        const res = await fetch(`https://metar.vatsim.net/metar.php?id=${station}`);
-        
+        const res = await fetchWithTimeout(`https://metar.vatsim.net/metar.php?id=${station}`);
+
         if (res.ok) {
           const rawMetar = await res.text();
           return new Response(JSON.stringify({ raw: rawMetar.trim() }), {
@@ -385,6 +412,12 @@ export default {
       return new Response("Endpoint non trouvé", { status: 404, headers: corsHeaders });
 
     } catch (err) {
+      // [CORRECTION] Ce catch protège déjà contre les erreurs internes au
+      // script (il renvoie un 500 AVEC les en-têtes CORS). Le 502 que vous
+      // avez vu ne passait PAS par ce catch : c'est Cloudflare qui tuait le
+      // Worker de l'extérieur pour dépassement de temps, avant même que ce
+      // bloc catch ait une chance de s'exécuter. D'où l'importance des
+      // timeouts ajoutés ci-dessus sur chaque fetch externe.
       return new Response(JSON.stringify({ error: err.message }), {
         status: 500,
         headers: { ...corsHeaders, "Content-Type": "application/json" }
