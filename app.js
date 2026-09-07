@@ -49,7 +49,6 @@ const CITY_COORDS = {
   "DOH": [25.2731, 51.6081], "TLV": [32.0055, 34.8854], "QKD": [51.588, -0.528]
 };
 
-// Utilitaire de conversion Vitesse m/s -> km/h (s'il n'est pas dans Partie 2)
 function msToKmh(ms) {
   return Math.round(ms * 3.6);
 }
@@ -67,7 +66,6 @@ function initMap() {
   const mapContainer = document.getElementById("map");
   if (!mapContainer) return;
 
-  // Réinitialisation propre des marqueurs et de la carte
   if (map !== null) {
     map.remove();
     map = null;
@@ -78,7 +76,6 @@ function initMap() {
   window.myMap = map; 
   flightsGroup = L.layerGroup().addTo(map);
 
-  // Contrôle Rose des Vents
   const CompassControl = L.Control.extend({
     options: { position: 'topright' },
     onAdd: function() {
@@ -459,6 +456,7 @@ function setRadarMode(mode, btnElement) {
   }
   if (map && flightsGroup) renderFidsPlanesOnMap(map, flightsGroup);
 }
+
 // =================================================================
 // 7. MÉTÉO SATELLITE, METAR & CÔNES D'APPROCHE
 // =================================================================
@@ -470,46 +468,63 @@ const RUNWAY_HEADINGS = {
 
 let conePolygons = {};
 
-// Note: msToKmh est déjà déclarée dans la partie 1 si intégrée, conservée ici en garde-fou :
-if (typeof msToKmh !== "function") {
-  window.msToKmh = function(ms) { return Math.round(ms * 3.6); };
-}
-
 // -----------------------------------------------------------------
-// A. TABLEAUX DES VOLS (FIDS)
+// A. TABLEAUX DES VOLS (FIDS) ET FONCTION GÉNÉRIQUE
 // -----------------------------------------------------------------
 const activeFlightType = {
   EBCI: 'departures',
   EBLG: 'departures'
 };
 
-// -----------------------------------------------------------------
-// CHARGEMENT ET AFFICHAGE DES 10 PROCHAINS VOLS
-// -----------------------------------------------------------------
 async function fetchFlightsData() {
   const ebciBody = document.getElementById("ebci-flights-body");
   const eblgBody = document.getElementById("eblg-flights-body");
   
-  if (ebciBody) await loadFlightType(activeFlightType.EBCI, ebciBody, "EBCI");
-  if (eblgBody) await loadFlightType(activeFlightType.EBLG, eblgBody, "EBLG");
+  if (ebciBody) await loadFlightType(activeFlightType.EBCI, 'EBCI', null);
+  if (eblgBody) await loadFlightType(activeFlightType.EBLG, 'EBLG', null);
 }
 
-async function loadFlightType(type, elementContainer, airport) {
+/**
+ * Fonction générique de chargement et d'affichage des vols (FIDS)
+ * @param {string} type - 'departures' ou 'arrivals'
+ * @param {string} airport - 'EBCI' ou 'EBLG'
+ * @param {HTMLElement|null} btnElement - Le bouton cliqué (optionnel)
+ */
+async function loadFlightType(type, airport, btnElement) {
+  // 1. Mise à jour de l'état du type de vol actif pour l'aéroport
+  activeFlightType[airport] = type;
+
+  // 2. Identification dynamique du conteneur du tableau HTML
+  const containerId = `${airport.toLowerCase()}-flights-body`;
+  const container = document.getElementById(containerId);
+
+  // 3. Gestion active des boutons d'onglets (si appelés via événement d'interface)
+  if (btnElement && btnElement.parentElement) {
+    const parent = btnElement.parentElement;
+    parent.querySelectorAll('.tab-btn, button').forEach(b => b.classList.remove('active'));
+    btnElement.classList.add('active');
+  }
+
+  if (!container) return;
+
+  // 4. Affichage d'un état de chargement
+  container.innerHTML = `<tr><td colspan="4" style="text-align:center; color:#94a3b8;">Chargement des vols...</td></tr>`;
+
   try {
     const response = await fetch(`${WORKER_BASE_URL}/api/fids?airport=${airport}&type=${type}`);
     if (!response.ok) {
-      elementContainer.innerHTML = `<tr><td colspan="4" style="text-align:center; color:#94a3b8;">Données indisponibles</td></tr>`;
+      container.innerHTML = `<tr><td colspan="4" style="text-align:center; color:#94a3b8;">Données indisponibles</td></tr>`;
       return;
     }
     
     const rawData = await response.json();
     const allFlights = Array.isArray(rawData) ? rawData : (rawData.flights || []);
 
-    // Sélection des 10 premiers vols à venir
+    // Extraction des 10 prochains vols
     const upcomingFlights = allFlights.slice(0, 10);
 
     if (upcomingFlights.length > 0) {
-      elementContainer.innerHTML = upcomingFlights.map((f) => `
+      container.innerHTML = upcomingFlights.map((f) => `
         <tr onclick="selectFlightOnMap('${f.flight}')" style="cursor: pointer;">
           <td><strong>${f.flight || "—"}</strong></td>
           <td>${f.city || f.destination || f.origin || "—"}</td>
@@ -518,11 +533,11 @@ async function loadFlightType(type, elementContainer, airport) {
         </tr>
       `).join("");
     } else {
-      elementContainer.innerHTML = `<tr><td colspan="4" style="text-align:center; color:#94a3b8;">Aucun vol prévu</td></tr>`;
+      container.innerHTML = `<tr><td colspan="4" style="text-align:center; color:#94a3b8;">Aucun vol prévu</td></tr>`;
     }
   } catch (e) {
-    console.error(`Erreur chargement vols ${airport}:`, e);
-    elementContainer.innerHTML = `<tr><td colspan="4" style="text-align:center; color:#ef4444;">Erreur de chargement</td></tr>`;
+    console.error(`Erreur chargement vols ${airport} (${type}):`, e);
+    container.innerHTML = `<tr><td colspan="4" style="text-align:center; color:#ef4444;">Erreur de chargement</td></tr>`;
   }
 }
 
@@ -745,18 +760,52 @@ function drawApproachDepartureCones(airportCode, lat, lon, windDeg) {
 }
 
 // =================================================================
-// 8. FILTRAGE ET RECENTRAGE (FONCTIONS GLOBALES POUNTÉES EN HTML)
+// 8. FILTRAGE ET RECENTRAGE (FONCTIONS GLOBALES POINTÉES EN HTML)
 // =================================================================
 window.filterAirportView = function(airport) {
-  // 1. Gestion visuelle des boutons
   const buttons = document.querySelectorAll('.control-bar-inline .airport-icon-btn');
   buttons.forEach(btn => btn.classList.remove('active'));
-  if (window.event && window.event.currentTarget) {
-    window.event.currentTarget.classList.add('active');
+
+  const activeBtn = document.querySelector(`.control-bar-inline .airport-icon-btn[onclick*="${airport}"]`);
+  if (activeBtn) activeBtn.classList.add('active');
+
+  currentAirport = airport;
+
+  if (map && AIRPORT_COORDS[airport]) {
+    const coords = AIRPORT_COORDS[airport];
+    const zoom = airport === "ALL" ? 8 : 11;
+    map.setView(coords, zoom);
   }
 
-  // 2. Affichage / masquage des cartes METAR et Vols
-  const cards = document.querySelectorCard ? document.querySelectorAll('.card[data-airport]') : document.querySelectorAll('[data-airport]');
+  if (map && flightsGroup) {
+    renderFidsPlanesOnMap(map, flightsGroup);
+  }
+};
+
+// =================================================================
+// 9. GESTION DES FILTRES D'AÉROPORT ET COMPORTEMENT DES ONGLETS
+// =================================================================
+
+/**
+ * Filtre l'affichage de la carte et des cartes d'information par aéroport
+ * @param {string} airport - 'EBCI', 'EBLG' ou 'ALL'
+ */
+window.filterAirportView = function(airport) {
+  // 1. Mise à jour de l'état visuel des boutons de la barre de contrôle
+  const buttons = document.querySelectorAll('.control-bar-inline .airport-icon-btn');
+  buttons.forEach(btn => btn.classList.remove('active'));
+
+  if (window.event && window.event.currentTarget) {
+    window.event.currentTarget.classList.add('active');
+  } else {
+    const activeBtn = document.querySelector(`.control-bar-inline .airport-icon-btn[onclick*="${airport}"]`);
+    if (activeBtn) activeBtn.classList.add('active');
+  }
+
+  currentAirport = airport;
+
+  // 2. Affichage / masquage dynamique des cartes METAR et FIDS
+  const cards = document.querySelectorAll('[data-airport]');
   cards.forEach(card => {
     const cardAirport = card.getAttribute('data-airport');
     if (airport === 'ALL' || cardAirport === airport) {
@@ -766,29 +815,34 @@ window.filterAirportView = function(airport) {
     }
   });
 
-  // 3. Recentrage de la carte Leaflet
+  // 3. Recentrage et réajustement de la vue Leaflet
   if (map && AIRPORT_COORDS[airport]) {
     const zoomLevel = airport === 'ALL' ? 8 : 11;
     map.setView(AIRPORT_COORDS[airport], zoomLevel, { animate: true });
   }
+
+  // 4. Rafraîchissement des marqueurs ADS-B sur la zone visible
+  if (map && flightsGroup) {
+    renderFidsPlanesOnMap(map, flightsGroup);
+  }
 };
 
+/**
+ * Change l'onglet de destination (Départs / Arrivées) et recharge le tableau HTML
+ * @param {string} airport - 'EBCI' ou 'EBLG'
+ * @param {string} type - 'departures' ou 'arrivals'
+ * @param {HTMLElement|null} btnElement - L'élément HTML du bouton cliqué
+ */
 window.switchFlightTab = function(airport, type, btnElement) {
   activeFlightType[airport] = type;
 
-  // 1. Mise à jour visuelle des boutons d'onglet
+  // 1. Mise à jour visuelle de l'onglet actif
   if (btnElement && btnElement.parentElement) {
     const buttons = btnElement.parentElement.querySelectorAll('.tab-btn, button');
     buttons.forEach(btn => btn.classList.remove('active'));
     btnElement.classList.add('active');
   }
 
-  // 2. Identification et rechargement du tableau HTML
-  const targetBodyId = `${airport.toLowerCase()}-flights-body`;
-  const container = document.getElementById(targetBodyId);
-
-  if (container) {
-    container.innerHTML = `<tr><td colspan="4" style="text-align:center;">Chargement...</td></tr>`;
-    loadFlightType(type, container, airport);
-  }
+  // 2. Chargement des données via la fonction générique
+  loadFlightType(type, airport, btnElement);
 };
