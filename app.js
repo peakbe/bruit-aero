@@ -13,9 +13,15 @@ document.addEventListener("DOMContentLoaded", () => {
     setInterval(updateFIDS, 30000); // Mise à jour FIDS toutes les 30s
 
     fetchMetarData();
-    fetchWeatherData();
+    fetchWeatherData().then(() => {
+    updateRunwaySonometers();   // ← EMPLACEMENT CORRECT
+});
+
     setInterval(fetchMetarData, 300000);   // METAR toutes les 5 min
-    setInterval(fetchWeatherData, 300000); // Météo + cônes toutes les 5 min
+    setInterval(async () => {
+    await fetchWeatherData();
+    updateRunwaySonometers();   // ← DEUXIÈME APPEL
+}, 300000); // Météo + cônes toutes les 5 min
 });
 
 // =================================================================
@@ -127,6 +133,19 @@ function renderSonometersOnMap() {
     sonometerMarkers.push(marker);
   });
 }
+
+function updateRunwaySonometers() {
+    // EBLG
+    const windEBLG = window.metarEBLG?.windDeg ?? 220;
+    const rwyEBLG = windEBLG > 180 ? "22" : "04";
+    renderSonometers("EBLG", rwyEBLG);
+
+    // EBCI
+    const windEBCI = window.metarEBCI?.windDeg ?? 240;
+    const rwyEBCI = windEBCI > 180 ? "24" : "06";
+    renderSonometers("EBCI", rwyEBCI);
+}
+
 
 // =================================================================
 // 4. AUTO-SELECTION PISTE
