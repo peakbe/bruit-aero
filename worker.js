@@ -21,17 +21,6 @@ const RELAYS = [
   (u) => `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(u)}`,
 ];
 
-// =================================================================
-// [CORRECTION] Timeout systématique sur tous les fetch externes.
-// Avant ce correctif, aucun appel réseau n'avait de limite de temps :
-// si adsb.lol, adsb.fi, ou un relais CORS (allorigins.win, codetabs.com)
-// restait bloqué ou répondait très lentement, le Worker entier restait
-// suspendu jusqu'à ce que Cloudflare le tue de force. Le client recevait
-// alors un 502 Bad Gateway généré par la plateforme elle-même — une
-// réponse qui ne passe jamais par notre code et n'a donc AUCUN en-tête
-// CORS, d'où le message "blocked by CORS policy" qui est en réalité un
-// symptôme du crash, pas un vrai problème de CORS.
-// =================================================================
 async function fetchWithTimeout(url, options = {}, timeoutMs = 4000) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
@@ -84,10 +73,6 @@ async function fetchReadsb(base, ap, relay) {
     });
 }
 
-// [CORRECTION] EBCI et EBLG étaient interrogés l'un après l'autre (deux
-// `await` séquentiels) : le temps total de chaque tentative était donc
-// la SOMME des deux appels au lieu du plus lent des deux. Passage en
-// Promise.all pour les paralléliser.
 async function fetchBothAdsb(base, relay) {
   const [ebci, eblg] = await Promise.all([
     fetchReadsb(base, AIRPORTS.ebci, relay).catch(() => []),
@@ -106,6 +91,29 @@ export default {
     const path = url.pathname;
 
     try {
+      // -------------------------------------------------------------
+      // ROUTE DYNAMIQUE SPÉCIFIQUE : Proxy Direct FIDS EBLG (Liege Airport)
+      // Exemple d'appel : /api/eblg/Arrivals ou /api/eblg/Departures
+      // -------------------------------------------------------------
+      const eblgMatch = path.match(/^\/api\/eblg\/(Arrivals|Departures)$/i);
+      if (eblgMatch) {
+        const type = eblgMatch[1].charAt(0).toUpperCase() + eblgMatch[1].slice(1).toLowerCase();
+        const eblgRes = await fetchWithTimeout(`https://fids.liegeairport.com/api/flights/${type}`, {
+          headers: {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+            "Accept": "application/json"
+          }
+        });
+
+        if (eblgRes.ok) {
+          const data = await eblgRes.json();
+          return new Response(JSON.stringify(data), {
+            status: 200,
+            headers: { ...corsHeaders, "Content-Type": "application/json" }
+          });
+        }
+      }
+
       // -------------------------------------------------------------
       // 1. ENDPOINT RADAR AÉRIEN (ADSB.lol/fi -> FR24 -> OpenSky)
       // -------------------------------------------------------------
@@ -237,10 +245,6 @@ export default {
         const type = url.searchParams.get("type") || "departures";
         const airportCode = (url.searchParams.get("airport") || "EBLG").toUpperCase();
 
-        const airlabsKey = env.AIRLABS_API_KEY || "VOTRE_CLE_AIRLABS";
-        const aviationstackKey = env.AVIATIONSTACK_KEY || "VOTRE_CLE_AVIATIONSTACK";
-        const rapidapiKey = env.RAPIDAPI_KEY || "VOTRE_CLE_RAPIDAPI";
-
         const cache = caches.default;
         const cacheKey = new Request(url.toString(), request);
         let cachedResponse = await cache.match(cacheKey);
@@ -251,7 +255,42 @@ export default {
 
         const isDep = type === "departures";
 
-        // Source 1 : AirLabs
+        // Routeur pour EBLG : Appel direct du FIDS officiel Liege Airport
+        if (airportCode === "EBLG") {
+          try {
+            const eblgType = isDep ? "Departures" : "Arrivals";
+            const eblgRes = await fetchWithTimeout(`https://fids.liegeairport.com/api/flights/${eblgType}`, {
+              headers: {
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+                "Accept": "application/json"
+              }
+            });
+
+            if (eblgRes.ok) {
+              const rawData = await eblgRes.json();
+              if (Array.isArray(rawData) && rawData.length > 0) {
+                const flights = rawData.slice(0, 10).map(f => ({
+                  flight: f.flightNumber || f.callsign || f.registration || "N/C",
+                  city: isDep ? (f.destination || f.airport || "Inconnu") : (f.origin || f.airport || "Inconnu"),
+                  time: f.scheduledTime || f.estimatedTime || f.time || "--:--",
+                  status: f.status || "Programmé"
+                }));
+
+                const responseToCache = new Response(JSON.stringify({ airport: airportCode, type, flights }), {
+                  status: 200,
+                  headers: { ...corsHeaders, "Content-Type": "application/json", "Cache-Control": "public, max-age=180" }
+                });
+                ctx.waitUntil(cache.put(cacheKey, responseToCache.clone()));
+                return responseToCache;
+              }
+            }
+          } catch (e) {
+            console.error("Échec API FIDS Liege Airport, passage à AirLabs...", e);
+          }
+        }
+
+        // Source 2 : AirLabs (Fallback ou EBCI)
+        const airlabsKey = env.AIRLABS_API_KEY || "VOTRE_CLE_AIRLABS";
         try {
           const paramName = isDep ? "dep_icao" : "arr_icao";
           const airlabsUrl = `https://airlabs.co/api/v9/schedules?${paramName}=${airportCode}&api_key=${airlabsKey}`;
@@ -296,7 +335,7 @@ export default {
           console.error("Échec AirLabs...", e);
         }
 
-        // Source de secours MOCK
+        // Source 3 : Secours MOCK (si tout échoue)
         const getDynamicTime = (offset) => {
           const now = new Date();
           now.setMinutes(now.getMinutes() + offset);
@@ -336,8 +375,8 @@ export default {
               temp: cw.temperature ?? 20
             },
             wind: {
-              speed: cw.windspeed ? Math.round((cw.windspeed / 3.6) * 10) / 10 : 0, // Converti km/h en m/s pour app.js
-              deg: cw.winddirection ?? 0                                            // 'deg' au lieu de 'direction'
+              speed: cw.windspeed ? Math.round((cw.windspeed / 3.6) * 10) / 10 : 0,
+              deg: cw.winddirection ?? 0
             },
             weather: [
               {
@@ -412,12 +451,6 @@ export default {
       return new Response("Endpoint non trouvé", { status: 404, headers: corsHeaders });
 
     } catch (err) {
-      // [CORRECTION] Ce catch protège déjà contre les erreurs internes au
-      // script (il renvoie un 500 AVEC les en-têtes CORS). Le 502 que vous
-      // avez vu ne passait PAS par ce catch : c'est Cloudflare qui tuait le
-      // Worker de l'extérieur pour dépassement de temps, avant même que ce
-      // bloc catch ait une chance de s'exécuter. D'où l'importance des
-      // timeouts ajoutés ci-dessus sur chaque fetch externe.
       return new Response(JSON.stringify({ error: err.message }), {
         status: 500,
         headers: { ...corsHeaders, "Content-Type": "application/json" }
