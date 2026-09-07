@@ -43,18 +43,27 @@ export async function updateRadar() {
 
             let marker = planesLayer.getLayer(hex);
 
-            if (!marker) {
-                marker = L.circleMarker([p.lat, p.lon], {
-                    radius: 5,
-                    color: "#3388ff",
-                    weight: 2,
-                    fillOpacity: 0.7
-                });
+           if (!marker) {
+    marker = L.circleMarker([p.lat, p.lon], {
+        radius: 5,
+        color: "#3388ff",
+        weight: 2,
+        fillOpacity: 0.7
+    });
 
-                marker.options.data = p;
-                planesLayer.addLayer(marker);
-                planesLayer._layers[hex] = marker; // indexation par hex
-            }
+    marker.options.data = p;
+    planesLayer.addLayer(marker);
+    planesLayer._layers[hex] = marker;
+
+    // -----------------------------------------------------------
+    // CLIC AVION → ND Airbus + panneau ND + centrage
+    // -----------------------------------------------------------
+    marker.on("click", () => {
+        centerOnAircraft(hex);      // centrage carte
+        highlightAircraft(hex);     // surbrillance turquoise Airbus
+        setSelectedAircraft(hex);   // mise à jour panneau ND Airbus
+    });
+}
 
             marker.setLatLng([p.lat, p.lon]);
             marker.options.data = p;
