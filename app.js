@@ -1,11 +1,18 @@
+// ===============================================================
+// IMPORTS MODULES
+// ===============================================================
 import { initRadarMap } from "./map.js";
 import { updateFIDS } from "./fids.js";
 
+// ===============================================================
+// INITIALISATION GLOBALE
+// ===============================================================
 document.addEventListener("DOMContentLoaded", () => {
-    initRadarMap();
-    updateFIDS();
-    setInterval(updateFIDS, 30000);
+    initRadarMap();          // Initialise la carte + radar ADS-B
+    updateFIDS();            // Charge les vols Airplanes.live
+    setInterval(updateFIDS, 30000); // Mise à jour FIDS toutes les 30s
 });
+
 
 // =================================================================
 // 1. CONFIGURATION ET VARIABLES GLOBALES
