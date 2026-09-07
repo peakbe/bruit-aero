@@ -62,6 +62,7 @@ export async function updateRadar() {
         centerOnAircraft(hex);      // centrage carte
         highlightAircraft(hex);     // surbrillance turquoise Airbus
         setSelectedAircraft(hex);   // mise à jour panneau ND Airbus
+        updateFPV(hex);             // IntégrationFPV
     });
 }
 
