@@ -240,25 +240,36 @@ export default {
         });
       }
 
-      // -------------------------------------------------------------
-      // 2. ADS-B Airplanes.live (direct)
-      // -------------------------------------------------------------
-      if (path.startsWith("/api/adsb")) {
-        try {
-          const res = await fetchWithTimeout("https://api.airplanes.live/v2/positions");
-          const data = await res.json();
+     // -------------------------------------------------------------
+// ADS-B Airplanes.live (format compatible map.js)
+// -------------------------------------------------------------
+if (path.startsWith("/api/adsb")) {
+  try {
+    const res = await fetchWithTimeout("https://api.airplanes.live/v2/positions");
+    const data = await res.json();
 
-          return new Response(JSON.stringify(data), {
-            status: 200,
-            headers: { ...corsHeaders, "Content-Type": "application/json" }
-          });
-        } catch (e) {
-          return new Response(JSON.stringify({ aircraft: [] }), {
-            status: 200,
-            headers: { ...corsHeaders, "Content-Type": "application/json" }
-          });
-        }
-      }
+    // Convertir au format attendu par map.js
+    const aircraft = (data.aircraft || []).map(p => ({
+      hex: p.hex,
+      lat: p.lat,
+      lon: p.lon,
+      alt: p.alt_baro || p.altitude || 0,
+      speed: p.gs || p.speed || 0,
+      track: p.track || 0
+    }));
+
+    return new Response(JSON.stringify({ aircraft }), {
+      status: 200,
+      headers: { ...corsHeaders, "Content-Type": "application/json" }
+    });
+
+  } catch (e) {
+    return new Response(JSON.stringify({ aircraft: [] }), {
+      status: 200,
+      headers: { ...corsHeaders, "Content-Type": "application/json" }
+    });
+  }
+}
 
       // -------------------------------------------------------------
       // 3. METEO ACTUELLE (Open-Meteo → format OpenWeather)
