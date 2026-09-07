@@ -1,3 +1,5 @@
+import { sonoLayer, renderSonometers } from "./sono.js";
+
 // ===============================================================
 // map.js — Radar ADS‑B + ND Airbus
 // ===============================================================
@@ -19,6 +21,7 @@ export function initRadarMap() {
   }).addTo(map);
 
   planesLayer.addTo(map);
+  sonoLayer.addTo(map);
 
   return map;
 }
