@@ -73,7 +73,6 @@ function msToKmh(ms) {
 // 2. INITIALISATION
 // =================================================================
 document.addEventListener("DOMContentLoaded", () => {
-  initMap();
   fetchMetarData();
   fetchWeatherData();
 
