@@ -30,7 +30,8 @@ export function initRadarMap() {
 // ---------------------------------------------------------------
 export async function updateRadar() {
     try {
-        const res = await fetch("https://api.airplanes.live/v2/positions");
+        const res = await fetch("https://bruit-aero-proxy.pnyr682w7f.workers.dev/api/adsb");
+
         const data = await res.json();
 
         const active = new Set();
