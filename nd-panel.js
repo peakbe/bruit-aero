@@ -3,6 +3,11 @@
 // ===============================================================
 
 import { planesLayer } from "./map.js";
+import { updateFPV } from "./nd.js";
+
+setInterval(() => {
+    if (selectedHex) updateFPV(selectedHex);
+}, 1000);
 
 let selectedHex = null;
 
