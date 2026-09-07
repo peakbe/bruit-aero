@@ -5,6 +5,7 @@
 import { centerOnAircraft, highlightAircraft } from "./nd.js";
 import { setSelectedAircraft } from "./nd-panel.js";
 
+// ✔ CORRECT : endpoint réel du Worker
 const API_URL = "https://bruit-aero-proxy.pnyr682w7f.workers.dev/api/fids-airport/";
 
 const AIRPORTS = ["EBCI", "EBLG"];
@@ -66,7 +67,6 @@ function renderFIDS(icao, flights) {
             centerOnAircraft(f.hex);
             highlightAircraft(f.hex);
             setSelectedAircraft(f.hex);
-
         });
 
         container.appendChild(div);
