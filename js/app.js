@@ -16,7 +16,7 @@ const windTrend = {
 let currentAirport = "EBLG";
 let sonometersEnabled = true;   // ← toggle ON/OFF sonomètres
 
-const WORKER_BASE_URL = "https://bruit-aero-proxy.pnyr682w7f.workers.dev";
+export const WORKER_BASE_URL = "https://bruit-aero-proxy.pnyr682w7f.workers.dev";
 
 const AIRPORTS = {
   EBLG: { lat: 50.6374, lon: 5.4432 },
