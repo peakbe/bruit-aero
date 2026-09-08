@@ -66,6 +66,7 @@ function msToKmh(ms) {
 // ===============================================================
 async function fetchMetarData() {
   const airports = ["EBCI", "EBLG"];
+updateWindTrend(prefix, windSpeedKmh, windTrend);
 
   for (const icao of airports) {
     const el = document.getElementById(`${icao.toLowerCase()}-metar`);
@@ -212,8 +213,17 @@ async function fetchWeatherData() {
 window.filterAirportView = function(airport) {
     currentAirport = airport;
 
-    updateNdWindComponents(currentAirport);
-    updateNdSonometersStatus();
+    updateNdWindComponents(
+    currentAirport,
+    window.metarEBLG,
+    window.metarEBCI,
+    window.lastWindSpeedEBLG,
+    window.lastWindSpeedEBCI,
+    RUNWAY_HEADINGS
+);
+
+updateNdSonometersStatus(sonometersEnabled, sonoLayer);
+
 
     if (sonometersEnabled) updateRunwaySonometers();
 
