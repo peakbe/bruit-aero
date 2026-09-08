@@ -304,7 +304,7 @@ async function fetchWeatherData() {
       document.getElementById(`${prefix}-temp`).textContent = `${temp}°C`;
       document.getElementById(`${prefix}-wind`).textContent =
         `Vent: ${windSpeedKmh} km/h (${windDeg}°)`;
-
+      updateWindTrend(prefix, windSpeedKmh);
       updateCompassUI(prefix, windDeg, windSpeedKmh);
 
       // ❌ supprimé : fetchWeatherForecast()
