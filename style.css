@@ -256,6 +256,7 @@ h1 {
   top: 14px;
   left: 50%;
   transform-origin: bottom center;
+   transform: translateX(-50%);
   border-radius: 999px;
   box-shadow: 0 0 6px rgba(56, 189, 248, 0.9);
 }
@@ -290,6 +291,7 @@ h1 {
   top: 10px;
   left: 50%;
   transform-origin: bottom center;
+   transform: translateX(-50%);
   border-radius: 999px;
   box-shadow: 0 0 6px rgba(248, 113, 22, 0.9);
 }
@@ -303,6 +305,7 @@ h1 {
   top: 24px;
   left: 50%;
   transform-origin: bottom center;
+   transform: translateX(-50%);
   border-radius: 999px;
   box-shadow: 0 0 6px rgba(34, 197, 94, 0.9);
 }
@@ -316,6 +319,7 @@ h1 {
   top: 50%;
   left: 50%;
   transform-origin: left center;
+   transform: translate(-50%, -50%);
   border-radius: 999px;
   box-shadow: 0 0 6px rgba(56, 189, 248, 0.9);
 }
@@ -335,9 +339,6 @@ h1 {
 .compass-loc,
 .compass-gp {
   transition: transform 0.25s cubic-bezier(0.25, 0.1, 0.25, 1);
-   left: 50%;
-   transform: translate(-50%, -50%);
-
 }
 
 .windtrend {
