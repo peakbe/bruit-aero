@@ -324,6 +324,13 @@ h1 {
   border-bottom: 4px solid transparent;
 }
 
+.windtrend {
+  background: #0f172a;
+  border: 1px solid #334155;
+  border-radius: 6px;
+  margin-top: 6px;
+}
+
 /* ============================================================
    MAP
    ============================================================ */
