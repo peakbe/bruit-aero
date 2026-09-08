@@ -119,6 +119,12 @@ h1 {
   box-shadow: 0 0 0 1px rgba(56, 189, 248, 0.6);
 }
 
+.control-group {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
 /* ============================================================
    GRID & CARDS
    ============================================================ */
@@ -324,11 +330,28 @@ h1 {
   border-bottom: 4px solid transparent;
 }
 
+.compass-needle,
+.compass-wind-vector,
+.compass-loc,
+.compass-gp {
+  transition: transform 0.25s cubic-bezier(0.25, 0.1, 0.25, 1);
+   left: 50%;
+   transform: translate(-50%, -50%);
+
+}
+
 .windtrend {
   background: #0f172a;
   border: 1px solid #334155;
   border-radius: 6px;
   margin-top: 6px;
+}
+
+.windtrend-label {
+  font-size: 10px;
+  color: #64748b;
+  text-align: center;
+  margin-top: 2px;
 }
 
 /* ============================================================
@@ -360,4 +383,5 @@ h1 {
   color: #e2e8f0;
   font-size: 13px;
   cursor: pointer;
-  transition: background 0.18s ease, transform
+  transition: background 0.18s ease, transform 0.12s ease;
+
