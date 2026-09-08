@@ -3,6 +3,7 @@
 // ===============================================================
 
 import { map } from "./map.js";
+const windHistory = {};   // { "F017": [12, 14, 11, ...] }
 
 // ---------------------------------------------------------------
 // 1. Conversion DMS → décimal
@@ -164,6 +165,16 @@ export function renderSonometers(airport, runway, options = {}) {
       <span id="windtext-${s.id}" style="font-size:11px; color:#94a3b8; display:block; margin-top:4px;">...</span>
     </div>
 
+<!-- 🟦 Mini-graphique vent/temps -->
+<div style="margin-top:10px;">
+  <canvas id="windchart-${s.id}" width="140" height="40"
+    style="background:#0f172a; border:1px solid #334155; border-radius:6px;">
+  </canvas>
+  <div style="font-size:10px; color:#64748b; text-align:center; margin-top:2px;">
+    Vent — 30 min
+  </div>
+</div>
+
     <!-- 🟩 Bloc météo -->
     <div style="background:rgba(15,23,42,0.6); padding:6px; border-radius:6px; border:1px solid #334155;">
       <b style="color:#f59e0b;">🌡️ Température :</b> <span id="temp-${s.id}">...</span><br>
@@ -183,6 +194,45 @@ export function renderSonometers(airport, runway, options = {}) {
 
     const temp = Math.round(w.main?.temp ?? 0);
     const windSpeed = Math.round((w.wind?.speed ?? 0) * 3.6);
+
+      // 🟦 Historique vent
+if (!windHistory[s.id]) windHistory[s.id] = [];
+windHistory[s.id].push(windSpeed);
+
+// Limite à 30 valeurs (30 minutes si tu appelles toutes les minutes)
+if (windHistory[s.id].length > 30) {
+  windHistory[s.id].shift();
+}
+
+// 🟦 Dessin du graphique
+const canvas = document.getElementById(`windchart-${s.id}`);
+if (canvas) {
+  const ctx = canvas.getContext("2d");
+  const values = windHistory[s.id];
+
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  // Style cockpit Airbus
+  ctx.strokeStyle = "#38bdf8"; // cyan
+  ctx.lineWidth = 2;
+
+  ctx.beginPath();
+
+  const max = Math.max(...values);
+  const min = Math.min(...values);
+  const range = max - min || 1;
+
+  values.forEach((v, i) => {
+    const x = (i / (values.length - 1)) * canvas.width;
+    const y = canvas.height - ((v - min) / range) * canvas.height;
+
+    if (i === 0) ctx.moveTo(x, y);
+    else ctx.lineTo(x, y);
+  });
+
+  ctx.stroke();
+}
+
     const windDeg = w.wind?.deg ?? 0;
     const desc = w.weather?.[0]?.description ?? "Ciel dégagé";
 
