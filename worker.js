@@ -489,6 +489,82 @@ export default {
           headers: { ...corsHeaders, "Content-Type": "application/json" }
         });
       }
+// -------------------------------------------------------------
+// 8. METEO FUSIONNÉE (METAR + Open-Meteo)
+// -------------------------------------------------------------
+if (path.includes("/api/meteo")) {
+  const apt = (url.searchParams.get("apt") || "EBLG").toUpperCase();
+
+  // Coordonnées des aéroports
+  const coords = {
+    EBCI: { lat: 50.4594, lon: 4.4536 },
+    EBLG: { lat: 50.6378, lon: 5.4444 }
+  };
+
+  const { lat, lon } = coords[apt] || coords.EBLG;
+
+  // 1) METAR VATSIM
+  let metarRaw = "N/A";
+  try {
+    const metarRes = await fetchWithTimeout(
+      `https://metar.vatsim.net/metar.php?id=${apt}`
+    );
+    if (metarRes.ok) {
+      metarRaw = (await metarRes.text()).trim();
+    }
+  } catch (e) {
+    metarRaw = "METAR indisponible";
+  }
+
+  // 2) METEO Open-Meteo
+  let meteo = {
+    main: { temp: null },
+    wind: { speed: null, deg: null },
+    weather: [{ description: "N/A", icon: "03d" }]
+  };
+
+  try {
+    const wxRes = await fetchWithTimeout(
+      `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current_weather=true`
+    );
+
+    if (wxRes.ok) {
+      const data = await wxRes.json();
+      const cw = data.current_weather;
+
+      const wmoInfo = decodeWmoCode(cw.weathercode ?? 0);
+
+      meteo = {
+        main: { temp: cw.temperature },
+        wind: {
+          speed: cw.windspeed,       // km/h
+          deg: cw.winddirection
+        },
+        weather: [{
+          description: wmoInfo.desc,
+          icon: wmoInfo.icon
+        }]
+      };
+    }
+  } catch (e) {
+    // fallback météo minimal
+    meteo.main.temp = 20;
+    meteo.wind.speed = 5;
+    meteo.wind.deg = 180;
+  }
+
+  // 3) Fusion METAR + METEO
+  const payload = {
+    airport: apt,
+    metar: metarRaw,
+    meteo
+  };
+
+  return new Response(JSON.stringify(payload), {
+    status: 200,
+    headers: { ...corsHeaders, "Content-Type": "application/json" }
+  });
+}
 
       // -------------------------------------------------------------
       // 7. DEFAULT 404
