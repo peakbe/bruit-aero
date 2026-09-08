@@ -84,11 +84,10 @@ export async function updateRadar() {
 setInterval(updateRadar, 5000);
 
 // ---------------------------------------------------------------
-// 3. Cônes d'approche / départ — cockpit Airbus PRO+++
+// Cônes ILS avec gradient — cockpit Airbus PRO+++
 // ---------------------------------------------------------------
 export function drawApproachDepartureCones(airport, lat, lon, windDeg) {
 
-  // Nettoyage des anciens cônes
   if (!window.conePolygons) window.conePolygons = {};
   if (window.conePolygons[airport]) {
     window.conePolygons[airport].forEach(poly => map.removeLayer(poly));
@@ -102,30 +101,42 @@ export function drawApproachDepartureCones(airport, lat, lon, windDeg) {
 
   const heading = runway * 10; // 22 → 220°, 04 → 40°, etc.
 
-  // Longueur du cône (en mètres)
+  // Longueur du cône (m)
   const coneLength = 6000;
 
-  // Calcul des points
+  // Largeur du cône (degrés lat/lon)
+  const spread = 0.02;
+
+  // Calcul du vecteur direction
   const rad = heading * Math.PI / 180;
   const dx = Math.sin(rad) * coneLength / 111320;
   const dy = Math.cos(rad) * coneLength / 111320;
 
-  const p1 = [lat, lon];
-  const p2 = [lat + dy, lon + dx];
-
-  // Largeur du cône
-  const spread = 0.02;
+  const p1 = [lat, lon];               // seuil
+  const p2 = [lat + dy, lon + dx];     // extrémité
 
   const left = [p2[0] + spread, p2[1] - spread];
   const right = [p2[0] - spread, p2[1] + spread];
 
-  // Polygone
-  const cone = L.polygon([p1, left, right], {
-    color: "#38bdf8",
-    weight: 2,
-    opacity: 0.7,
-    fillOpacity: 0.15
-  }).addTo(map);
+  // -------------------------------------------------------------
+  // Gradient PRO+++ : 3 couches superposées
+  // -------------------------------------------------------------
+  const layers = [
+    { opacity: 0.35, weight: 3 },  // couche interne (proche du seuil)
+    { opacity: 0.22, weight: 2 },  // couche médiane
+    { opacity: 0.12, weight: 1 }   // couche externe
+  ];
 
-  window.conePolygons[airport].push(cone);
+  layers.forEach(layer => {
+    const poly = L.polygon([p1, left, right], {
+      color: "#38bdf8",        // cyan Airbus
+      weight: layer.weight,
+      opacity: layer.opacity,
+      fillOpacity: layer.opacity * 0.6,
+      smoothFactor: 1
+    }).addTo(map);
+
+    window.conePolygons[airport].push(poly);
+  });
 }
+
