@@ -47,6 +47,18 @@ function updateNdPanel() {
     document.getElementById("nd-tas").innerText = tas + " kt";
     document.getElementById("nd-wind").innerText = `${windDir}° / ${windSpd} kt`;
 }
+export function updateCompassUI(prefix, windDeg, windSpeedKmh) {
+  const needle = document.getElementById(`${prefix}-compass-needle`);
+  const label = document.getElementById(`${prefix}-compass-label`);
+
+  if (!needle || !label) return;
+
+  // Rotation de l’aiguille
+  needle.style.transform = `rotate(${windDeg}deg)`;
+
+  // Label Airbus
+  label.textContent = `${windDeg}° / ${windSpeedKmh} km/h`;
+}
 
 // Mise à jour automatique
 setInterval(updateNdPanel, 2000);
