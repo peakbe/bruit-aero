@@ -4,6 +4,15 @@
 import { map, initRadarMap, drawApproachDepartureCones } from "./map.js";
 import { updateFIDS } from "./fids.js";
 import { renderSonometers, sonoLayer } from "./sono.js";
+import {
+  WORKER_BASE_URL,
+  AIRPORTS,
+  AIRPORT_COORDS,
+  RUNWAY_HEADINGS,
+  RADAR_REFRESH_MS,
+  METAR_REFRESH_MS,
+  WEATHER_REFRESH_MS
+} from "./config.js";
 
 const windTrend = {
   EBLG: [],
@@ -15,19 +24,6 @@ const windTrend = {
 // ===============================================================
 let currentAirport = "EBLG";
 let sonometersEnabled = true;   // ← toggle ON/OFF sonomètres
-
-export const WORKER_BASE_URL = "https://bruit-aero-proxy.pnyr682w7f.workers.dev";
-
-const AIRPORTS = {
-  EBLG: { lat: 50.6374, lon: 5.4432 },
-  EBCI: { lat: 50.4592, lon: 4.4538 }
-};
-
-const AIRPORT_COORDS = {
-  EBCI: [50.4592, 4.4538],
-  EBLG: [50.6374, 5.4432],
-  ALL:  [50.55, 4.95]
-};
 
 // ===============================================================
 // INITIALISATION
