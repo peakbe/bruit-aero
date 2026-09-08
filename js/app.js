@@ -5,6 +5,11 @@ import { map, initRadarMap } from "./map.js";
 import { updateFIDS } from "./fids.js";
 import { renderSonometers, sonoLayer } from "./sono.js";
 
+const windTrend = {
+  EBLG: [],
+  EBCI: []
+};
+
 // ===============================================================
 // GLOBAL STATE
 // ===============================================================
@@ -187,6 +192,91 @@ function autoSelectRunway(airport, windDeg, windSpeed) {
 const RUNWAY_HEADINGS = { EBLG: 220, EBCI: 60 };
 let conePolygons = {};
 
+// rose des vents METAR - style ND Airbus
+function updateCompassUI(prefix, windDeg, speedKmh) {
+  const card = document.querySelector(`.card[data-airport="${prefix.toUpperCase()}"]`);
+  if (!card) return;
+
+  let container = card.querySelector('.rose-des-vents');
+  if (!container) return;
+
+  container.innerHTML = `
+    <div style="text-align:center; margin-top:5px;">
+      <div style="
+        position:relative;
+        width:70px;
+        height:70px;
+        margin:auto;
+        border:2px solid #334155;
+        border-radius:50%;
+        background:#1e293b;
+        display:flex;
+        align-items:center;
+        justify-content:center;">
+        
+        <span style="position:absolute; top:2px; font-size:9px; color:#ef4444; font-weight:bold;">N</span>
+
+        <div style="
+          transform:rotate(${windDeg}deg);
+          transition:transform 0.5s ease;
+          width:100%;
+          height:100%;
+          display:flex;
+          align-items:center;
+          justify-content:center;">
+          
+          <div style="
+            width:0;
+            height:0;
+            border-left:6px solid transparent;
+            border-right:6px solid transparent;
+            border-bottom:26px solid #38bdf8;">
+          </div>
+        </div>
+      </div>
+
+      <span style="font-size:11px; color:#94a3b8; display:block; margin-top:4px;">
+        ${windDeg}° — ${speedKmh} km/h
+      </span>
+    </div>
+  `;
+}
+
+function updateWindTrend(prefix, speedKmh) {
+  const canvas = document.querySelector(`.card[data-airport="${prefix.toUpperCase()}"] canvas.windtrend`);
+  if (!canvas) return;
+
+  const ctx = canvas.getContext("2d");
+
+  // Ajouter valeur
+  windTrend[prefix.toUpperCase()].push(speedKmh);
+
+  // Limiter à 30 valeurs
+  if (windTrend[prefix.toUpperCase()].length > 30)
+    windTrend[prefix.toUpperCase()].shift();
+
+  const values = windTrend[prefix.toUpperCase()];
+  const max = Math.max(...values);
+  const min = Math.min(...values);
+  const range = max - min || 1;
+
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  ctx.strokeStyle = "#38bdf8"; // cyan Airbus
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+
+  values.forEach((v, i) => {
+    const x = (i / (values.length - 1)) * canvas.width;
+    const y = canvas.height - ((v - min) / range) * canvas.height;
+
+    if (i === 0) ctx.moveTo(x, y);
+    else ctx.lineTo(x, y);
+  });
+
+  ctx.stroke();
+}
+
 async function fetchWeatherData() {
   for (const [code, apt] of Object.entries(AIRPORTS)) {
     try {
@@ -215,7 +305,8 @@ async function fetchWeatherData() {
       document.getElementById(`${prefix}-wind`).textContent =
         `Vent: ${windSpeedKmh} km/h (${windDeg}°)`;
 
-      // ❌ supprimé : updateCompassUI()
+      updateCompassUI(prefix, windDeg, windSpeedKmh);
+
       // ❌ supprimé : fetchWeatherForecast()
 
       drawApproachDepartureCones(code, apt.lat, apt.lon, windDeg);
