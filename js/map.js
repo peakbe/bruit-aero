@@ -139,4 +139,3 @@ export function drawApproachDepartureCones(airport, lat, lon, windDeg) {
     window.conePolygons[airport].push(poly);
   });
 }
-
