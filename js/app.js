@@ -50,8 +50,17 @@ document.addEventListener("DOMContentLoaded", () => {
         updateRunwaySonometers();
     }, WEATHER_REFRESH_MS);
 
-    setupSonometersToggle();
-    setupRecenterButton();
+    updateNdSonometersStatus(sonometersEnabled, sonoLayer);
+
+updateNdWindComponents(
+    currentAirport,
+    window.metarEBLG,
+    window.metarEBCI,
+    window.lastWindSpeedEBLG,
+    window.lastWindSpeedEBCI,
+    RUNWAY_HEADINGS
+);
+
 });
 
 // ===============================================================
@@ -66,7 +75,6 @@ function msToKmh(ms) {
 // ===============================================================
 async function fetchMetarData() {
   const airports = ["EBCI", "EBLG"];
-updateWindTrend(prefix, windSpeedKmh, windTrend);
 
   for (const icao of airports) {
     const el = document.getElementById(`${icao.toLowerCase()}-metar`);
@@ -81,6 +89,7 @@ updateWindTrend(prefix, windSpeedKmh, windTrend);
   }
 }
 
+
 // ===============================================================
 // SONOMÈTRES — cockpit Airbus PRO+++
 // ===============================================================
@@ -88,8 +97,9 @@ function updateRunwaySonometers() {
 
     if (!sonometersEnabled) {
         sonoLayer.clearLayers();
-        updateNdSonometersStatus(sonometersEnabled, sonoLayer);
-        updateNdWindComponents(
+       updateNdSonometersStatus(sonometersEnabled, sonoLayer);
+
+updateNdWindComponents(
     currentAirport,
     window.metarEBLG,
     window.metarEBCI,
@@ -97,6 +107,7 @@ function updateRunwaySonometers() {
     window.lastWindSpeedEBCI,
     RUNWAY_HEADINGS
 );
+
         return;
     }
 
@@ -250,21 +261,41 @@ function setupSonometersToggle() {
     btn.style.marginLeft = "10px";
     btn.innerHTML = "🎧 Sonomètres";
 
-    btn.onclick = () => {
-        sonometersEnabled = !sonometersEnabled;
+   btn.onclick = () => {
+    sonometersEnabled = !sonometersEnabled;
 
-        if (sonometersEnabled) {
-            btn.classList.add("active");
-            updateRunwaySonometers();
-            updateNdSonometersStatus();
-            updateNdWindComponents(currentAirport);
-        } else {
-            btn.classList.remove("active");
-            sonoLayer.clearLayers();
-            updateNdSonometersStatus();
-            updateNdWindComponents(currentAirport);
-        }
-    };
+    if (sonometersEnabled) {
+        btn.classList.add("active");
+        updateRunwaySonometers();
+
+        updateNdSonometersStatus(sonometersEnabled, sonoLayer);
+
+        updateNdWindComponents(
+            currentAirport,
+            window.metarEBLG,
+            window.metarEBCI,
+            window.lastWindSpeedEBLG,
+            window.lastWindSpeedEBCI,
+            RUNWAY_HEADINGS
+        );
+
+    } else {
+        btn.classList.remove("active");
+        sonoLayer.clearLayers();
+
+        updateNdSonometersStatus(sonometersEnabled, sonoLayer);
+
+        updateNdWindComponents(
+            currentAirport,
+            window.metarEBLG,
+            window.metarEBCI,
+            window.lastWindSpeedEBLG,
+            window.lastWindSpeedEBCI,
+            RUNWAY_HEADINGS
+        );
+    }
+};
+
 
     bar.appendChild(btn);
 }
