@@ -362,7 +362,7 @@ window.filterAirportView = function(airport) {
 export {
   fetchWeatherData,
   fetchMetarData,
-  renderSonometersOnMap,
   autoSelectRunway,
   drawApproachDepartureCones
 };
+
