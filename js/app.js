@@ -185,7 +185,7 @@ function autoSelectRunway(airport, windDeg, windSpeed) {
 // ===============================================================
 // METEO + CÔNES ILS
 // ===============================================================
-const RUNWAY_HEADINGS = { EBLG: 220, EBCI: 60 };
+
 let conePolygons = {};
 
 // rose des vents METAR - style ND Airbus
