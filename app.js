@@ -200,6 +200,10 @@ async function fetchWeatherData() {
       const windSpeedKmh = msToKmh(windSpeedMs);
       const windSpeedKt = Math.round(windSpeedMs * 1.94384);
       const windDeg = weather.wind?.deg ?? 0;
+        // Stockage global pour les sonomètres
+            if (code === "EBLG") window.metarEBLG = { windDeg };
+            if (code === "EBCI") window.metarEBCI = { windDeg };
+
 
       autoSelectRunway(code, windDeg, windSpeedMs);
 
