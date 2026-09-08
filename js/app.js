@@ -182,28 +182,39 @@ async function fetchSingleMetar(code) {
   }
 }
 
+// ===============================================================
+// METEO FUSIONNÉE (METAR + Open-Meteo via Worker)
+// ===============================================================
 async function fetchWeatherData() {
-  for (const [code, apt] of Object.entries(AIRPORTS)) {
-    try {
-      const res = await fetch(`${WORKER_BASE_URL}/api/meteo?apt=${airportCode}`)
+  const airports = ["EBCI", "EBLG"];
 
+  for (const apt of airports) {
+    try {
+      const res = await fetch(`${WORKER_BASE_URL}/api/meteo?apt=${apt}`);
       if (!res.ok) continue;
 
-      const weather = await res.json();
-      const temp = Math.round(weather.main?.temp ?? 0);
-      const windSpeedMs = weather.wind?.speed ?? 0;
-      const windSpeedKmh = msToKmh(windSpeedMs);
-      const windDeg = weather.wind?.deg ?? 0;
+      const data = await res.json();
 
-      if (code === "EBLG") window.metarEBLG = { windDeg };
-      if (code === "EBCI") window.metarEBCI = { windDeg };
+      // --- METAR ---
+      updateMetarUI(apt, data.metar);
 
-      if (code === "EBLG") window.lastWindSpeedEBLG = windSpeedMs;
-      if (code === "EBCI") window.lastWindSpeedEBCI = windSpeedMs;
+      // --- METEO ---
+      const temp = Math.round(data.meteo.main.temp);
+      const windSpeedKmh = data.meteo.wind.speed;
+      const windDeg = data.meteo.wind.deg;
 
-      autoSelectRunway(code, windDeg, windSpeedMs);
+      // Stockage global ND Airbus
+      if (apt === "EBLG") {
+        window.metarEBLG = { windDeg };
+        window.lastWindSpeedEBLG = windSpeedKmh / 3.6; // m/s
+      }
+      if (apt === "EBCI") {
+        window.metarEBCI = { windDeg };
+        window.lastWindSpeedEBCI = windSpeedKmh / 3.6; // m/s
+      }
 
-      const prefix = code.toLowerCase();
+      // UI cockpit Airbus
+      const prefix = apt.toLowerCase();
       document.getElementById(`${prefix}-temp`).textContent = `${temp}°C`;
       document.getElementById(`${prefix}-wind`).textContent =
         `Vent: ${windSpeedKmh} km/h (${windDeg}°)`;
@@ -211,13 +222,36 @@ async function fetchWeatherData() {
       updateWindTrend(prefix, windSpeedKmh, windTrend);
       updateCompassUI(prefix, windDeg, windSpeedKmh);
 
-      drawApproachDepartureCones(code, apt.lat, apt.lon, windDeg);
-      fetchSingleMetar(code);
+      autoSelectRunway(apt, windDeg, windSpeedKmh / 3.6);
+
+      drawApproachDepartureCones(
+        apt,
+        AIRPORT_COORDS[apt].lat,
+        AIRPORT_COORDS[apt].lon,
+        windDeg
+      );
+
     } catch (e) {
-      console.error(`Erreur météo ${code} :`, e);
+      console.error(`Erreur météo ${apt} :`, e);
     }
   }
 }
+
+
+function updateWeatherUI(apt, meteo) {
+  const prefix = apt.toLowerCase();
+  document.getElementById(`${prefix}-temp`).textContent =
+    `${Math.round(meteo.main.temp)}°C`;
+
+  document.getElementById(`${prefix}-wind`).textContent =
+    `Vent: ${meteo.wind.speed} km/h (${meteo.wind.deg}°)`;
+}
+
+function updateMetarUI(apt, metarRaw) {
+  const el = document.getElementById(`${apt.toLowerCase()}-metar`);
+  if (el) el.textContent = metarRaw;
+}
+
 
 // ===============================================================
 // FILTRE AÉROPORT — cockpit Airbus PRO+++
