@@ -82,3 +82,50 @@ export async function updateRadar() {
 }
 
 setInterval(updateRadar, 5000);
+
+// ---------------------------------------------------------------
+// 3. Cônes d'approche / départ — cockpit Airbus PRO+++
+// ---------------------------------------------------------------
+export function drawApproachDepartureCones(airport, lat, lon, windDeg) {
+
+  // Nettoyage des anciens cônes
+  if (!window.conePolygons) window.conePolygons = {};
+  if (window.conePolygons[airport]) {
+    window.conePolygons[airport].forEach(poly => map.removeLayer(poly));
+  }
+  window.conePolygons[airport] = [];
+
+  // Détermination piste active
+  const runway = airport === "EBLG"
+    ? (windDeg > 180 ? 22 : 4)
+    : (windDeg > 180 ? 24 : 6);
+
+  const heading = runway * 10; // 22 → 220°, 04 → 40°, etc.
+
+  // Longueur du cône (en mètres)
+  const coneLength = 6000;
+
+  // Calcul des points
+  const rad = heading * Math.PI / 180;
+  const dx = Math.sin(rad) * coneLength / 111320;
+  const dy = Math.cos(rad) * coneLength / 111320;
+
+  const p1 = [lat, lon];
+  const p2 = [lat + dy, lon + dx];
+
+  // Largeur du cône
+  const spread = 0.02;
+
+  const left = [p2[0] + spread, p2[1] - spread];
+  const right = [p2[0] - spread, p2[1] + spread];
+
+  // Polygone
+  const cone = L.polygon([p1, left, right], {
+    color: "#38bdf8",
+    weight: 2,
+    opacity: 0.7,
+    fillOpacity: 0.15
+  }).addTo(map);
+
+  window.conePolygons[airport].push(cone);
+}
