@@ -1,40 +1,21 @@
 // ===============================================================
 // IMPORTS MODULES
 // ===============================================================
-import { map, initRadarMap } from "./map.js";   // Carte Leaflet unique
-import { updateFIDS } from "./fids.js";         // FIDS Airplanes.live
-import { renderSonometers } from "./sono.js";
+import { map, initRadarMap } from "./map.js";
+import { updateFIDS } from "./fids.js";
+import { renderSonometers, sonoLayer } from "./sono.js";
 
 // ===============================================================
-// INITIALISATION GLOBALE
+// GLOBAL STATE
 // ===============================================================
-document.addEventListener("DOMContentLoaded", () => {
-    initRadarMap();          // Initialise la carte + radar ADS-B
-    updateFIDS();            // Charge les vols Airplanes.live
-    setInterval(updateFIDS, 30000); // Mise à jour FIDS toutes les 30s
+let currentAirport = "EBLG";
+let sonometersEnabled = true;   // ← toggle ON/OFF sonomètres
 
-    fetchMetarData();
-    fetchWeatherData().then(() => {
-    updateRunwaySonometers();   // ← EMPLACEMENT CORRECT
-});
-
-    setInterval(fetchMetarData, 300000);   // METAR toutes les 5 min
-    setInterval(async () => {
-    await fetchWeatherData();
-    updateRunwaySonometers();   // ← DEUXIÈME APPEL
-}, 300000); // Météo + cônes toutes les 5 min
-});
-
-// =================================================================
-// 1. CONFIGURATION ET VARIABLES GLOBALES
-// =================================================================
 const WORKER_BASE_URL = "https://bruit-aero-proxy.pnyr682w7f.workers.dev";
 
-let currentAirport = "EBLG";
-
 const AIRPORTS = {
-  EBLG: { lat: 50.6374, lon: 5.4432, name: "Liège Airport" },
-  EBCI: { lat: 50.4592, lon: 4.4538, name: "Charleroi Airport" }
+  EBLG: { lat: 50.6374, lon: 5.4432 },
+  EBCI: { lat: 50.4592, lon: 4.4538 }
 };
 
 const AIRPORT_COORDS = {
@@ -43,60 +24,85 @@ const AIRPORT_COORDS = {
   ALL:  [50.55, 4.95]
 };
 
+// ===============================================================
+// INITIALISATION
+// ===============================================================
+document.addEventListener("DOMContentLoaded", () => {
+
+    initRadarMap();
+    updateFIDS();
+    setInterval(updateFIDS, 30000);
+
+    fetchMetarData();
+    fetchWeatherData().then(() => updateRunwaySonometers());
+
+    setInterval(fetchMetarData, 300000);
+    setInterval(async () => {
+        await fetchWeatherData();
+        updateRunwaySonometers();
+    }, 300000);
+
+    setupSonometersToggle();   // ← activation du toggle
+});
+
+// ===============================================================
+// UTILS
+// ===============================================================
 function msToKmh(ms) {
   return Math.round(ms * 3.6);
 }
 
-// =================================================================
-// 2. METAR VATSIM DIRECT
-// =================================================================
+// ===============================================================
+// METAR VATSIM
+// ===============================================================
 async function fetchMetarData() {
   const airports = ["EBCI", "EBLG"];
 
   for (const icao of airports) {
-    const metarElement = document.getElementById(`${icao.toLowerCase()}-metar`);
-    if (!metarElement) continue;
+    const el = document.getElementById(`${icao.toLowerCase()}-metar`);
+    if (!el) continue;
 
     try {
-      const response = await fetch(`https://metar.vatsim.net/${icao}`);
-      if (response.ok) {
-        const rawMetar = await response.text();
-        metarElement.innerText = rawMetar.trim() || "METAR non disponible";
-      } else {
-        metarElement.innerText = "Erreur de chargement METAR";
-      }
-    } catch (error) {
-      console.error(`Erreur METAR pour ${icao}:`, error);
-      metarElement.innerText = "METAR indisponible";
+      const res = await fetch(`https://metar.vatsim.net/${icao}`);
+      el.innerText = res.ok ? (await res.text()).trim() : "Erreur METAR";
+    } catch {
+      el.innerText = "METAR indisponible";
     }
   }
 }
 
+// ===============================================================
+// SONOMÈTRES — version PRO+++
+// ===============================================================
 function updateRunwaySonometers() {
+
+    if (!sonometersEnabled) {
+        sonoLayer.clearLayers();
+        return;
+    }
+
     // EBLG
     const windEBLG = window.metarEBLG?.windDeg ?? 220;
     const rwyEBLG = windEBLG > 180 ? "22" : "04";
-    renderSonometers("EBLG", rwyEBLG);
 
     // EBCI
     const windEBCI = window.metarEBCI?.windDeg ?? 240;
     const rwyEBCI = windEBCI > 180 ? "24" : "06";
+
+    // Reset une fois, puis ajout des deux aéroports
+    renderSonometers("EBLG", rwyEBLG, { reset: true });
     renderSonometers("EBCI", rwyEBCI);
 }
 
-
-// =================================================================
-// 4. AUTO-SELECTION PISTE
-// =================================================================
-let currentRunwayEBCI = "24";
-let currentRunwayEBLG = "22";
-
+// ===============================================================
+// AUTO-SELECTION PISTE
+// ===============================================================
 function autoSelectRunway(airport, windDeg, windSpeed) {
   const RWYS = airport === "EBLG"
     ? [{ num: "22", heading: 220 }, { num: "04", heading: 40 }]
     : [{ num: "24", heading: 240 }, { num: "06", heading: 60 }];
 
-  let bestRunway = RWYS[0];
+  let best = RWYS[0];
   let bestHeadwind = -999;
 
   RWYS.forEach(rwy => {
@@ -105,24 +111,20 @@ function autoSelectRunway(airport, windDeg, windSpeed) {
     const headwind = windSpeed * Math.cos(angle * Math.PI / 180);
     if (headwind > bestHeadwind) {
       bestHeadwind = headwind;
-      bestRunway = rwy;
+      best = rwy;
     }
   });
 
   const el = document.getElementById(
     airport === "EBLG" ? "eblg-runway" : "ebci-runway"
   );
-  if (el) el.textContent = `Piste ${bestRunway.num}`;
+  if (el) el.textContent = `Piste ${best.num}`;
 }
 
-// =================================================================
-// 5. METEO + CÔNES ILS
-// =================================================================
-const RUNWAY_HEADINGS = {
-  EBLG: 220,
-  EBCI: 60
-};
-
+// ===============================================================
+// METEO + CÔNES ILS
+// ===============================================================
+const RUNWAY_HEADINGS = { EBLG: 220, EBCI: 60 };
 let conePolygons = {};
 
 async function fetchWeatherData() {
@@ -137,19 +139,17 @@ async function fetchWeatherData() {
       const windSpeedKmh = msToKmh(windSpeedMs);
       const windSpeedKt = Math.round(windSpeedMs * 1.94384);
       const windDeg = weather.wind?.deg ?? 0;
-        // Stockage global pour les sonomètres
-            if (code === "EBLG") window.metarEBLG = { windDeg };
-            if (code === "EBCI") window.metarEBCI = { windDeg };
 
+      // Stockage global pour sonomètres
+      if (code === "EBLG") window.metarEBLG = { windDeg };
+      if (code === "EBCI") window.metarEBCI = { windDeg };
 
       autoSelectRunway(code, windDeg, windSpeedMs);
 
       const prefix = code.toLowerCase();
-      const tempEl = document.getElementById(`${prefix}-temp`);
-      const windEl = document.getElementById(`${prefix}-wind`);
-
-      if (tempEl) tempEl.textContent = `${temp}°C`;
-      if (windEl) windEl.textContent = `Vent: ${windSpeedKmh} km/h (${windDeg}°)`;
+      document.getElementById(`${prefix}-temp`).textContent = `${temp}°C`;
+      document.getElementById(`${prefix}-wind`).textContent =
+        `Vent: ${windSpeedKmh} km/h (${windDeg}°)`;
 
       updateCompassUI(prefix, windDeg, windSpeedKmh, windSpeedKt);
       drawApproachDepartureCones(code, apt.lat, apt.lon, windDeg);
@@ -163,206 +163,38 @@ async function fetchWeatherData() {
   }
 }
 
-// =================================================================
-// 6. ROSE DES VENTS — FIN DU BLOC
-// =================================================================
-function updateCompassUI(prefix, windDeg, speedKmh, crosswindKt) {
-  const card = document.querySelector(`.card[data-airport="${prefix.toUpperCase()}"]`);
-  if (!card) return;
+// ===============================================================
+// TOGGLE SONOMÈTRES — cockpit Airbus PRO+++
+// ===============================================================
+function setupSonometersToggle() {
+    const bar = document.querySelector(".control-bar-inline");
 
-  let compassContainer = card.querySelector('.rose-des-vents');
-  if (!compassContainer) return;
+    const btn = document.createElement("button");
+    btn.className = "airport-icon-btn";
+    btn.style.marginLeft = "10px";
+    btn.innerHTML = "🎧 Sonomètres";
 
-  compassContainer.innerHTML = `
-    <div style="text-align: center; margin-top: 5px;">
-      <div style="position: relative; width: 60px; height: 60px; margin: 0 auto; border: 2px solid #3b82f6; border-radius: 50%; background: #1e293b; display: flex; align-items: center; justify-content: center;">
-        <span style="position: absolute; top: 2px; font-size: 9px; color: #ef4444; font-weight: bold;">N</span>
-        <div style="transform: rotate(${windDeg}deg); transition: transform 0.5s ease; width: 100%; height: 100%; display: flex; align-items: center; justify-content: center;">
-          <div style="width: 0; height: 0; border-left: 5px solid transparent; border-right: 5px solid transparent; border-bottom: 22px solid #38bdf8;"></div>
-        </div>
-      </div>
-      <span style="font-size: 11px; color: #94a3b8; display: block; margin-top: 4px;">${windDeg}° - ${speedKmh} km/h</span>
-      <span style="font-size: 11px; font-weight: bold; color: #38bdf8; display: block; margin-top: 2px;">Travers: ${crosswindKt} kt</span>
-    </div>
-  `;
+    btn.onclick = () => {
+        sonometersEnabled = !sonometersEnabled;
+
+        if (sonometersEnabled) {
+            btn.classList.add("active");
+            updateRunwaySonometers();
+        } else {
+            btn.classList.remove("active");
+            sonoLayer.clearLayers();
+        }
+    };
+
+    bar.appendChild(btn);
 }
 
-// =================================================================
-// 7. TENDANCE MÉTÉO
-// =================================================================
-async function fetchWeatherForecast(airportCode, lat, lon) {
-  const card = document.querySelector(`.card[data-airport="${airportCode}"]`);
-  if (!card) return;
-
-  let forecastEl = card.querySelector('.weather-forecast-box');
-  if (!forecastEl) {
-    forecastEl = document.createElement('div');
-    forecastEl.className = 'weather-forecast-box';
-    forecastEl.style.cssText = "margin-top: 10px; padding-top: 8px; border-top: 1px solid rgba(255,255,255,0.1); font-size: 12px; color: #cbd5e1;";
-    card.appendChild(forecastEl);
-  }
-
-  try {
-    const res = await fetch(`${WORKER_BASE_URL}/api/forecast?lat=${lat}&lon=${lon}`);
-    if (!res.ok) {
-      forecastEl.innerHTML = `<span style="opacity: 0.7;">Tendance : non disponible</span>`;
-      return;
-    }
-
-    const data = await res.json();
-    const list = data.list ? data.list.slice(0, 3) : [];
-
-    if (list.length > 0) {
-      const itemsHtml = list.map(item => {
-        const time = new Date(item.dt * 1000).toLocaleTimeString("fr-BE", { hour: '2-digit', minute: '2-digit' });
-        const temp = Math.round(item.main.temp);
-        const icon = item.weather[0]?.icon ? `https://openweathermap.org/img/wn/${item.weather[0].icon}.png` : '';
-        const pop = Math.round((item.pop || 0) * 100);
-
-        return `
-          <div style="text-align: center; flex: 1;">
-            <div style="color: #94a3b8; font-size: 10px;">${time}</div>
-            ${icon ? `<img src="${icon}" style="width:28px; height:28px; margin:-4px 0;" title="${item.weather[0].description}" />` : ''}
-            <div style="font-weight: bold;">${temp}°C</div>
-            ${pop > 20 ? `<div style="color: #38bdf8; font-size: 10px;">🌧️ ${pop}%</div>` : ''}
-          </div>
-        `;
-      }).join('');
-
-      forecastEl.innerHTML = `
-        <div style="font-weight: 600; margin-bottom: 4px; color: #f8fafc;">Tendance à venir :</div>
-        <div style="display: flex; justify-content: space-between; align-items: center; background: rgba(0,0,0,0.2); padding: 6px; border-radius: 6px;">
-          ${itemsHtml}
-        </div>
-      `;
-    }
-  } catch (err) {
-    console.error(`Erreur tendance ${airportCode}:`, err);
-    forecastEl.innerHTML = `<span style="opacity: 0.7;">Tendance indisponible</span>`;
-  }
-}
-
-// =================================================================
-// 8. METAR UNIFIÉ
-// =================================================================
-async function fetchSingleMetar(airportCode) {
-  const card = document.querySelector(`.card[data-airport="${airportCode}"]`);
-  if (!card) return;
-
-  try {
-    const res = await fetch(`${WORKER_BASE_URL}/api/metar?station=${airportCode}`);
-    if (!res.ok) return;
-
-    const data = await res.json();
-    let metarBox = card.querySelector('.metar-box');
-
-    if (!metarBox) {
-      metarBox = document.createElement('div');
-      metarBox.className = 'metar-box';
-      metarBox.style.cssText = "background: rgba(15, 23, 42, 0.6); padding: 8px; border-radius: 6px; font-family: monospace; font-size: 11px; margin-top: 8px; border: 1px solid rgba(255,255,255,0.1); color: #cbd5e1; word-break: break-all;";
-      card.appendChild(metarBox);
-    }
-
-    metarBox.innerHTML = `<strong style="color: #f59e0b;">METAR:</strong> ${data.raw || 'Indisponible'}`;
-  } catch (e) {
-    console.error(`Erreur METAR ${airportCode}:`, e);
-  }
-}
-
-// =================================================================
-// 9. CÔNES D'APPROCHE & DÉPART
-// =================================================================
-function drawApproachDepartureCones(airportCode, lat, lon, windDeg) {
-  if (!map) return;
-
-  if (conePolygons[airportCode]) {
-    conePolygons[airportCode].forEach(layer => map.removeLayer(layer));
-  }
-  conePolygons[airportCode] = [];
-
-  const rwyHeading = RUNWAY_HEADINGS[airportCode] || 0;
-  const diff = Math.abs(((windDeg - rwyHeading + 180) % 360) - 180);
-
-  const activeApproachBearing = diff > 90 ? (rwyHeading + 180) % 360 : rwyHeading;
-
-  function createConePoints(originLat, originLng, bearing, distanceKm = 8, angleWidth = 25) {
-    const coords = [[originLat, originLng]];
-    const startAngle = bearing - angleWidth / 2;
-    const endAngle = bearing + angleWidth / 2;
-
-    for (let a = startAngle; a <= endAngle; a += 5) {
-      const rad = a * (Math.PI / 180);
-      const dLat = (distanceKm / 110.574) * Math.cos(rad);
-      const dLng = (distanceKm / (111.320 * Math.cos(originLat * (Math.PI / 180)))) * Math.sin(rad);
-      coords.push([originLat + dLat, originLng + dLng]);
-    }
-    return coords;
-  }
-
-  const appBearing = (activeApproachBearing + 180) % 360;
-  const approachPoints = createConePoints(lat, lon, appBearing);
-  const approachPoly = L.polygon(approachPoints, {
-    color: '#10b981',
-    fillColor: '#10b981',
-    fillOpacity: 0.15,
-    weight: 1,
-    dashArray: '4, 4'
-  }).bindTooltip(`Axe d'approche (${activeApproachBearing}°)`);
-
-  const departurePoints = createConePoints(lat, lon, activeApproachBearing);
-  const departurePoly = L.polygon(departurePoints, {
-    color: '#ef4444',
-    fillColor: '#ef4444',
-    fillOpacity: 0.12,
-    weight: 1,
-    dashArray: '4, 4'
-  }).bindTooltip(`Axe de départ (${activeApproachBearing}°)`);
-
-  approachPoly.addTo(map);
-  departurePoly.addTo(map);
-
-  conePolygons[airportCode].push(approachPoly, departurePoly);
-}
-
-// =================================================================
-// 10. FILTRE AÉROPORT
-// =================================================================
-window.filterAirportView = function(airport) {
-  const buttons = document.querySelectorAll('.control-bar-inline .airport-icon-btn');
-  buttons.forEach(btn => btn.classList.remove('active'));
-
-  if (window.event && window.event.currentTarget) {
-    window.event.currentTarget.classList.add('active');
-  } else {
-    const activeBtn = document.querySelector(`.control-bar-inline .airport-icon-btn[onclick*="${airport}"]`);
-    if (activeBtn) activeBtn.classList.add('active');
-  }
-
-  currentAirport = airport;
-
-  const cards = document.querySelectorAll('[data-airport]');
-  cards.forEach(card => {
-    const cardAirport = card.getAttribute('data-airport');
-    card.style.display = (airport === 'ALL' || cardAirport === airport) ? 'block' : 'none';
-  });
-
-  if (map && AIRPORT_COORDS[airport]) {
-    const zoomLevel = airport === 'ALL' ? 8 : 11;
-    map.setView(AIRPORT_COORDS[airport], zoomLevel, { animate: true });
-  }
-
-  if (typeof updateFIDS === "function") {
-    updateFIDS();
-  }
-};
-
-// =================================================================
-// 11. EXPORTS (si nécessaire pour d'autres modules)
-// =================================================================
+// ===============================================================
+// EXPORTS
+// ===============================================================
 export {
   fetchWeatherData,
   fetchMetarData,
   autoSelectRunway,
   drawApproachDepartureCones
 };
-
