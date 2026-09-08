@@ -1,4 +1,5 @@
 import { sonoLayer, renderSonometers } from "./sono.js";
+import { ILS_CONFIG } from "./config-ILS.js";
 
 // ===============================================================
 // map.js — Radar ADS‑B + ND Airbus
@@ -88,6 +89,7 @@ setInterval(updateRadar, 5000);
 // ---------------------------------------------------------------
 export function drawApproachDepartureCones(airport, lat, lon, windDeg) {
 
+  // Nettoyage
   if (!window.conePolygons) window.conePolygons = {};
   if (window.conePolygons[airport]) {
     window.conePolygons[airport].forEach(poly => map.removeLayer(poly));
@@ -99,37 +101,38 @@ export function drawApproachDepartureCones(airport, lat, lon, windDeg) {
     ? (windDeg > 180 ? 22 : 4)
     : (windDeg > 180 ? 24 : 6);
 
-  const heading = runway * 10; // 22 → 220°, 04 → 40°, etc.
+  const runwayNum = runway.toString();
 
-  // Longueur du cône (m)
-  const coneLength = 6000;
+  // 🔥 Récupération config ILS avancée
+  const ils = ILS_CONFIG[airport].runways[runwayNum];
 
-  // Largeur du cône (degrés lat/lon)
-  const spread = 0.02;
+  const heading = ils.heading;
+  const thresholdLat = ils.threshold.lat;
+  const thresholdLon = ils.threshold.lon;
 
-  // Calcul du vecteur direction
+  // Remplace lat/lon du seuil par ceux du config-ILS
+  const p1 = [thresholdLat, thresholdLon];
+
+  // Calcul du cône
   const rad = heading * Math.PI / 180;
-  const dx = Math.sin(rad) * coneLength / 111320;
-  const dy = Math.cos(rad) * coneLength / 111320;
+  const dx = Math.sin(rad) * ILS_CONE_LENGTH / 111320;
+  const dy = Math.cos(rad) * ILS_CONE_LENGTH / 111320;
 
-  const p1 = [lat, lon];               // seuil
-  const p2 = [lat + dy, lon + dx];     // extrémité
+  const p2 = [thresholdLat + dy, thresholdLon + dx];
 
-  const left = [p2[0] + spread, p2[1] - spread];
-  const right = [p2[0] - spread, p2[1] + spread];
+  const left = [p2[0] + ILS_CONE_SPREAD, p2[1] - ILS_CONE_SPREAD];
+  const right = [p2[0] - ILS_CONE_SPREAD, p2[1] + ILS_CONE_SPREAD];
 
-  // -------------------------------------------------------------
-  // Gradient PRO+++ : 3 couches superposées
-  // -------------------------------------------------------------
+  // Gradient PRO+++
   const layers = [
-    { opacity: 0.35, weight: 3 },  // couche interne (proche du seuil)
-    { opacity: 0.22, weight: 2 },  // couche médiane
-    { opacity: 0.12, weight: 1 }   // couche externe
+    { opacity: 0.35, weight: 3 },
+    { opacity: 0.22, weight: 2 },
+    { opacity: 0.12, weight: 1 }
   ];
 
   layers.forEach(layer => {
     const poly = L.polygon([p1, left, right], {
-      color: "#38bdf8",        // cyan Airbus
+      color: "#38bdf8",
       weight: layer.weight,
       opacity: layer.opacity,
       fillOpacity: layer.opacity * 0.6,
@@ -139,3 +142,4 @@ export function drawApproachDepartureCones(airport, lat, lon, windDeg) {
     window.conePolygons[airport].push(poly);
   });
 }
+
