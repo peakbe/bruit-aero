@@ -43,6 +43,7 @@ document.addEventListener("DOMContentLoaded", () => {
     }, 300000);
 
     setupSonometersToggle();   // ← activation du toggle
+    setupRecenterButton(); // recentrer carte
 });
 
 // ===============================================================
@@ -256,6 +257,18 @@ function setupSonometersToggle() {
     };
 
     bar.appendChild(btn);
+}
+
+function setupRecenterButton() {
+    const btn = document.getElementById("btn-recenter");
+    if (!btn) return;
+
+    btn.onclick = () => {
+        let target = AIRPORT_COORDS[currentAirport] || AIRPORT_COORDS.ALL;
+        let zoom = currentAirport === "ALL" ? 8 : 11;
+
+        map.setView(target, zoom, { animate: true });
+    };
 }
 
 // ===============================================================
