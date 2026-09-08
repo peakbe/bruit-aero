@@ -17,9 +17,6 @@
   <!-- Feather Icons -->
   <script src="https://unpkg.com/feather-icons"></script>
 
-  <!-- ============================================================
-       STYLE GLOBAL — COCKPIT AIRBUS PRO+++
-       ============================================================ -->
   <style>
     :root {
       --bg-main: #020617;
@@ -83,9 +80,6 @@
       background: rgba(15, 23, 42, 0.7);
     }
 
-    /* ============================================================
-       BARRE DE CONTRÔLE — Sélecteur aéroport
-       ============================================================ */
     .control-bar-inline {
       display: flex;
       flex-direction: row;
@@ -134,9 +128,6 @@
       box-shadow: 0 0 0 1px rgba(56, 189, 248, 0.6);
     }
 
-    /* ============================================================
-       GRID & CARDS — Layout cockpit
-       ============================================================ */
     .grid-container {
       display: grid;
       grid-template-columns: repeat(auto-fit, minmax(420px, 1fr));
@@ -196,9 +187,6 @@
       color: #e5e7eb;
     }
 
-    /* ============================================================
-       METEO — Bloc cockpit
-       ============================================================ */
     .weather-box {
       display: flex;
       gap: 18px;
@@ -232,9 +220,59 @@
       align-items: center;
     }
 
-    /* ============================================================
-       MAP — Radar
-       ============================================================ */
+    /* Rose des vents Airbus optimisée */
+    .compass {
+      width: 90px;
+      height: 90px;
+      border-radius: 50%;
+      border: 1px solid #334155;
+      position: relative;
+      background: radial-gradient(circle at center,
+        #0f172a 0,
+        #020617 70%);
+      box-shadow: 0 0 12px rgba(15, 23, 42, 0.9);
+    }
+
+    .compass-ring {
+      position: absolute;
+      inset: 8px;
+      border-radius: 50%;
+      border: 1px dashed #475569;
+    }
+
+    .compass-needle {
+      position: absolute;
+      width: 2px;
+      height: 32px;
+      background: #38bdf8;
+      top: 14px;
+      left: 50%;
+      transform-origin: bottom center;
+      border-radius: 999px;
+      box-shadow: 0 0 6px rgba(56, 189, 248, 0.9);
+    }
+
+    .compass-center {
+      position: absolute;
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: #e5e7eb;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      box-shadow: 0 0 6px rgba(148, 163, 184, 0.9);
+    }
+
+    .compass-label {
+      position: absolute;
+      width: 100%;
+      text-align: center;
+      bottom: 4px;
+      font-size: 0.7rem;
+      color: #9ca3af;
+    }
+
     #map {
       width: 100%;
       height: 68vh;
@@ -245,9 +283,7 @@
       overflow: hidden;
     }
 
-    /* ============================================================
-       FIDS — Style PRO+++ cockpit Airbus
-       ============================================================ */
+    /* FIDS */
     .fids-row {
       display: grid;
       grid-template-columns: 70px 90px 120px 100px;
@@ -291,9 +327,7 @@
       color: #38bdf8;
     }
 
-    /* ============================================================
-       ND Airbus — Panel
-       ============================================================ */
+    /* ND Airbus panel */
     #nd-panel {
       margin-top: 16px;
     }
@@ -346,22 +380,21 @@
     }
 
     #btn-recenter {
-  background: #0f172a;
-  border: 1px solid var(--border);
-  color: var(--accent);
-  padding: 8px 14px;
-  border-radius: 8px;
-  cursor: pointer;
-  font-size: 0.9rem;
-  font-weight: 600;
-  transition: 0.2s;
-}
+      background: #0f172a;
+      border: 1px solid var(--border);
+      color: var(--accent);
+      padding: 8px 14px;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 0.9rem;
+      font-weight: 600;
+      transition: 0.2s;
+    }
 
-#btn-recenter:hover {
-  background: var(--accent-hover);
-  color: #000;
-}
-
+    #btn-recenter:hover {
+      background: var(--accent-hover);
+      color: #000;
+    }
   </style>
 </head>
 
@@ -373,15 +406,14 @@
 
   <!-- BARRE DE CONTRÔLE -->
   <div class="control-bar-inline">
-  <div class="control-group">
-    <span class="control-label">Aéroport :</span>
-    <button class="airport-icon-btn active" onclick="filterAirportView('ALL')">✈️ Tous</button>
-    <button class="airport-icon-btn" onclick="filterAirportView('EBCI')">🟦 EBCI</button>
-    <button class="airport-icon-btn" onclick="filterAirportView('EBLG')">🟩 EBLG</button>
-    <button class="airport-icon-btn" id="btn-recenter">📍 Recentrer</button>
+    <div class="control-group">
+      <span class="control-label">Aéroport :</span>
+      <button class="airport-icon-btn active" onclick="filterAirportView('ALL')">✈️ Tous</button>
+      <button class="airport-icon-btn" onclick="filterAirportView('EBCI')">🟦 EBCI</button>
+      <button class="airport-icon-btn" onclick="filterAirportView('EBLG')">🟩 EBLG</button>
+      <button class="airport-icon-btn" id="btn-recenter">📍 Recentrer</button>
+    </div>
   </div>
-</div>
-
 
   <!-- METEO CARTES -->
   <div class="grid-container">
@@ -395,16 +427,24 @@
         <div class="metar-info">
           <div class="temp-large" id="ebci-temp">--°C</div>
           <div id="ebci-wind" class="wind-info">Vent: --</div>
+
+          <div id="ebci-metar" class="wind-info">METAR --</div>
         </div>
-        <div class="rose-des-vents"></div>
+        <div class="rose-des-vents">
+          <div id="ebci-compass" class="compass">
+            <div class="compass-ring"></div>
+            <div class="compass-needle" id="ebci-compass-needle"></div>
+            <div class="compass-center"></div>
+            <div class="compass-label" id="ebci-compass-label">---° / -- km/h</div>
+          </div>
+        </div>
       </div>
       <canvas class="windtrend" width="140" height="40"
-  style="background:#0f172a; border:1px solid #334155; border-radius:6px; margin-top:6px;">
-</canvas>
-<div style="font-size:10px; color:#64748b; text-align:center; margin-top:2px;">
-  Wind Trend — 30 min
-</div>
-
+        style="background:#0f172a; border:1px solid #334155; border-radius:6px; margin-top:6px;">
+      </canvas>
+      <div style="font-size:10px; color:#64748b; text-align:center; margin-top:2px;">
+        Wind Trend — 30 min
+      </div>
     </div>
 
     <!-- METEO EBLG -->
@@ -417,16 +457,24 @@
         <div class="metar-info">
           <div class="temp-large" id="eblg-temp">--°C</div>
           <div id="eblg-wind" class="wind-info">Vent: --</div>
+
+          <div id="eblg-metar" class="wind-info">METAR --</div>
         </div>
-        <div class="rose-des-vents"></div>
+        <div class="rose-des-vents">
+          <div id="eblg-compass" class="compass">
+            <div class="compass-ring"></div>
+            <div class="compass-needle" id="eblg-compass-needle"></div>
+            <div class="compass-center"></div>
+            <div class="compass-label" id="eblg-compass-label">---° / -- km/h</div>
+          </div>
+        </div>
       </div>
       <canvas class="windtrend" width="140" height="40"
-  style="background:#0f172a; border:1px solid #334155; border-radius:6px; margin-top:6px;">
-</canvas>
-<div style="font-size:10px; color:#64748b; text-align:center; margin-top:2px;">
-  Wind Trend — 30 min
-</div>
-
+        style="background:#0f172a; border:1px solid #334155; border-radius:6px; margin-top:6px;">
+      </canvas>
+      <div style="font-size:10px; color:#64748b; text-align:center; margin-top:2px;">
+        Wind Trend — 30 min
+      </div>
     </div>
   </div>
 
@@ -470,17 +518,16 @@
         <span class="nd-label">WIND</span>
         <span class="nd-value" id="nd-wind">---</span>
       </div>
-      
-      <div class="nd-item">
-  <span class="nd-label">SONO</span>
-  <span class="nd-value" id="nd-sono">---</span>
-</div>
 
       <div class="nd-item">
-  <span class="nd-label">WINDCOMP</span>
-  <span class="nd-value" id="nd-windcomp">---</span>
-</div>
+        <span class="nd-label">SONO</span>
+        <span class="nd-value" id="nd-sono">---</span>
+      </div>
 
+      <div class="nd-item">
+        <span class="nd-label">WINDCOMP</span>
+        <span class="nd-value" id="nd-windcomp">---</span>
+      </div>
     </div>
   </div>
 
@@ -503,7 +550,7 @@
     </div>
   </div>
 
-  <!-- Patch Leaflet pour la rotation des marqueurs -->
+  <!-- Patch Leaflet rotation marqueurs -->
   <script>
     (function () {
       if (L.Marker.prototype.__rotatedOriginalSetPos) return;
@@ -537,12 +584,12 @@
     });
   </script>
 
-  <!-- Scripts modules (chemins corrigés) -->
+  <!-- Scripts modules -->
   <script type="module" src="./js/map.js"></script>
-  <script type="module" src="./js/nd.js"></script>
   <script type="module" src="./js/fids.js"></script>
   <script type="module" src="./js/nd-panel.js"></script>
   <script type="module" src="./js/sono.js"></script>
+  <script type="module" src="./js/nd-utils.js"></script>
   <script type="module" src="./js/app.js"></script>
 </body>
 </html>
