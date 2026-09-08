@@ -1,7 +1,7 @@
 // ===============================================================
 // IMPORTS MODULES
 // ===============================================================
-import { map, initRadarMap } from "./map.js";
+import { map, initRadarMap, drawApproachDepartureCones } from "./map.js";
 import { updateFIDS } from "./fids.js";
 import { renderSonometers, sonoLayer } from "./sono.js";
 
