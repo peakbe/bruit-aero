@@ -277,6 +277,26 @@ function updateWindTrend(prefix, speedKmh) {
   ctx.stroke();
 }
 
+// ---------------------------------------------------------------
+// METAR individuel — cockpit Airbus PRO+++
+// ---------------------------------------------------------------
+async function fetchSingleMetar(code) {
+  const el = document.getElementById(`${code.toLowerCase()}-metar`);
+  if (!el) return;
+
+  try {
+    const res = await fetch(`https://metar.vatsim.net/${code}`);
+    if (res.ok) {
+      el.textContent = (await res.text()).trim();
+    } else {
+      el.textContent = "METAR indisponible";
+    }
+  } catch (err) {
+    el.textContent = "Erreur METAR";
+    console.error("Erreur METAR:", err);
+  }
+}
+
 async function fetchWeatherData() {
   for (const [code, apt] of Object.entries(AIRPORTS)) {
     try {
