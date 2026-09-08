@@ -185,9 +185,8 @@ async function fetchSingleMetar(code) {
 async function fetchWeatherData() {
   for (const [code, apt] of Object.entries(AIRPORTS)) {
     try {
-      const res = await fetch(
-        `${WORKER_BASE_URL}/api/weather?lat=${apt.lat}&lon=${apt.lon}`
-      );
+      const res = await fetch(`${WORKER_BASE_URL}/api/meteo?apt=${airportCode}`)
+
       if (!res.ok) continue;
 
       const weather = await res.json();
