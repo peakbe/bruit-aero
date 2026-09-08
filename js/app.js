@@ -215,11 +215,11 @@ async function fetchWeatherData() {
       document.getElementById(`${prefix}-wind`).textContent =
         `Vent: ${windSpeedKmh} km/h (${windDeg}°)`;
 
-      updateCompassUI(prefix, windDeg, windSpeedKmh, windSpeedKt);
-      drawApproachDepartureCones(code, apt.lat, apt.lon, windDeg);
+      // ❌ supprimé : updateCompassUI()
+      // ❌ supprimé : fetchWeatherForecast()
 
+      drawApproachDepartureCones(code, apt.lat, apt.lon, windDeg);
       fetchSingleMetar(code);
-      fetchWeatherForecast(code, apt.lat, apt.lon);
 
     } catch (e) {
       console.error(`Erreur météo ${code} :`, e);
