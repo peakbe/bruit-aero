@@ -72,69 +72,6 @@ async function fetchMetarData() {
   }
 }
 
-// =================================================================
-// 3. SONOMÈTRES
-// =================================================================
-const sonometersEBCI = [ /* … inchangé … */ ];
-const sonometersEBLG = [ /* … inchangé … */ ];
-
-function dmsToDecimal(dmsStr) {
-  const parts = dmsStr.trim().split(/\s+/);
-  let dd = parseFloat(parts[0]) + parseFloat(parts[1]) / 60 + parseFloat(parts[2]) / 3600;
-  return (parts[3] === "S" || parts[3] === "W") ? -dd : dd;
-}
-
-const sonometerMarkers = [];
-
-function renderSonometersOnMap() {
-  sonometerMarkers.forEach(m => map.removeLayer(m));
-  sonometerMarkers.length = 0;
-
-  const allSonometers = [
-    ...sonometersEBCI.map(s => ({ ...s, airport: "EBCI" })),
-    ...sonometersEBLG.map(s => ({ ...s, airport: "EBLG" }))
-  ];
-
-  allSonometers.forEach(s => {
-    const lat = dmsToDecimal(s.latDMS);
-    const lng = dmsToDecimal(s.lonDMS);
-
-    const marker = L.circleMarker([lat, lng], {
-      radius: 7, fillColor: "#10b981", color: "#ffffff", weight: 2, fillOpacity: 0.9
-    }).addTo(map);
-
-    marker.bindPopup(`<b>Sonomètre ${s.id} (${s.airport})</b><br>${s.address}<br><i>Chargement météo...</i>`);
-
-    marker.on('click', async () => {
-      try {
-        const res = await fetch(`${WORKER_BASE_URL}/api/weather?lat=${lat}&lon=${lng}`);
-        if (res.ok) {
-          const weatherData = await res.json();
-          const temp = Math.round(weatherData.main?.temp ?? 0);
-          const windSpeed = msToKmh(weatherData.wind?.speed ?? 0);
-          const windDeg = weatherData.wind?.deg ?? 0;
-          const description = weatherData.weather?.[0]?.description ?? "Ciel dégagé";
-
-          marker.getPopup().setContent(`
-            <div style="font-family: sans-serif; font-size: 13px;">
-              <h4 style="margin: 0 0 4px 0; color: #1e293b;">Sonomètre ${s.id} (${s.airport})</h4>
-              <p style="margin: 0 0 6px 0; font-size: 11px; color: #64748b;">${s.address}</p>
-              <hr style="border:0; border-top:1px solid #e2e8f0; margin: 4px 0;">
-              <b>🌡️ Température :</b> ${temp}°C<br>
-              <b>💨 Vent :</b> ${windSpeed} km/h (${windDeg}°)<br>
-              <b>☁️ Météo :</b> ${description}
-            </div>
-          `);
-        }
-      } catch (err) {
-        console.error("Erreur météo sonomètre :", err);
-      }
-    });
-
-    sonometerMarkers.push(marker);
-  });
-}
-
 function updateRunwaySonometers() {
     // EBLG
     const windEBLG = window.metarEBLG?.windDeg ?? 220;
