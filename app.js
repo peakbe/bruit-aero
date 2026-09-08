@@ -3,6 +3,7 @@
 // ===============================================================
 import { map, initRadarMap } from "./map.js";   // Carte Leaflet unique
 import { updateFIDS } from "./fids.js";         // FIDS Airplanes.live
+import { renderSonometers } from "./sono.js";
 
 // ===============================================================
 // INITIALISATION GLOBALE
