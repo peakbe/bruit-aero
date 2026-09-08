@@ -223,7 +223,8 @@ async function fetchWeatherData() {
       document.getElementById(`${prefix}-wind`).textContent =
         `Vent: ${windSpeedKmh} km/h (${windDeg}°)`;
 
-      updateWindTrend(prefix, windSpeedKmh);
+      export function updateWindTrend(prefix, speedKmh) {
+
       updateCompassUI(prefix, windDeg, windSpeedKmh);
 
       drawApproachDepartureCones(code, apt.lat, apt.lon, windDeg);
