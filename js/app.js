@@ -94,6 +94,21 @@ function updateRunwaySonometers() {
     renderSonometers("EBCI", rwyEBCI);
 }
 
+function updateNdSonometersStatus() {
+    const el = document.getElementById("nd-sono");
+    if (!el) return;
+
+    if (!sonometersEnabled) {
+        el.textContent = "OFF";
+        el.style.color = "#fbbf24"; // amber Airbus
+        return;
+    }
+
+    const count = sonoLayer.getLayers().length;
+    el.textContent = `${count}`;
+    el.style.color = "#38bdf8"; // cyan Airbus
+}
+
 // ===============================================================
 // AUTO-SELECTION PISTE
 // ===============================================================
@@ -179,10 +194,12 @@ function setupSonometersToggle() {
 
         if (sonometersEnabled) {
             btn.classList.add("active");
-            updateRunwaySonometers();
+            updateRunwaySonometers();   // ← recharge les sonomètres
+            updateNdSonometersStatus(); // ← mise à jour ND SONO
         } else {
             btn.classList.remove("active");
-            sonoLayer.clearLayers();
+            sonoLayer.clearLayers();    // ← supprime les sonomètres
+            updateNdSonometersStatus(); // ← ND SONO = OFF
         }
     };
 
