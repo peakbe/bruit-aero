@@ -121,7 +121,7 @@ export function renderSonometers(airport, runway, options = {}) {
             fillOpacity: 0.8
         });
 
-        marker.bindPopup(`
+       marker.bindPopup(`
   <div id="popup-${s.id}" style="font-family:'Segoe UI'; font-size:13px; color:#e2e8f0;">
     <h4 style="margin:0 0 4px 0; color:#38bdf8;">
       Sonomètre ${s.id} — ${s.airport}
@@ -131,6 +131,40 @@ export function renderSonometers(airport, runway, options = {}) {
       ${s.address}
     </div>
 
+    <!-- 🟦 Rose des vents locale -->
+    <div id="windrose-${s.id}" style="text-align:center; margin:8px 0;">
+      <div style="
+        position:relative;
+        width:70px;
+        height:70px;
+        margin:auto;
+        border:2px solid #334155;
+        border-radius:50%;
+        background:#1e293b;
+        display:flex;
+        align-items:center;
+        justify-content:center;">
+        <span style="position:absolute; top:2px; font-size:9px; color:#ef4444; font-weight:bold;">N</span>
+        <div id="windarrow-${s.id}" style="
+          width:100%;
+          height:100%;
+          display:flex;
+          align-items:center;
+          justify-content:center;
+          transition:transform 0.5s ease;">
+          <div style="
+            width:0;
+            height:0;
+            border-left:6px solid transparent;
+            border-right:6px solid transparent;
+            border-bottom:26px solid #38bdf8;">
+          </div>
+        </div>
+      </div>
+      <span id="windtext-${s.id}" style="font-size:11px; color:#94a3b8; display:block; margin-top:4px;">...</span>
+    </div>
+
+    <!-- 🟩 Bloc météo -->
     <div style="background:rgba(15,23,42,0.6); padding:6px; border-radius:6px; border:1px solid #334155;">
       <b style="color:#f59e0b;">🌡️ Température :</b> <span id="temp-${s.id}">...</span><br>
       <b style="color:#38bdf8;">💨 Vent :</b> <span id="wind-${s.id}">...</span><br>
@@ -156,6 +190,14 @@ export function renderSonometers(airport, runway, options = {}) {
       ? (windDeg > 180 ? "22" : "04")
       : (windDeg > 180 ? "24" : "06");
 
+    // 🟦 Mise à jour rose des vents
+    const arrow = document.getElementById(`windarrow-${s.id}`);
+    const windText = document.getElementById(`windtext-${s.id}`);
+
+    if (arrow) arrow.style.transform = `rotate(${windDeg}deg)`;
+    if (windText) windText.textContent = `${windDeg}° — ${windSpeed} km/h`;
+
+    // 🟩 Mise à jour météo
     document.getElementById(`temp-${s.id}`).textContent = `${temp}°C`;
     document.getElementById(`wind-${s.id}`).textContent = `${windSpeed} km/h (${windDeg}°)`;
     document.getElementById(`desc-${s.id}`).textContent = desc;
@@ -165,6 +207,7 @@ export function renderSonometers(airport, runway, options = {}) {
     console.error("Erreur météo sonomètre :", err);
   }
 });
+
 
 
         sonoLayer.addLayer(marker);
