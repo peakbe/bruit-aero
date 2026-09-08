@@ -338,6 +338,35 @@ async function fetchWeatherData() {
   }
 }
 
+// ---------------------------------------------------------------
+// Filtre aéroport — cockpit Airbus PRO+++
+// ---------------------------------------------------------------
+window.filterAirportView = function(airport) {
+    currentAirport = airport;
+
+    // Mise à jour du ND
+    updateNdWindComponents(currentAirport);
+    updateNdSonometersStatus();
+
+    // Mise à jour des sonomètres
+    if (sonometersEnabled) {
+        updateRunwaySonometers();
+    }
+
+    // Recentrage automatique
+    let target = AIRPORT_COORDS[currentAirport] || AIRPORT_COORDS.ALL;
+    let zoom = currentAirport === "ALL" ? 8 : 11;
+    map.setView(target, zoom, { animate: true });
+
+    // Mise à jour visuelle des boutons
+    document.querySelectorAll(".airport-icon-btn").forEach(btn => {
+        btn.classList.remove("active");
+    });
+
+    const btn = document.querySelector(`button[onclick="filterAirportView('${airport}')"]`);
+    if (btn) btn.classList.add("active");
+};
+
 // ===============================================================
 // TOGGLE SONOMÈTRES — cockpit Airbus PRO+++
 // ===============================================================
