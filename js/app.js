@@ -4,6 +4,7 @@
 import { map, initRadarMap, drawApproachDepartureCones } from "./map.js";
 import { updateFIDS } from "./fids.js";
 import { renderSonometers, sonoLayer } from "./sono.js";
+
 import {
   WORKER_BASE_URL,
   AIRPORTS,
@@ -14,16 +15,16 @@ import {
   WEATHER_REFRESH_MS
 } from "./config.js";
 
-const windTrend = {
-  EBLG: [],
-  EBCI: []
-};
-
 // ===============================================================
 // GLOBAL STATE
 // ===============================================================
 let currentAirport = "EBLG";
-let sonometersEnabled = true;   // ← toggle ON/OFF sonomètres
+let sonometersEnabled = true;
+
+const windTrend = {
+  EBLG: [],
+  EBCI: []
+};
 
 // ===============================================================
 // INITIALISATION
@@ -31,20 +32,21 @@ let sonometersEnabled = true;   // ← toggle ON/OFF sonomètres
 document.addEventListener("DOMContentLoaded", () => {
 
     initRadarMap();
+
     updateFIDS();
-    setInterval(updateFIDS, 30000);
+    setInterval(updateFIDS, RADAR_REFRESH_MS);
 
     fetchMetarData();
     fetchWeatherData().then(() => updateRunwaySonometers());
 
-    setInterval(fetchMetarData, 300000);
+    setInterval(fetchMetarData, METAR_REFRESH_MS);
     setInterval(async () => {
         await fetchWeatherData();
         updateRunwaySonometers();
-    }, 300000);
+    }, WEATHER_REFRESH_MS);
 
-    setupSonometersToggle();   // ← activation du toggle
-    setupRecenterButton(); // recentrer carte
+    setupSonometersToggle();
+    setupRecenterButton();
 });
 
 // ===============================================================
@@ -74,7 +76,7 @@ async function fetchMetarData() {
 }
 
 // ===============================================================
-// SONOMÈTRES — version PRO+++
+// SONOMÈTRES — cockpit Airbus PRO+++
 // ===============================================================
 function updateRunwaySonometers() {
 
@@ -85,11 +87,9 @@ function updateRunwaySonometers() {
         return;
     }
 
-    // EBLG
     const windEBLG = window.metarEBLG?.windDeg ?? 220;
     const rwyEBLG = windEBLG > 180 ? "22" : "04";
 
-    // EBCI
     const windEBCI = window.metarEBCI?.windDeg ?? 240;
     const rwyEBCI = windEBCI > 180 ? "24" : "06";
 
@@ -97,9 +97,8 @@ function updateRunwaySonometers() {
     renderSonometers("EBCI", rwyEBCI);
 
     updateNdSonometersStatus();
-    updateNdWindComponents(currentAirport);   // ← nouveau panneau ND
+    updateNdWindComponents(currentAirport);
 }
-
 
 function updateNdSonometersStatus() {
     const el = document.getElementById("nd-sono");
@@ -107,16 +106,18 @@ function updateNdSonometersStatus() {
 
     if (!sonometersEnabled) {
         el.textContent = "OFF";
-        el.style.color = "#fbbf24"; // amber Airbus
+        el.style.color = "#fbbf24";
         return;
     }
 
     const count = sonoLayer.getLayers().length;
     el.textContent = `${count}`;
-    el.style.color = "#38bdf8"; // cyan Airbus
+    el.style.color = "#38bdf8";
 }
 
-// Fonction PRO+++ de calcul des composantes vent
+// ===============================================================
+// ND — Composantes vent cockpit Airbus PRO+++
+// ===============================================================
 function updateNdWindComponents(airport) {
     const el = document.getElementById("nd-windcomp");
     if (!el) return;
@@ -127,15 +128,15 @@ function updateNdWindComponents(airport) {
 
     if (!windDeg) {
         el.textContent = "---";
-        el.style.color = "#fbbf24"; // amber
+        el.style.color = "#fbbf24";
         return;
     }
 
     const runway = airport === "EBLG"
-        ? (windDeg > 180 ? 22 : 4)
-        : (windDeg > 180 ? 24 : 6);
+        ? (windDeg > 180 ? "22" : "04")
+        : (windDeg > 180 ? "24" : "06");
 
-    const runwayHeading = runway * 10; // 22 → 220°, 04 → 40°, etc.
+    const runwayHeading = RUNWAY_HEADINGS[airport][runway];
 
     const diff = windDeg - runwayHeading;
     const angle = ((diff + 540) % 360) - 180;
@@ -152,7 +153,7 @@ function updateNdWindComponents(airport) {
     const cwDir = crosswind > 0 ? "→" : "←";
 
     el.textContent = `${headwind} kt / ${Math.abs(crosswind)} kt ${cwDir}`;
-    el.style.color = "#38bdf8"; // cyan Airbus
+    el.style.color = "#38bdf8";
 }
 
 // ===============================================================
@@ -183,113 +184,17 @@ function autoSelectRunway(airport, windDeg, windSpeed) {
 }
 
 // ===============================================================
-// METEO + CÔNES ILS
+// METEO + ILS
 // ===============================================================
-
-let conePolygons = {};
-
-// rose des vents METAR - style ND Airbus
-function updateCompassUI(prefix, windDeg, speedKmh) {
-  const card = document.querySelector(`.card[data-airport="${prefix.toUpperCase()}"]`);
-  if (!card) return;
-
-  let container = card.querySelector('.rose-des-vents');
-  if (!container) return;
-
-  container.innerHTML = `
-    <div style="text-align:center; margin-top:5px;">
-      <div style="
-        position:relative;
-        width:70px;
-        height:70px;
-        margin:auto;
-        border:2px solid #334155;
-        border-radius:50%;
-        background:#1e293b;
-        display:flex;
-        align-items:center;
-        justify-content:center;">
-        
-        <span style="position:absolute; top:2px; font-size:9px; color:#ef4444; font-weight:bold;">N</span>
-
-        <div style="
-          transform:rotate(${windDeg}deg);
-          transition:transform 0.5s ease;
-          width:100%;
-          height:100%;
-          display:flex;
-          align-items:center;
-          justify-content:center;">
-          
-          <div style="
-            width:0;
-            height:0;
-            border-left:6px solid transparent;
-            border-right:6px solid transparent;
-            border-bottom:26px solid #38bdf8;">
-          </div>
-        </div>
-      </div>
-
-      <span style="font-size:11px; color:#94a3b8; display:block; margin-top:4px;">
-        ${windDeg}° — ${speedKmh} km/h
-      </span>
-    </div>
-  `;
-}
-
-function updateWindTrend(prefix, speedKmh) {
-  const canvas = document.querySelector(`.card[data-airport="${prefix.toUpperCase()}"] canvas.windtrend`);
-  if (!canvas) return;
-
-  const ctx = canvas.getContext("2d");
-
-  // Ajouter valeur
-  windTrend[prefix.toUpperCase()].push(speedKmh);
-
-  // Limiter à 30 valeurs
-  if (windTrend[prefix.toUpperCase()].length > 30)
-    windTrend[prefix.toUpperCase()].shift();
-
-  const values = windTrend[prefix.toUpperCase()];
-  const max = Math.max(...values);
-  const min = Math.min(...values);
-  const range = max - min || 1;
-
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-  ctx.strokeStyle = "#38bdf8"; // cyan Airbus
-  ctx.lineWidth = 2;
-  ctx.beginPath();
-
-  values.forEach((v, i) => {
-    const x = (i / (values.length - 1)) * canvas.width;
-    const y = canvas.height - ((v - min) / range) * canvas.height;
-
-    if (i === 0) ctx.moveTo(x, y);
-    else ctx.lineTo(x, y);
-  });
-
-  ctx.stroke();
-}
-
-// ---------------------------------------------------------------
-// METAR individuel — cockpit Airbus PRO+++
-// ---------------------------------------------------------------
 async function fetchSingleMetar(code) {
   const el = document.getElementById(`${code.toLowerCase()}-metar`);
   if (!el) return;
 
   try {
     const res = await fetch(`https://metar.vatsim.net/${code}`);
-    if (res.ok) {
-      el.textContent = (await res.text()).trim();
-    } else {
-      el.textContent = "METAR indisponible";
-    }
-  } catch (err) {
+    el.textContent = res.ok ? (await res.text()).trim() : "METAR indisponible";
+  } catch {
     el.textContent = "Erreur METAR";
-    console.error("Erreur METAR:", err);
   }
 }
 
@@ -303,14 +208,11 @@ async function fetchWeatherData() {
       const temp = Math.round(weather.main?.temp ?? 0);
       const windSpeedMs = weather.wind?.speed ?? 0;
       const windSpeedKmh = msToKmh(windSpeedMs);
-      const windSpeedKt = Math.round(windSpeedMs * 1.94384);
       const windDeg = weather.wind?.deg ?? 0;
 
-      // Stockage global pour sonomètres
       if (code === "EBLG") window.metarEBLG = { windDeg };
       if (code === "EBCI") window.metarEBCI = { windDeg };
 
-      // Stockage du vent
       if (code === "EBLG") window.lastWindSpeedEBLG = windSpeedMs;
       if (code === "EBCI") window.lastWindSpeedEBCI = windSpeedMs;
 
@@ -320,10 +222,9 @@ async function fetchWeatherData() {
       document.getElementById(`${prefix}-temp`).textContent = `${temp}°C`;
       document.getElementById(`${prefix}-wind`).textContent =
         `Vent: ${windSpeedKmh} km/h (${windDeg}°)`;
+
       updateWindTrend(prefix, windSpeedKmh);
       updateCompassUI(prefix, windDeg, windSpeedKmh);
-
-      // ❌ supprimé : fetchWeatherForecast()
 
       drawApproachDepartureCones(code, apt.lat, apt.lon, windDeg);
       fetchSingleMetar(code);
@@ -334,30 +235,24 @@ async function fetchWeatherData() {
   }
 }
 
-// ---------------------------------------------------------------
-// Filtre aéroport — cockpit Airbus PRO+++
-// ---------------------------------------------------------------
+// ===============================================================
+// FILTRE AÉROPORT — cockpit Airbus PRO+++
+// ===============================================================
 window.filterAirportView = function(airport) {
     currentAirport = airport;
 
-    // Mise à jour du ND
     updateNdWindComponents(currentAirport);
     updateNdSonometersStatus();
 
-    // Mise à jour des sonomètres
-    if (sonometersEnabled) {
-        updateRunwaySonometers();
-    }
+    if (sonometersEnabled) updateRunwaySonometers();
 
-    // Recentrage automatique
     let target = AIRPORT_COORDS[currentAirport] || AIRPORT_COORDS.ALL;
     let zoom = currentAirport === "ALL" ? 8 : 11;
     map.setView(target, zoom, { animate: true });
 
-    // Mise à jour visuelle des boutons
-    document.querySelectorAll(".airport-icon-btn").forEach(btn => {
-        btn.classList.remove("active");
-    });
+    document.querySelectorAll(".airport-icon-btn").forEach(btn =>
+        btn.classList.remove("active")
+    );
 
     const btn = document.querySelector(`button[onclick="filterAirportView('${airport}')"]`);
     if (btn) btn.classList.add("active");
@@ -379,22 +274,23 @@ function setupSonometersToggle() {
 
         if (sonometersEnabled) {
             btn.classList.add("active");
-            updateRunwaySonometers();   // ← recharge les sonomètres
-            updateNdSonometersStatus(); // ← mise à jour ND SONO
+            updateRunwaySonometers();
+            updateNdSonometersStatus();
             updateNdWindComponents(currentAirport);
-
         } else {
             btn.classList.remove("active");
-            sonoLayer.clearLayers();    // ← supprime les sonomètres
-            updateNdSonometersStatus(); // ← ND SONO = OFF
+            sonoLayer.clearLayers();
+            updateNdSonometersStatus();
             updateNdWindComponents(currentAirport);
-
         }
     };
 
     bar.appendChild(btn);
 }
 
+// ===============================================================
+// RECENTER — cockpit Airbus PRO+++
+// ===============================================================
 function setupRecenterButton() {
     const btn = document.getElementById("btn-recenter");
     if (!btn) return;
@@ -402,7 +298,6 @@ function setupRecenterButton() {
     btn.onclick = () => {
         let target = AIRPORT_COORDS[currentAirport] || AIRPORT_COORDS.ALL;
         let zoom = currentAirport === "ALL" ? 8 : 11;
-
         map.setView(target, zoom, { animate: true });
     };
 }
