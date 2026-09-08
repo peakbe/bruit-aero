@@ -3,7 +3,8 @@
 // ===============================================================
 
 import { map } from "./map.js";
-import { WORKER_BASE_URL } from "./app.js";
+import { WORKER_BASE_URL } from "./config.js";
+
 const windHistory = {};   // { "F017": [12, 14, 11, ...] }
 
 // ---------------------------------------------------------------
