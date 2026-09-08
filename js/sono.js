@@ -122,10 +122,50 @@ export function renderSonometers(airport, runway, options = {}) {
         });
 
         marker.bindPopup(`
-            <b>${s.id}</b><br>
-            ${s.address}<br>
-            <i>${airport} piste ${runway}</i>
-        `);
+  <div id="popup-${s.id}" style="font-family:'Segoe UI'; font-size:13px; color:#e2e8f0;">
+    <h4 style="margin:0 0 4px 0; color:#38bdf8;">
+      Sonomètre ${s.id} — ${s.airport}
+    </h4>
+
+    <div style="font-size:11px; color:#94a3b8; margin-bottom:6px;">
+      ${s.address}
+    </div>
+
+    <div style="background:rgba(15,23,42,0.6); padding:6px; border-radius:6px; border:1px solid #334155;">
+      <b style="color:#f59e0b;">🌡️ Température :</b> <span id="temp-${s.id}">...</span><br>
+      <b style="color:#38bdf8;">💨 Vent :</b> <span id="wind-${s.id}">...</span><br>
+      <b style="color:#cbd5e1;">☁️ Météo :</b> <span id="desc-${s.id}">...</span><br>
+      <b style="color:#22c55e;">🛬 Piste active :</b> <span id="rwy-${s.id}">...</span>
+    </div>
+  </div>
+`);
+
+        marker.on("popupopen", async () => {
+  try {
+    const res = await fetch(`${WORKER_BASE_URL}/api/weather?lat=${lat}&lon=${lon}`);
+    if (!res.ok) return;
+
+    const w = await res.json();
+
+    const temp = Math.round(w.main?.temp ?? 0);
+    const windSpeed = Math.round((w.wind?.speed ?? 0) * 3.6);
+    const windDeg = w.wind?.deg ?? 0;
+    const desc = w.weather?.[0]?.description ?? "Ciel dégagé";
+
+    const runway = s.airport === "EBLG"
+      ? (windDeg > 180 ? "22" : "04")
+      : (windDeg > 180 ? "24" : "06");
+
+    document.getElementById(`temp-${s.id}`).textContent = `${temp}°C`;
+    document.getElementById(`wind-${s.id}`).textContent = `${windSpeed} km/h (${windDeg}°)`;
+    document.getElementById(`desc-${s.id}`).textContent = desc;
+    document.getElementById(`rwy-${s.id}`).textContent = runway;
+
+  } catch (err) {
+    console.error("Erreur météo sonomètre :", err);
+  }
+});
+
 
         sonoLayer.addLayer(marker);
     });
