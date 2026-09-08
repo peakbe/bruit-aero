@@ -62,6 +62,44 @@ function msToKmh(ms) {
 }
 
 // ===============================================================
+// ND — Sparkline vent PRO+++
+// ===============================================================
+export function updateWindTrend(prefix, speedKmh) {
+  const canvas = document.querySelector(
+    `.card[data-airport="${prefix.toUpperCase()}"] canvas.windtrend`
+  );
+  if (!canvas) return;
+
+  const ctx = canvas.getContext("2d");
+
+  windTrend[prefix.toUpperCase()].push(speedKmh);
+
+  if (windTrend[prefix.toUpperCase()].length > 30)
+    windTrend[prefix.toUpperCase()].shift();
+
+  const values = windTrend[prefix.toUpperCase()];
+  const max = Math.max(...values);
+  const min = Math.min(...values);
+  const range = max - min || 1;
+
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  ctx.strokeStyle = "#38bdf8"; // cyan Airbus
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+
+  values.forEach((v, i) => {
+    const x = (i / (values.length - 1)) * canvas.width;
+    const y = canvas.height - ((v - min) / range) * canvas.height;
+
+    if (i === 0) ctx.moveTo(x, y);
+    else ctx.lineTo(x, y);
+  });
+
+  ctx.stroke();
+}
+
+// ===============================================================
 // METAR VATSIM
 // ===============================================================
 async function fetchMetarData() {
