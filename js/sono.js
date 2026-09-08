@@ -96,9 +96,12 @@ export const sonoLayer = L.layerGroup();
 // ---------------------------------------------------------------
 // 5. Affichage des sonomètres
 // ---------------------------------------------------------------
-export function renderSonometers(airport, runway) {
+export function renderSonometers(airport, runway, options = {}) {
+    const { reset = false } = options;
 
-    sonoLayer.clearLayers();
+    if (reset) {
+        sonoLayer.clearLayers();
+    }
 
     const list = airport === "EBLG" ? sonometersEBLG : sonometersEBCI;
     const rule = rules[airport][runway];
@@ -109,8 +112,7 @@ export function renderSonometers(airport, runway) {
 
         const isGreen = rule.green.includes(s.id);
         const isRed   = rule.red.includes(s.id);
-
-        const color = isGreen ? "green" : isRed ? "red" : "gray";
+        const color   = isGreen ? "green" : isRed ? "red" : "gray";
 
         const marker = L.circleMarker([lat, lon], {
             radius: 7,
@@ -130,3 +132,4 @@ export function renderSonometers(airport, runway) {
 
     sonoLayer.addTo(map);
 }
+
