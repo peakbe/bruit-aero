@@ -26,7 +26,6 @@
     <h1><i data-feather="radio"></i> ND Airbus – Météo & Radar EBCI / EBLG</h1>
     <div id="clock">--:--:--</div>
   </header>
-<script src="https://unpkg.com/feather-icons"></script>
 
   <!-- BARRE DE CONTRÔLE -->
   <div class="control-bar-inline">
@@ -42,39 +41,36 @@
   <!-- METEO CARTES -->
   <div class="grid-container">
     <!-- METEO EBCI -->
-    <div class="card" data-airport="EBCI">
-      <div class="card-header">
-        <span class="card-title">Charleroi (EBCI / CRL)</span>
-        <span id="ebci-runway" class="runway-badge">Piste --</span>
-      </div>
-      <div class="weather-box">
-        <div class="metar-info">
-          <div class="temp-large" id="ebci-temp">--°C</div>
-          <div id="ebci-wind" class="wind-info">Vent: --</div>
+   <div class="card" data-airport="EBCI">
+  <div class="card-header">
+    <span class="card-title">Charleroi (EBCI / CRL)</span>
+    <span id="ebci-runway" class="runway-badge">Piste --</span>
+  </div>
 
-          <div id="ebci-metar" class="wind-info">METAR --</div>
-        </div>
-        <div class="rose-des-vents">
-         <div id="ebci-compass" class="compass">
-  <div class="compass-ring"></div>
+  <div class="weather-box">
+    <div class="metar-info">
+      <div class="temp-large" id="ebci-temp">--°C</div>
+      <div id="ebci-wind" class="wind-info">Vent: --</div>
+      <div id="ebci-metar" class="wind-info">METAR --</div>
+    </div>
 
-  <div class="compass-needle" id="ebci-compass-needle"></div>
-  <div class="compass-loc" id="ebci-compass-loc"></div>
-  <div class="compass-gp" id="ebci-compass-gp"></div>
-  <div class="compass-wind-vector" id="ebci-compass-wind"></div>
-
-  <div class="compass-center"></div>
-  <div class="compass-label" id="ebci-compass-label">---° / -- km/h</div>
-</div>
-
-        </div>
-      </div>
-     
-      </canvas>
-      <div style="font-size:10px; color:#64748b; text-align:center; margin-top:2px;">
-        Wind Trend — 30 min
+    <div class="rose-des-vents">
+      <div id="ebci-compass" class="compass">
+        <div class="compass-ring"></div>
+        <div class="compass-needle" id="ebci-compass-needle"></div>
+        <div class="compass-loc" id="ebci-compass-loc"></div>
+        <div class="compass-gp" id="ebci-compass-gp"></div>
+        <div class="compass-wind-vector" id="ebci-compass-wind"></div>
+        <div class="compass-center"></div>
+        <div class="compass-label" id="ebci-compass-label">---° / -- km/h</div>
       </div>
     </div>
+  </div>
+
+  <canvas class="windtrend" width="140" height="40"></canvas>
+  <div class="windtrend-label">Wind Trend — 30 min</div>
+</div>
+
 
     <!-- METEO EBLG -->
     <div class="card" data-airport="EBLG">
@@ -104,12 +100,9 @@
 
         </div>
       </div>
-      <canvas class="windtrend" width="140" height="40"
-        style="background:#0f172a; border:1px solid #334155; border-radius:6px; margin-top:6px;">
-      </canvas>
-      <div style="font-size:10px; color:#64748b; text-align:center; margin-top:2px;">
-        Wind Trend — 30 min
-      </div>
+       <canvas class="windtrend" width="140" height="40"></canvas>
+  <div class="windtrend-label">Wind Trend — 30 min</div>
+
     </div>
   </div>
 
