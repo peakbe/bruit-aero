@@ -404,6 +404,54 @@
       background: var(--accent-hover);
       color: #000;
     }
+    /* LOC / Glidepath / Vector wind Airbus */
+
+.compass-loc {
+  position: absolute;
+  width: 2px;
+  height: 40px;
+  background: #f97316; /* amber LOC */
+  top: 10px;
+  left: 50%;
+  transform-origin: bottom center;
+  border-radius: 999px;
+  box-shadow: 0 0 6px rgba(248, 113, 22, 0.9);
+}
+
+.compass-gp {
+  position: absolute;
+  width: 2px;
+  height: 26px;
+  background: #22c55e; /* green GP 3° */
+  top: 24px;
+  left: 50%;
+  transform-origin: bottom center;
+  border-radius: 999px;
+  box-shadow: 0 0 6px rgba(34, 197, 94, 0.9);
+}
+
+.compass-wind-vector {
+  position: absolute;
+  width: 34px;
+  height: 2px;
+  background: #38bdf8; /* cyan wind */
+  top: 50%;
+  left: 50%;
+  transform-origin: left center;
+  border-radius: 999px;
+  box-shadow: 0 0 6px rgba(56, 189, 248, 0.9);
+}
+
+.compass-wind-vector::after {
+  content: "";
+  position: absolute;
+  right: -4px;
+  top: -3px;
+  border-left: 6px solid #38bdf8;
+  border-top: 4px solid transparent;
+  border-bottom: 4px solid transparent;
+}
+
   </style>
 </head>
 
@@ -440,12 +488,18 @@
           <div id="ebci-metar" class="wind-info">METAR --</div>
         </div>
         <div class="rose-des-vents">
-          <div id="ebci-compass" class="compass">
-            <div class="compass-ring"></div>
-            <div class="compass-needle" id="ebci-compass-needle"></div>
-            <div class="compass-center"></div>
-            <div class="compass-label" id="ebci-compass-label">---° / -- km/h</div>
-          </div>
+         <div id="ebci-compass" class="compass">
+  <div class="compass-ring"></div>
+
+  <div class="compass-needle" id="ebci-compass-needle"></div>
+  <div class="compass-loc" id="ebci-compass-loc"></div>
+  <div class="compass-gp" id="ebci-compass-gp"></div>
+  <div class="compass-wind-vector" id="ebci-compass-wind"></div>
+
+  <div class="compass-center"></div>
+  <div class="compass-label" id="ebci-compass-label">---° / -- km/h</div>
+</div>
+
         </div>
       </div>
       <canvas class="windtrend" width="140" height="40"
@@ -470,12 +524,18 @@
           <div id="eblg-metar" class="wind-info">METAR --</div>
         </div>
         <div class="rose-des-vents">
-          <div id="eblg-compass" class="compass">
-            <div class="compass-ring"></div>
-            <div class="compass-needle" id="eblg-compass-needle"></div>
-            <div class="compass-center"></div>
-            <div class="compass-label" id="eblg-compass-label">---° / -- km/h</div>
-          </div>
+         <div id="eblg-compass" class="compass">
+  <div class="compass-ring"></div>
+
+  <div class="compass-needle" id="eblg-compass-needle"></div>
+  <div class="compass-loc" id="eblg-compass-loc"></div>
+  <div class="compass-gp" id="eblg-compass-gp"></div>
+  <div class="compass-wind-vector" id="eblg-compass-wind"></div>
+
+  <div class="compass-center"></div>
+  <div class="compass-label" id="eblg-compass-label">---° / -- km/h</div>
+</div>
+
         </div>
       </div>
       <canvas class="windtrend" width="140" height="40"
