@@ -13,7 +13,6 @@ import { updateCompassUI } from "./nd-panel.js";
 
 import {
   WORKER_BASE_URL,
-  AIRPORTS,
   AIRPORT_COORDS,
   RUNWAY_HEADINGS,
   RADAR_REFRESH_MS,
@@ -32,103 +31,22 @@ const windTrend = {
   EBCI: []
 };
 
+window.metarEBLG = { windDeg: 0 };
+window.metarEBCI = { windDeg: 0 };
+window.lastWindSpeedEBLG = 0;
+window.lastWindSpeedEBCI = 0;
+
 // ===============================================================
 // INITIALISATION
 // ===============================================================
-document.addEventListener("DOMContentLoaded", () => {
+document.addEventListener("DOMContentLoaded", async () => {
   initRadarMap();
 
   updateFIDS();
   setInterval(updateFIDS, RADAR_REFRESH_MS);
 
-  fetchMetarData();
-  fetchWeatherData().then(() => {
-    updateRunwaySonometers();
-    updateNdSonometersStatus(sonometersEnabled, sonoLayer);
-    updateNdWindComponents(
-      currentAirport,
-      window.metarEBLG,
-      window.metarEBCI,
-      window.lastWindSpeedEBLG,
-      window.lastWindSpeedEBCI,
-      RUNWAY_HEADINGS
-    );
-  });
-
-  setInterval(fetchMetarData, METAR_REFRESH_MS);
-  setInterval(async () => {
-    await fetchWeatherData();
-    updateRunwaySonometers();
-    updateNdSonometersStatus(sonometersEnabled, sonoLayer);
-    updateNdWindComponents(
-      currentAirport,
-      window.metarEBLG,
-      window.metarEBCI,
-      window.lastWindSpeedEBLG,
-      window.lastWindSpeedEBCI,
-      RUNWAY_HEADINGS
-    );
-  }, WEATHER_REFRESH_MS);
-
-  setupSonometersToggle();
-  setupRecenterButton();
-});
-
-// ===============================================================
-// UTILS
-// ===============================================================
-function msToKmh(ms) {
-  return Math.round(ms * 3.6);
-}
-
-// ===============================================================
-// METAR VATSIM
-// ===============================================================
-async function fetchMetarData() {
-  const airports = ["EBCI", "EBLG"];
-
-  for (const icao of airports) {
-    const el = document.getElementById(`${icao.toLowerCase()}-metar`);
-    if (!el) continue;
-
-    try {
-      const res = await fetch(`https://metar.vatsim.net/${icao}`);
-      el.innerText = res.ok ? (await res.text()).trim() : "Erreur METAR";
-    } catch {
-      el.innerText = "METAR indisponible";
-    }
-  }
-}
-
-// ===============================================================
-// SONOMÈTRES — cockpit Airbus PRO+++
-// ===============================================================
-function updateRunwaySonometers() {
-  if (!sonometersEnabled) {
-    sonoLayer.clearLayers();
-
-    updateNdSonometersStatus(sonometersEnabled, sonoLayer);
-    updateNdWindComponents(
-      currentAirport,
-      window.metarEBLG,
-      window.metarEBCI,
-      window.lastWindSpeedEBLG,
-      window.lastWindSpeedEBCI,
-      RUNWAY_HEADINGS
-    );
-
-    return;
-  }
-
-  const windEBLG = window.metarEBLG?.windDeg ?? 220;
-  const rwyEBLG = windEBLG > 180 ? "22" : "04";
-
-  const windEBCI = window.metarEBCI?.windDeg ?? 240;
-  const rwyEBCI = windEBCI > 180 ? "24" : "06";
-
-  renderSonometers("EBLG", rwyEBLG, { reset: true });
-  renderSonometers("EBCI", rwyEBCI);
-
+  await fetchWeatherData();
+  updateRunwaySonometers();
   updateNdSonometersStatus(sonometersEnabled, sonoLayer);
   updateNdWindComponents(
     currentAirport,
@@ -138,47 +56,30 @@ function updateRunwaySonometers() {
     window.lastWindSpeedEBCI,
     RUNWAY_HEADINGS
   );
-}
+
+  setInterval(fetchWeatherData, WEATHER_REFRESH_MS);
+  setInterval(fetchMetarData, METAR_REFRESH_MS);
+
+  setupSonometersToggle();
+  setupRecenterButton();
+});
 
 // ===============================================================
-// AUTO-SELECTION PISTE
+// METAR (fallback si Worker indisponible)
 // ===============================================================
-function autoSelectRunway(airport, windDeg, windSpeed) {
-  const RWYS = airport === "EBLG"
-    ? [{ num: "22", heading: 220 }, { num: "04", heading: 40 }]
-    : [{ num: "24", heading: 240 }, { num: "06", heading: 60 }];
+async function fetchMetarData() {
+  const airports = ["EBCI", "EBLG"];
 
-  let best = RWYS[0];
-  let bestHeadwind = -999;
+  for (const apt of airports) {
+    const el = document.getElementById(`${apt.toLowerCase()}-metar`);
+    if (!el) continue;
 
-  RWYS.forEach(rwy => {
-    const diff = Math.abs(windDeg - rwy.heading);
-    const angle = diff > 180 ? 360 - diff : diff;
-    const headwind = windSpeed * Math.cos(angle * Math.PI / 180);
-    if (headwind > bestHeadwind) {
-      bestHeadwind = headwind;
-      best = rwy;
+    try {
+      const res = await fetch(`https://metar.vatsim.net/${apt}`);
+      el.innerText = res.ok ? (await res.text()).trim() : "METAR indisponible";
+    } catch {
+      el.innerText = "METAR indisponible";
     }
-  });
-
-  const el = document.getElementById(
-    airport === "EBLG" ? "eblg-runway" : "ebci-runway"
-  );
-  if (el) el.textContent = `Piste ${best.num}`;
-}
-
-// ===============================================================
-// METEO + ILS
-// ===============================================================
-async function fetchSingleMetar(code) {
-  const el = document.getElementById(`${code.toLowerCase()}-metar`);
-  if (!el) return;
-
-  try {
-    const res = await fetch(`https://metar.vatsim.net/${code}`);
-    el.textContent = res.ok ? (await res.text()).trim() : "METAR indisponible";
-  } catch {
-    el.textContent = "Erreur METAR";
   }
 }
 
@@ -201,16 +102,17 @@ async function fetchWeatherData() {
       // --- METEO ---
       const temp = Math.round(data.meteo.main.temp);
       const windSpeedKmh = data.meteo.wind.speed;
+      const windSpeedMs = windSpeedKmh / 3.6;
       const windDeg = data.meteo.wind.deg;
 
       // Stockage global ND Airbus
       if (apt === "EBLG") {
         window.metarEBLG = { windDeg };
-        window.lastWindSpeedEBLG = windSpeedKmh / 3.6; // m/s
+        window.lastWindSpeedEBLG = windSpeedMs;
       }
       if (apt === "EBCI") {
         window.metarEBCI = { windDeg };
-        window.lastWindSpeedEBCI = windSpeedKmh / 3.6; // m/s
+        window.lastWindSpeedEBCI = windSpeedMs;
       }
 
       // UI cockpit Airbus
@@ -222,7 +124,7 @@ async function fetchWeatherData() {
       updateWindTrend(prefix, windSpeedKmh, windTrend);
       updateCompassUI(prefix, windDeg, windSpeedKmh);
 
-      autoSelectRunway(apt, windDeg, windSpeedKmh / 3.6);
+      autoSelectRunway(apt, windDeg, windSpeedMs);
 
       drawApproachDepartureCones(
         apt,
@@ -237,21 +139,62 @@ async function fetchWeatherData() {
   }
 }
 
-
-function updateWeatherUI(apt, meteo) {
-  const prefix = apt.toLowerCase();
-  document.getElementById(`${prefix}-temp`).textContent =
-    `${Math.round(meteo.main.temp)}°C`;
-
-  document.getElementById(`${prefix}-wind`).textContent =
-    `Vent: ${meteo.wind.speed} km/h (${meteo.wind.deg}°)`;
-}
-
+// ===============================================================
+// METAR UI
+// ===============================================================
 function updateMetarUI(apt, metarRaw) {
   const el = document.getElementById(`${apt.toLowerCase()}-metar`);
   if (el) el.textContent = metarRaw;
 }
 
+// ===============================================================
+// AUTO-SELECTION PISTE
+// ===============================================================
+function autoSelectRunway(airport, windDeg, windSpeedMs) {
+  const RWYS = airport === "EBLG"
+    ? [{ num: "22", heading: 220 }, { num: "04", heading: 40 }]
+    : [{ num: "24", heading: 240 }, { num: "06", heading: 60 }];
+
+  let best = RWYS[0];
+  let bestHeadwind = -999;
+
+  RWYS.forEach(rwy => {
+    const diff = Math.abs(windDeg - rwy.heading);
+    const angle = diff > 180 ? 360 - diff : diff;
+    const headwind = windSpeedMs * Math.cos(angle * Math.PI / 180);
+    if (headwind > bestHeadwind) {
+      bestHeadwind = headwind;
+      best = rwy;
+    }
+  });
+
+  const el = document.getElementById(
+    airport === "EBLG" ? "eblg-runway" : "ebci-runway"
+  );
+  if (el) el.textContent = `Piste ${best.num}`;
+}
+
+// ===============================================================
+// SONOMÈTRES — cockpit Airbus PRO+++
+// ===============================================================
+function updateRunwaySonometers() {
+  if (!sonometersEnabled) {
+    sonoLayer.clearLayers();
+    updateNdSonometersStatus(sonometersEnabled, sonoLayer);
+    return;
+  }
+
+  const windEBLG = window.metarEBLG.windDeg;
+  const rwyEBLG = windEBLG > 180 ? "22" : "04";
+
+  const windEBCI = window.metarEBCI.windDeg;
+  const rwyEBCI = windEBCI > 180 ? "24" : "06";
+
+  renderSonometers("EBLG", rwyEBLG, { reset: true });
+  renderSonometers("EBCI", rwyEBCI);
+
+  updateNdSonometersStatus(sonometersEnabled, sonoLayer);
+}
 
 // ===============================================================
 // FILTRE AÉROPORT — cockpit Airbus PRO+++
@@ -303,30 +246,20 @@ function setupSonometersToggle() {
     if (sonometersEnabled) {
       btn.classList.add("active");
       updateRunwaySonometers();
-
-      updateNdSonometersStatus(sonometersEnabled, sonoLayer);
-      updateNdWindComponents(
-        currentAirport,
-        window.metarEBLG,
-        window.metarEBCI,
-        window.lastWindSpeedEBLG,
-        window.lastWindSpeedEBCI,
-        RUNWAY_HEADINGS
-      );
     } else {
       btn.classList.remove("active");
       sonoLayer.clearLayers();
-
-      updateNdSonometersStatus(sonometersEnabled, sonoLayer);
-      updateNdWindComponents(
-        currentAirport,
-        window.metarEBLG,
-        window.metarEBCI,
-        window.lastWindSpeedEBLG,
-        window.lastWindSpeedEBCI,
-        RUNWAY_HEADINGS
-      );
     }
+
+    updateNdSonometersStatus(sonometersEnabled, sonoLayer);
+    updateNdWindComponents(
+      currentAirport,
+      window.metarEBLG,
+      window.metarEBCI,
+      window.lastWindSpeedEBLG,
+      window.lastWindSpeedEBCI,
+      RUNWAY_HEADINGS
+    );
   };
 
   bar.appendChild(btn);
