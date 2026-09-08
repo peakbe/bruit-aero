@@ -212,6 +212,5 @@ function setupSonometersToggle() {
 export {
   fetchWeatherData,
   fetchMetarData,
-  autoSelectRunway,
-  drawApproachDepartureCones
+  autoSelectRunway
 };
