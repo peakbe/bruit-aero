@@ -50,15 +50,38 @@ function updateNdPanel() {
 export function updateCompassUI(prefix, windDeg, windSpeedKmh) {
   const needle = document.getElementById(`${prefix}-compass-needle`);
   const label = document.getElementById(`${prefix}-compass-label`);
+  const loc = document.getElementById(`${prefix}-compass-loc`);
+  const gp = document.getElementById(`${prefix}-compass-gp`);
+  const windVec = document.getElementById(`${prefix}-compass-wind`);
 
-  if (!needle || !label) return;
+  if (!needle || !label || !loc || !gp || !windVec) return;
 
-  // Rotation de l’aiguille
+  // Aiguille vent
   needle.style.transform = `rotate(${windDeg}deg)`;
+
+  // Vector wind arrow — même angle que le vent
+  windVec.style.transform = `rotate(${windDeg}deg) translate(-50%, -50%)`;
+
+  // LOC approximatif : on aligne la piste sur le vent (comme ton ND vent)
+  // EBCI: 24/06, EBLG: 22/04
+  let runwayHeading = 0;
+
+  if (prefix === "ebci") {
+    runwayHeading = windDeg > 180 ? 240 : 60;
+  } else if (prefix === "eblg") {
+    runwayHeading = windDeg > 180 ? 220 : 40;
+  }
+
+  loc.style.transform = `rotate(${runwayHeading}deg)`;
+
+  // Glidepath 3° : on le représente comme une petite barre verte légèrement décalée
+  // Ici, on le garde aligné sur la piste (LOC), mais tu peux le décaler si tu veux
+  gp.style.transform = `rotate(${runwayHeading}deg)`;
 
   // Label Airbus
   label.textContent = `${windDeg}° / ${windSpeedKmh} km/h`;
 }
+
 
 // Mise à jour automatique
 setInterval(updateNdPanel, 2000);
