@@ -4,6 +4,11 @@
 import { map, initRadarMap, drawApproachDepartureCones } from "./map.js";
 import { updateFIDS } from "./fids.js";
 import { renderSonometers, sonoLayer } from "./sono.js";
+import {
+  updateWindTrend,
+  updateNdWindComponents,
+  updateNdSonometersStatus
+} from "./nd-utils.js";
 
 import {
   WORKER_BASE_URL,
@@ -82,8 +87,15 @@ function updateRunwaySonometers() {
 
     if (!sonometersEnabled) {
         sonoLayer.clearLayers();
-        updateNdSonometersStatus();
-        updateNdWindComponents(currentAirport);
+        updateNdSonometersStatus(sonometersEnabled, sonoLayer);
+        updateNdWindComponents(
+    currentAirport,
+    window.metarEBLG,
+    window.metarEBCI,
+    window.lastWindSpeedEBLG,
+    window.lastWindSpeedEBCI,
+    RUNWAY_HEADINGS
+);
         return;
     }
 
