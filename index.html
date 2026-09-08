@@ -355,16 +355,15 @@
 
   <!-- BARRE DE CONTRÔLE -->
   <div class="control-bar-inline">
-    <div class="control-group">
-      <span class="control-label">Aéroport</span>
-      <button class="airport-icon-btn active"
-              onclick="filterAirportView('ALL')">✈️ Tous</button>
-      <button class="airport-icon-btn"
-              onclick="filterAirportView('EBCI')">🟦 EBCI</button>
-      <button class="airport-icon-btn"
-              onclick="filterAirportView('EBLG')">🟩 EBLG</button>
-    </div>
+  <div class="control-group">
+    <span class="control-label">Aéroport :</span>
+    <button class="airport-icon-btn active" onclick="filterAirportView('ALL')">✈️ Tous</button>
+    <button class="airport-icon-btn" onclick="filterAirportView('EBCI')">🟦 EBCI</button>
+    <button class="airport-icon-btn" onclick="filterAirportView('EBLG')">🟩 EBLG</button>
+    <button class="airport-icon-btn" id="btn-recenter">📍 Recentrer</button>
   </div>
+</div>
+
 
   <!-- METEO CARTES -->
   <div class="grid-container">
