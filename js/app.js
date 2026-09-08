@@ -78,6 +78,8 @@ function updateRunwaySonometers() {
 
     if (!sonometersEnabled) {
         sonoLayer.clearLayers();
+        updateNdSonometersStatus();
+        updateNdWindComponents(currentAirport);
         return;
     }
 
@@ -89,10 +91,13 @@ function updateRunwaySonometers() {
     const windEBCI = window.metarEBCI?.windDeg ?? 240;
     const rwyEBCI = windEBCI > 180 ? "24" : "06";
 
-    // Reset une fois, puis ajout des deux aéroports
     renderSonometers("EBLG", rwyEBLG, { reset: true });
     renderSonometers("EBCI", rwyEBCI);
+
+    updateNdSonometersStatus();
+    updateNdWindComponents(currentAirport);   // ← nouveau panneau ND
 }
+
 
 function updateNdSonometersStatus() {
     const el = document.getElementById("nd-sono");
@@ -106,6 +111,45 @@ function updateNdSonometersStatus() {
 
     const count = sonoLayer.getLayers().length;
     el.textContent = `${count}`;
+    el.style.color = "#38bdf8"; // cyan Airbus
+}
+
+// Fonction PRO+++ de calcul des composantes vent
+function updateNdWindComponents(airport) {
+    const el = document.getElementById("nd-windcomp");
+    if (!el) return;
+
+    const windDeg = airport === "EBLG"
+        ? window.metarEBLG?.windDeg
+        : window.metarEBCI?.windDeg;
+
+    if (!windDeg) {
+        el.textContent = "---";
+        el.style.color = "#fbbf24"; // amber
+        return;
+    }
+
+    const runway = airport === "EBLG"
+        ? (windDeg > 180 ? 22 : 4)
+        : (windDeg > 180 ? 24 : 6);
+
+    const runwayHeading = runway * 10; // 22 → 220°, 04 → 40°, etc.
+
+    const diff = windDeg - runwayHeading;
+    const angle = ((diff + 540) % 360) - 180;
+
+    const windSpeedMs = airport === "EBLG"
+        ? window.lastWindSpeedEBLG ?? 0
+        : window.lastWindSpeedEBCI ?? 0;
+
+    const windSpeedKt = Math.round(windSpeedMs * 1.94384);
+
+    const headwind = Math.round(windSpeedKt * Math.cos(angle * Math.PI / 180));
+    const crosswind = Math.round(windSpeedKt * Math.sin(angle * Math.PI / 180));
+
+    const cwDir = crosswind > 0 ? "→" : "←";
+
+    el.textContent = `${headwind} kt / ${Math.abs(crosswind)} kt ${cwDir}`;
     el.style.color = "#38bdf8"; // cyan Airbus
 }
 
@@ -159,6 +203,10 @@ async function fetchWeatherData() {
       if (code === "EBLG") window.metarEBLG = { windDeg };
       if (code === "EBCI") window.metarEBCI = { windDeg };
 
+      // Stockage du vent
+      if (code === "EBLG") window.lastWindSpeedEBLG = windSpeedMs;
+      if (code === "EBCI") window.lastWindSpeedEBCI = windSpeedMs;
+
       autoSelectRunway(code, windDeg, windSpeedMs);
 
       const prefix = code.toLowerCase();
@@ -196,10 +244,14 @@ function setupSonometersToggle() {
             btn.classList.add("active");
             updateRunwaySonometers();   // ← recharge les sonomètres
             updateNdSonometersStatus(); // ← mise à jour ND SONO
+            updateNdWindComponents(currentAirport);
+
         } else {
             btn.classList.remove("active");
             sonoLayer.clearLayers();    // ← supprime les sonomètres
             updateNdSonometersStatus(); // ← ND SONO = OFF
+            updateNdWindComponents(currentAirport);
+
         }
     };
 
