@@ -7,8 +7,10 @@ import { ILS_CONFIG } from "./config-ILS.js";
 import {
   ILS_CONE_LENGTH,
   ILS_CONE_SPREAD,
-  RADAR_REFRESH_MS
+  RADAR_REFRESH_MS,
+  AIRPORT_COORDS
 } from "./config.js";
+
 
 export let map = null;
 export const planesLayer = L.layerGroup();
