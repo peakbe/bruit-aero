@@ -134,18 +134,43 @@ createMarkers(sonometersEBLG);
 // ===============================================================
 export function renderSonometers(airport, runway) {
 
-  // 🟦 Cas ALL : afficher tout en gris cockpit Airbus
+  // 🟦 MODE ALL — afficher EBLG + EBCI avec leurs vraies couleurs
   if (airport === "ALL") {
+
+    // EBLG → piste par défaut (22)
+    const ruleEBLG = rules.EBLG["22"];
+
     Object.values(sonoIndex).forEach(marker => {
-      marker.setStyle({
-        color: "gray",
-        fillColor: "gray"
-      });
+      if (marker._airport !== "EBLG") return;
+
+      const id = marker._id;
+      let color = "gray";
+
+      if (ruleEBLG.green.has(id)) color = "lime";
+      if (ruleEBLG.red.has(id))   color = "red";
+
+      marker.setStyle({ color, fillColor: color });
     });
+
+    // EBCI → piste par défaut (24)
+    const ruleEBCI = rules.EBCI["24"];
+
+    Object.values(sonoIndex).forEach(marker => {
+      if (marker._airport !== "EBCI") return;
+
+      const id = marker._id;
+      let color = "gray";
+
+      if (ruleEBCI.green.has(id)) color = "lime";
+      if (ruleEBCI.red.has(id))   color = "red";
+
+      marker.setStyle({ color, fillColor: color });
+    });
+
     return;
   }
 
-  // 🟦 Cas normal
+  // 🟦 MODE NORMAL (EBLG ou EBCI)
   const airportRules = rules[airport];
   if (!airportRules) return;
 
