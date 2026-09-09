@@ -11,19 +11,27 @@ import {
   AIRPORT_COORDS
 } from "./config.js";
 
-
+// ===============================================================
+// GLOBALS
+// ===============================================================
 export let map = null;
+
+// Dictionnaire avion → lookup O(1)
 export const planesLayer = L.layerGroup();
+const planeIndex = {}; // { hex: marker }
 
 if (!window.ilsLayers) window.ilsLayers = {};
 
 // ===============================================================
-// 1. INITIALISATION DE LA CARTE
+// 1. INITIALISATION DE LA CARTE — PRO+++
 // ===============================================================
 export function initRadarMap() {
   if (map) return map;
 
-  map = L.map("map").setView([AIRPORT_COORDS.ALL.lat, AIRPORT_COORDS.ALL.lon], 8);
+  map = L.map("map").setView(
+    [AIRPORT_COORDS.ALL.lat, AIRPORT_COORDS.ALL.lon],
+    8
+  );
 
   L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
     maxZoom: 19,
@@ -33,8 +41,10 @@ export function initRadarMap() {
   planesLayer.addTo(map);
   sonoLayer.addTo(map);
 
-  // Correction affichage Leaflet
-  setTimeout(() => map.invalidateSize(), 200);
+  // Correction affichage Leaflet (GitHub Pages + preload CSS)
+  setTimeout(() => {
+    if (map) map.invalidateSize();
+  }, 200);
 
   return map;
 }
@@ -56,12 +66,11 @@ export async function updateRadar() {
 
       active.add(p.hex);
 
-      let marker = null;
+      let marker = planeIndex[p.hex];
 
-      planesLayer.eachLayer(m => {
-        if (m._hex === p.hex) marker = m;
-      });
-
+      // -----------------------------------------------------------
+      // Création du marqueur avion — ND Airbus PRO+++
+      // -----------------------------------------------------------
       if (!marker) {
         marker = L.circleMarker([p.lat, p.lon], {
           radius: 5,
@@ -82,14 +91,22 @@ export async function updateRadar() {
         });
 
         planesLayer.addLayer(marker);
+        planeIndex[p.hex] = marker;
       }
 
+      // Mise à jour position
       marker.setLatLng([p.lat, p.lon]);
       marker.options.data = p;
     });
 
-    planesLayer.eachLayer(marker => {
-      if (!active.has(marker._hex)) planesLayer.removeLayer(marker);
+    // -------------------------------------------------------------
+    // Suppression des avions disparus — PRO+++
+    // -------------------------------------------------------------
+    Object.keys(planeIndex).forEach(hex => {
+      if (!active.has(hex)) {
+        planesLayer.removeLayer(planeIndex[hex]);
+        delete planeIndex[hex];
+      }
     });
 
   } catch (err) {
@@ -100,14 +117,18 @@ export async function updateRadar() {
 setInterval(updateRadar, RADAR_REFRESH_MS);
 
 // ===============================================================
-// 3. ILS — Cône + LOC + Glidepath 3°
+// 3. ILS — Cône + LOC + Glidepath 3° — PRO+++
 // ===============================================================
 export function drawApproachDepartureCones(airport, lat, lon, windDeg) {
 
+  // Nettoyage ancien ILS
   if (!window.ilsLayers[airport]) window.ilsLayers[airport] = [];
   window.ilsLayers[airport].forEach(layer => map.removeLayer(layer));
   window.ilsLayers[airport] = [];
 
+  // ---------------------------------------------------------------
+  // Détermination piste active
+  // ---------------------------------------------------------------
   const runway = airport === "EBLG"
     ? (windDeg > 180 ? "22" : "04")
     : (windDeg > 180 ? "24" : "06");
@@ -117,6 +138,10 @@ export function drawApproachDepartureCones(airport, lat, lon, windDeg) {
   const threshold = [ils.threshold.lat, ils.threshold.lon];
 
   const rad = heading * Math.PI / 180;
+
+  // ---------------------------------------------------------------
+  // CÔNE ILS — PRO+++
+  // ---------------------------------------------------------------
   const dx = Math.sin(rad) * ILS_CONE_LENGTH / 111320;
   const dy = Math.cos(rad) * ILS_CONE_LENGTH / 111320;
 
@@ -142,6 +167,9 @@ export function drawApproachDepartureCones(airport, lat, lon, windDeg) {
     window.ilsLayers[airport].push(poly);
   });
 
+  // ---------------------------------------------------------------
+  // LOCALIZER (LOC) — PRO+++
+  // ---------------------------------------------------------------
   const loc = ils.loc;
   const locStart = [loc.lat, loc.lon];
 
@@ -158,6 +186,9 @@ export function drawApproachDepartureCones(airport, lat, lon, windDeg) {
 
   window.ilsLayers[airport].push(locLine);
 
+  // ---------------------------------------------------------------
+  // GLIDEPATH 3° — PRO+++
+  // ---------------------------------------------------------------
   const gp = ils.glidepath;
 
   const fafDistDeg = gp.fafDistanceNm * 1852 / 111320;
