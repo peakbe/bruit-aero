@@ -17,7 +17,7 @@ function dmsToDecimal(dms) {
 // ---------------------------------------------------------------
 // 2. Sonomètres EBCI / EBLG
 // ---------------------------------------------------------------
-export const sonometersEBCI = [ 
+const rawEBCI = [ 
    { id: "F101", address: "Rue Bruhaute 46, Jumet", latDMS: "50 26 52.37 N", lonDMS: "4 24 57.02 E" },
 { id: "F102", address: "Rue du Vigneron 5, Jumet", latDMS: "50 26 45.73 N", lonDMS: "4 25 22.56 E" },
 { id: "F103", address: "Rue Docteur Pircard 61, Jumet", latDMS: "50 27 8.59 N", lonDMS: "4 24 56.68 E" },
@@ -37,7 +37,7 @@ export const sonometersEBCI = [
 { id: "F119", address: "Rue René Delhaize 39, Ransart", latDMS: "50 27 47.57 N", lonDMS: "4 28 44.73 E" }
 ];   // (tes données)
 
-export const sonometersEBLG = [
+const rawEBLG = [
 { id: "F001", address: "Rue Franquet 15, Houtain", latDMS: "50 44 16.96 N", lonDMS: "5 36 31.8 E" },
 { id: "F002", address: "Rue Noiset 23, St Georges", latDMS: "50 35 18.29 N", lonDMS: "5 22 13.88 E" },
 { id: "F003", address: "Rue Fond Méan 7, St Georges", latDMS: "50 36 4.2 N", lonDMS: "5 22 53.04 E" },
@@ -119,16 +119,7 @@ function createMarkers(list) {
     marker._id = s.id;
     marker._airport = s.airport;
 
-    marker.bindPopup(`
-      <div style="font-family:'Segoe UI'; font-size:13px; color:#e2e8f0;">
-        <h4 style="margin:0 0 4px 0; color:#38bdf8;">
-          Sonomètre ${s.id}
-        </h4>
-        <div style="font-size:11px; color:#94a3b8;">
-          ${s.address}
-        </div>
-      </div>
-    `);
+    marker.bindPopup(buildPopupHTML(s));
 
     sonoLayer.addLayer(marker);
     sonoIndex[s.id] = marker;
