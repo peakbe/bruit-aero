@@ -343,56 +343,58 @@ export default {
         }
       }
 
-      // -------------------------------------------------------------
-// X. METEO FUSIONNÉE (METAR + Open-Meteo)
+     // -------------------------------------------------------------
+// METEO FUSIONNÉE (METAR + Open-Meteo) — PRO+++
 // -------------------------------------------------------------
 if (path.includes("/api/meteo")) {
   const apt = (url.searchParams.get("apt") || "EBLG").toUpperCase();
+
+  // Coordonnées ND Airbus
   const coords = AIRPORT_COORDS[apt] || AIRPORT_COORDS.EBLG;
 
+  // -----------------------------
   // METAR VATSIM
+  // -----------------------------
   let metarRaw = "METAR indisponible";
   try {
-    const metarRes = await fetchWithTimeout(
-      `https://metar.vatsim.net/metar.php?id=${apt}`
-    );
-    if (metarRes.ok) {
-      metarRaw = (await metarRes.text()).trim();
-    }
+    const metarRes = await fetch(`https://metar.vatsim.net/${apt}`);
+    if (metarRes.ok) metarRaw = (await metarRes.text()).trim();
   } catch (e) {
     metarRaw = "METAR indisponible";
   }
 
+  // -----------------------------
   // METEO Open-Meteo
+  // -----------------------------
   let meteo = {
-    main: { temp: 20 },
+    main: { temp: 0 },
     wind: { speed: 0, deg: 0 },
     weather: [{ description: "Indisponible", icon: "03d" }]
   };
 
   try {
-    const res = await fetchWithTimeout(
-      `https://api.open-meteo.com/v1/forecast?latitude=${coords.lat}&longitude=${coords.lng}&current_weather=true`
+    const res = await fetch(
+      `https://api.open-meteo.com/v1/forecast?latitude=${coords.lat}&longitude=${coords.lon}&current_weather=true`
     );
 
     if (res.ok) {
       const data = await res.json();
       const cw = data.current_weather || {};
-      const wmoInfo = decodeWmoCode(cw.weathercode ?? 0);
 
       meteo = {
-        main: { temp: cw.temperature ?? 20 },
+        main: { temp: cw.temperature ?? 0 },
         wind: {
-          speed: cw.windspeed
-            ? Math.round((cw.windspeed) * 10) / 10 // km/h
-            : 0,
+          speed: cw.windspeed ?? 0,
           deg: cw.winddirection ?? 0
         },
-        weather: [{ description: wmoInfo.desc, icon: wmoInfo.icon }]
+        weather: [{
+          description: "Ciel dégagé",
+          icon: "01d"
+        }]
       };
     }
   } catch (e) {
-    // on garde le meteo par défaut
+    // On garde les valeurs par défaut
   }
 
   return new Response(
@@ -403,7 +405,6 @@ if (path.includes("/api/meteo")) {
     }
   );
 }
-
       // -------------------------------------------------------------
       // 6. FIDS UNIFIÉ (EBLG officiel + AirLabs + mock)
       // -------------------------------------------------------------
