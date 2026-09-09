@@ -1,25 +1,17 @@
 // ===============================================================
-// sono.js — Sonomètres EBLG + EBCI + couleurs dynamiques
+// sono.js — Sonomètres EBLG + EBCI — Version PRO+++
 // ===============================================================
 
 import { map } from "./map.js";
 import { WORKER_BASE_URL } from "./config.js";
 
-const windHistory = {};   // { "F017": [12, 14, 11, ...] }
-
-// ---------------------------------------------------------------
-// 1. Conversion DMS → décimal
-// ---------------------------------------------------------------
+// ===============================================================
+// 1. Conversion DMS → décimal (optimisée)
+// ===============================================================
 function dmsToDecimal(dms) {
-    const parts = dms.split(" ");
-    const deg = parseFloat(parts[0]);
-    const min = parseFloat(parts[1]);
-    const sec = parseFloat(parts[2]);
-    const dir = parts[3];
-
-    let dec = deg + (min / 60) + (sec / 3600);
-    if (dir === "S" || dir === "W") dec *= -1;
-    return dec;
+  const [deg, min, sec, dir] = dms.split(" ");
+  let dec = +deg + (+min / 60) + (+sec / 3600);
+  return (dir === "S" || dir === "W") ? -dec : dec;
 }
 
 // ---------------------------------------------------------------
@@ -65,206 +57,264 @@ export const sonometersEBLG = [
 { id: "F017", address: "Rue de la Pommeraie, 4690 Wonck", latDMS: "50 45 53.58 N", lonDMS: "5 37 50.18 E" }
 ];   // (tes données)
 
-// ---------------------------------------------------------------
-// 3. Conditions d'affichage selon piste
-// ---------------------------------------------------------------
+// ===============================================================
+// 3. Pré‑calcul lat/lon + création dictionnaire
+// ===============================================================
+function preprocess(list, airport) {
+  return list.map(s => ({
+    ...s,
+    airport,
+    lat: dmsToDecimal(s.latDMS),
+    lon: dmsToDecimal(s.lonDMS)
+  }));
+}
+
+export const sonometersEBCI = preprocess(rawEBCI, "EBCI");
+export const sonometersEBLG = preprocess(rawEBLG, "EBLG");
+
+// ===============================================================
+// 4. Règles cockpit Airbus — lookup O(1)
+// ===============================================================
 const rules = {
-    EBLG: {
-        "22": {
-            green: ["F001","F002","F003","F004","F005","F006","F007","F008","F009","F010","F011","F012","F013","F014","F015","F016","F017"],
-            red: []
-        },
-        "04": {
-            green: ["F001","F002","F003","F007","F008","F009","F011","F013","F014","F015"],
-            red:   ["F004","F005","F006","F010","F012","F016","F017"]
-        }
+  EBLG: {
+    "22": {
+      green: new Set(["F001","F002","F003","F004","F005","F006","F007","F008","F009","F010","F011","F012","F013","F014","F015","F016","F017"]),
+      red:   new Set()
     },
-    EBCI: {
-        "24": {
-            green: ["F101","F102","F103","F104","F105","F106","F107","F108","F109","F110","F111","F112","F114","F116","F117","F118","F119"],
-            red: []
-        },
-        "06": {
-            green: ["F101","F102","F103","F104","F105","F106","F107","F108","F109","F110","F111","F112","F119"],
-            red:   ["F114","F116","F117","F118"]
-        }
+    "04": {
+      green: new Set(["F001","F002","F003","F007","F008","F009","F011","F013","F014","F015"]),
+      red:   new Set(["F004","F005","F006","F010","F012","F016","F017"])
     }
+  },
+  EBCI: {
+    "24": {
+      green: new Set(["F101","F102","F103","F104","F105","F106","F107","F108","F109","F110","F111","F112","F114","F116","F117","F118","F119"]),
+      red:   new Set()
+    },
+    "06": {
+      green: new Set(["F101","F102","F103","F104","F105","F106","F107","F108","F109","F110","F111","F112","F119"]),
+      red:   new Set(["F114","F116","F117","F118"])
+    }
+  }
 };
 
-// ---------------------------------------------------------------
-// 4. Layer sonomètres
-// ---------------------------------------------------------------
+// ===============================================================
+// 5. Layer + dictionnaire markers
+// ===============================================================
 export const sonoLayer = L.layerGroup();
+const sonoIndex = {}; // { id: marker }
 
-// ---------------------------------------------------------------
-// 5. Affichage des sonomètres
-// ---------------------------------------------------------------
-export function renderSonometers(airport, runway, options = {}) {
-    const { reset = false } = options;
-
-    if (reset) {
-        sonoLayer.clearLayers();
-    }
-
-    const list = airport === "EBLG" ? sonometersEBLG : sonometersEBCI;
-    const rule = rules[airport][runway];
-
-    list.forEach(s => {
-        const lat = dmsToDecimal(s.latDMS);
-        const lon = dmsToDecimal(s.lonDMS);
-
-        const isGreen = rule.green.includes(s.id);
-        const isRed   = rule.red.includes(s.id);
-        const color   = isGreen ? "green" : isRed ? "red" : "gray";
-
-        const marker = L.circleMarker([lat, lon], {
-            radius: 7,
-            color,
-            weight: 2,
-            fillOpacity: 0.8
-        });
-
-       marker.bindPopup(`
-  <div id="popup-${s.id}" style="font-family:'Segoe UI'; font-size:13px; color:#e2e8f0;">
-    <h4 style="margin:0 0 4px 0; color:#38bdf8;">
-      Sonomètre ${s.id} — ${s.airport}
-    </h4>
-
-    <div style="font-size:11px; color:#94a3b8; margin-bottom:6px;">
-      ${s.address}
-    </div>
-
-    <!-- 🟦 Rose des vents locale -->
-    <div id="windrose-${s.id}" style="text-align:center; margin:8px 0;">
-      <div style="
-        position:relative;
-        width:70px;
-        height:70px;
-        margin:auto;
-        border:2px solid #334155;
-        border-radius:50%;
-        background:#1e293b;
-        display:flex;
-        align-items:center;
-        justify-content:center;">
-        <span style="position:absolute; top:2px; font-size:9px; color:#ef4444; font-weight:bold;">N</span>
-        <div id="windarrow-${s.id}" style="
-          width:100%;
-          height:100%;
-          display:flex;
-          align-items:center;
-          justify-content:center;
-          transition:transform 0.5s ease;">
-          <div style="
-            width:0;
-            height:0;
-            border-left:6px solid transparent;
-            border-right:6px solid transparent;
-            border-bottom:26px solid #38bdf8;">
-          </div>
-        </div>
-      </div>
-      <span id="windtext-${s.id}" style="font-size:11px; color:#94a3b8; display:block; margin-top:4px;">...</span>
-    </div>
-
-<!-- 🟦 Mini-graphique vent/temps -->
-<div style="margin-top:10px;">
-  <canvas id="windchart-${s.id}" width="140" height="40"
-    style="background:#0f172a; border:1px solid #334155; border-radius:6px;">
-  </canvas>
-  <div style="font-size:10px; color:#64748b; text-align:center; margin-top:2px;">
-    Vent — 30 min
-  </div>
-</div>
-
-    <!-- 🟩 Bloc météo -->
-    <div style="background:rgba(15,23,42,0.6); padding:6px; border-radius:6px; border:1px solid #334155;">
-      <b style="color:#f59e0b;">🌡️ Température :</b> <span id="temp-${s.id}">...</span><br>
-      <b style="color:#38bdf8;">💨 Vent :</b> <span id="wind-${s.id}">...</span><br>
-      <b style="color:#cbd5e1;">☁️ Météo :</b> <span id="desc-${s.id}">...</span><br>
-      <b style="color:#22c55e;">🛬 Piste active :</b> <span id="rwy-${s.id}">...</span>
-    </div>
-  </div>
-`);
-
-        marker.on("popupopen", async () => {
-  try {
-    const res = await fetch(`${WORKER_BASE_URL}/api/weather?lat=${lat}&lon=${lon}`);
-    if (!res.ok) return;
-
-    const w = await res.json();
-
-    const temp = Math.round(w.main?.temp ?? 0);
-    const windSpeed = Math.round((w.wind?.speed ?? 0) * 3.6);
-
-      // 🟦 Historique vent
-if (!windHistory[s.id]) windHistory[s.id] = [];
-windHistory[s.id].push(windSpeed);
-
-// Limite à 30 valeurs (30 minutes si tu appelles toutes les minutes)
-if (windHistory[s.id].length > 30) {
-  windHistory[s.id].shift();
-}
-
-// 🟦 Dessin du graphique
-const canvas = document.getElementById(`windchart-${s.id}`);
-if (canvas) {
-  const ctx = canvas.getContext("2d");
-  const values = windHistory[s.id];
-
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-  // Style cockpit Airbus
-  ctx.strokeStyle = "#38bdf8"; // cyan
-  ctx.lineWidth = 2;
-
-  ctx.beginPath();
-
-  const max = Math.max(...values);
-  const min = Math.min(...values);
-  const range = max - min || 1;
-
-  values.forEach((v, i) => {
-    const x = (i / (values.length - 1)) * canvas.width;
-    const y = canvas.height - ((v - min) / range) * canvas.height;
-
-    if (i === 0) ctx.moveTo(x, y);
-    else ctx.lineTo(x, y);
-  });
-
-  ctx.stroke();
-}
-
-    const windDeg = w.wind?.deg ?? 0;
-    const desc = w.weather?.[0]?.description ?? "Ciel dégagé";
-
-    const runway = s.airport === "EBLG"
-      ? (windDeg > 180 ? "22" : "04")
-      : (windDeg > 180 ? "24" : "06");
-
-    // 🟦 Mise à jour rose des vents
-    const arrow = document.getElementById(`windarrow-${s.id}`);
-    const windText = document.getElementById(`windtext-${s.id}`);
-
-    if (arrow) arrow.style.transform = `rotate(${windDeg}deg)`;
-    if (windText) windText.textContent = `${windDeg}° — ${windSpeed} km/h`;
-
-    // 🟩 Mise à jour météo
-    document.getElementById(`temp-${s.id}`).textContent = `${temp}°C`;
-    document.getElementById(`wind-${s.id}`).textContent = `${windSpeed} km/h (${windDeg}°)`;
-    document.getElementById(`desc-${s.id}`).textContent = desc;
-    document.getElementById(`rwy-${s.id}`).textContent = runway;
-
-  } catch (err) {
-    console.error("Erreur météo sonomètre :", err);
-  }
-});
-
-
-
-        sonoLayer.addLayer(marker);
+// ===============================================================
+// 6. Création des markers (une seule fois)
+// ===============================================================
+function createMarkers(list) {
+  list.forEach(s => {
+    const marker = L.circleMarker([s.lat, s.lon], {
+      radius: 7,
+      color: "gray",
+      weight: 2,
+      fillOpacity: 0.8
     });
 
-    sonoLayer.addTo(map);
+    marker._id = s.id;
+    marker._airport = s.airport;
+
+    marker.bindPopup(`
+      <div style="font-family:'Segoe UI'; font-size:13px; color:#e2e8f0;">
+        <h4 style="margin:0 0 4px 0; color:#38bdf8;">
+          Sonomètre ${s.id}
+        </h4>
+        <div style="font-size:11px; color:#94a3b8;">
+          ${s.address}
+        </div>
+      </div>
+    `);
+
+    sonoLayer.addLayer(marker);
+    sonoIndex[s.id] = marker;
+  });
 }
+
+createMarkers(sonometersEBCI);
+createMarkers(sonometersEBLG);
+
+// ===============================================================
+// 7. Mise à jour cockpit Airbus — recoloration dynamique
+// ===============================================================
+export function renderSonometers(airport, runway, options = {}) {
+  const { reset = false } = options;
+
+  if (reset) sonoLayer.clearLayers();
+
+  const rule = rules[airport][runway];
+
+  Object.values(sonoIndex).forEach(marker => {
+    if (marker._airport !== airport) return;
+
+    const id = marker._id;
+
+    let color = "gray";
+    if (rule.green.has(id)) color = "lime";
+    if (rule.red.has(id))   color = "red";
+
+    marker.setStyle({
+      color,
+      fillColor: color
+    });
+  });
+}
+
+// ===============================================================
+// 8. Popup météo + graphique vent — PRO+++
+// ===============================================================
+
+function buildPopupHTML(s) {
+  return `
+    <div style="font-family:'Segoe UI'; font-size:13px; color:#e2e8f0;">
+      <h4 style="margin:0 0 4px 0; color:#38bdf8;">
+        Sonomètre ${s.id}
+      </h4>
+      <div style="font-size:11px; color:#94a3b8; margin-bottom:6px;">
+        ${s.address}
+      </div>
+
+      <!-- Rose des vents -->
+      <div style="text-align:center; margin:8px 0;">
+        <div style="
+          position:relative;
+          width:70px;
+          height:70px;
+          margin:auto;
+          border:2px solid #334155;
+          border-radius:50%;
+          background:#1e293b;
+          display:flex;
+          align-items:center;
+          justify-content:center;">
+          <span style="position:absolute; top:2px; font-size:9px; color:#ef4444; font-weight:bold;">N</span>
+          <div id="windarrow-${s.id}" style="
+            width:100%;
+            height:100%;
+            display:flex;
+            align-items:center;
+            justify-content:center;
+            transition:transform 0.5s ease;">
+            <div style="
+              width:0;
+              height:0;
+              border-left:6px solid transparent;
+              border-right:6px solid transparent;
+              border-bottom:26px solid #38bdf8;">
+            </div>
+          </div>
+        </div>
+        <span id="windtext-${s.id}" style="font-size:11px; color:#94a3b8; display:block; margin-top:4px;">...</span>
+      </div>
+
+      <!-- Graphique vent -->
+      <div style="margin-top:10px;">
+        <canvas id="windchart-${s.id}" width="140" height="40"
+          style="background:#0f172a; border:1px solid #334155; border-radius:6px;">
+        </canvas>
+        <div style="font-size:10px; color:#64748b; text-align:center; margin-top:2px;">
+          Vent — 30 min
+        </div>
+      </div>
+
+      <!-- Bloc météo -->
+      <div style="background:rgba(15,23,42,0.6); padding:6px; border-radius:6px; border:1px solid #334155; margin-top:10px;">
+        <b style="color:#f59e0b;">🌡️ Température :</b> <span id="temp-${s.id}">...</span><br>
+        <b style="color:#38bdf8;">💨 Vent :</b> <span id="wind-${s.id}">...</span><br>
+        <b style="color:#cbd5e1;">☁️ Météo :</b> <span id="desc-${s.id}">...</span><br>
+        <b style="color:#22c55e;">🛬 Piste active :</b> <span id="rwy-${s.id}">...</span>
+      </div>
+    </div>
+  `;
+}
+
+// ===============================================================
+// 9. Attacher popup + mise à jour dynamique — PRO+++
+// ===============================================================
+Object.values(sonoIndex).forEach(marker => {
+  const s = marker._airport === "EBLG"
+    ? sonometersEBLG.find(x => x.id === marker._id)
+    : sonometersEBCI.find(x => x.id === marker._id);
+
+  marker.bindPopup(buildPopupHTML(s));
+
+  marker.on("popupopen", async () => {
+    try {
+      const res = await fetch(`${WORKER_BASE_URL}/api/weather?lat=${s.lat}&lon=${s.lon}`);
+      if (!res.ok) return;
+
+      const w = await res.json();
+
+      const temp = Math.round(w.main?.temp ?? 0);
+      const windSpeed = Math.round((w.wind?.speed ?? 0) * 3.6);
+      const windDeg = w.wind?.deg ?? 0;
+      const desc = w.weather?.[0]?.description ?? "Ciel dégagé";
+
+      // -----------------------------------------------------------
+      // Historique vent — PRO+++
+      // -----------------------------------------------------------
+      if (!windHistory[s.id]) windHistory[s.id] = [];
+      windHistory[s.id].push(windSpeed);
+      if (windHistory[s.id].length > 30) windHistory[s.id].shift();
+
+      // -----------------------------------------------------------
+      // Graphique vent — PRO+++
+      // -----------------------------------------------------------
+      const canvas = document.getElementById(`windchart-${s.id}`);
+      if (canvas) {
+        const ctx = canvas.getContext("2d");
+        const values = windHistory[s.id];
+
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        ctx.strokeStyle = "#38bdf8";
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+
+        const max = Math.max(...values);
+        const min = Math.min(...values);
+        const range = max - min || 1;
+
+        values.forEach((v, i) => {
+          const x = (i / (values.length - 1)) * canvas.width;
+          const y = canvas.height - ((v - min) / range) * canvas.height;
+
+          if (i === 0) ctx.moveTo(x, y);
+          else ctx.lineTo(x, y);
+        });
+
+        ctx.stroke();
+      }
+
+      // -----------------------------------------------------------
+      // Rose des vents — PRO+++
+      // -----------------------------------------------------------
+      const arrow = document.getElementById(`windarrow-${s.id}`);
+      const windText = document.getElementById(`windtext-${s.id}`);
+
+      if (arrow) arrow.style.transform = `rotate(${windDeg}deg)`;
+      if (windText) windText.textContent = `${windDeg}° — ${windSpeed} km/h`;
+
+      // -----------------------------------------------------------
+      // Bloc météo — PRO+++
+      // -----------------------------------------------------------
+      document.getElementById(`temp-${s.id}`).textContent = `${temp}°C`;
+      document.getElementById(`wind-${s.id}`).textContent = `${windSpeed} km/h (${windDeg}°)`;
+      document.getElementById(`desc-${s.id}`).textContent = desc;
+
+      const runway = s.airport === "EBLG"
+        ? (windDeg > 180 ? "22" : "04")
+        : (windDeg > 180 ? "24" : "06");
+
+      document.getElementById(`rwy-${s.id}`).textContent = runway;
+
+    } catch (err) {
+      console.error("Erreur météo sonomètre :", err);
+    }
+  });
+});
 
