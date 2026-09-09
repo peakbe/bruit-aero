@@ -1,5 +1,5 @@
 // =================================================================
-// WORKER CLOUDFLARE - PROXY AÉRO
+// WORKER CLOUDFLARE - PROXY AÉRO ND AIRBUS PRO+++
 // =================================================================
 
 const corsHeaders = {
@@ -11,9 +11,10 @@ const corsHeaders = {
 const UA = "AeroNoiseMonitor/1.0 (https://aero-sonic-pulse.base44.app)";
 const DIST_NM = 25;
 
+// Coordonnées pour ADS-B (radar)
 const AIRPORTS = {
-  ebci: { lat: 50.4594, lng: 4.4536 },
-  eblg: { lat: 50.6378, lng: 5.4444 },
+  ebci: { lat: 50.4594, lon: 4.4536 },
+  eblg: { lat: 50.6378, lon: 5.4444 },
 };
 
 const RELAYS = [
@@ -21,6 +22,9 @@ const RELAYS = [
   (u) => `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(u)}`,
 ];
 
+// -------------------------------------------------------------
+// Utils
+// -------------------------------------------------------------
 async function fetchWithTimeout(url, options = {}, timeoutMs = 4000) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
@@ -42,8 +46,11 @@ function decodeWmoCode(code) {
   return { desc: "Nuageux", icon: "03d" };
 }
 
+// -------------------------------------------------------------
+// ADS-B helpers (adsb.lol / adsb.fi)
+// -------------------------------------------------------------
 async function fetchReadsb(base, ap, relay) {
-  const target = `${base}/lat/${ap.lat}/lon/${ap.lng}/dist/${DIST_NM}`;
+  const target = `${base}/lat/${ap.lat}/lon/${ap.lon}/dist/${DIST_NM}`;
   const url = relay !== null ? RELAYS[relay](target) : target;
 
   const res = await fetchWithTimeout(url, {
@@ -85,6 +92,9 @@ async function fetchBothAdsb(base, relay) {
   return [...ebci, ...eblg];
 }
 
+// =================================================================
+// HANDLER PRINCIPAL
+// =================================================================
 export default {
   async fetch(request, env, ctx) {
     if (request.method === "OPTIONS") {
@@ -134,6 +144,7 @@ export default {
           console.log("ADSB direct/proxy indisponible, bascule FR24...", e);
         }
 
+        // FR24 fallback
         try {
           const fr24Url =
             "https://data-cloud.flightradar24.com/zones/fcgi/feed.json?bounds=52.0,49.0,2.0,7.0&faa=1&satellite=1&mlat=1&flarm=1&adsb=1&gnd=0&air=1&vehicles=0&estimated=0";
@@ -192,6 +203,7 @@ export default {
           console.log("FR24 indisponible, bascule OpenSky...", e);
         }
 
+        // OpenSky fallback
         try {
           const openskyUrl =
             "https://opensky-network.org/api/states/all?lamin=49.0&lomin=2.0&lamax=52.0&lomax=7.0";
@@ -224,7 +236,7 @@ export default {
 
       // -------------------------------------------------------------
       // 2. ADS-B Airplanes.live (radar map.js)
-      // -------------------------------------------------------------
+// -------------------------------------------------------------
       if (path.startsWith("/api/adsb")) {
         try {
           const res = await fetchWithTimeout("https://api.airplanes.live/v2/positions");
@@ -252,7 +264,7 @@ export default {
       }
 
       // -------------------------------------------------------------
-      // 3. METEO ACTUELLE (Open-Meteo → format OpenWeather)
+      // 3. METEO ACTUELLE (Open-Meteo → format OpenWeather-like)
       // -------------------------------------------------------------
       if (path.includes("/api/weather")) {
         const lat = url.searchParams.get("lat") || "50.6374";
@@ -281,6 +293,11 @@ export default {
             headers: { ...corsHeaders, "Content-Type": "application/json" }
           });
         }
+
+        return new Response(JSON.stringify({ error: "Weather unavailable" }), {
+          status: 500,
+          headers: { ...corsHeaders, "Content-Type": "application/json" }
+        });
       }
 
       // -------------------------------------------------------------
@@ -322,6 +339,11 @@ export default {
             headers: { ...corsHeaders, "Content-Type": "application/json" }
           });
         }
+
+        return new Response(JSON.stringify({ list: [] }), {
+          status: 200,
+          headers: { ...corsHeaders, "Content-Type": "application/json" }
+        });
       }
 
       // -------------------------------------------------------------
@@ -341,70 +363,13 @@ export default {
             headers: { ...corsHeaders, "Content-Type": "application/json" }
           });
         }
+
+        return new Response(JSON.stringify({ raw: "METAR indisponible" }), {
+          status: 200,
+          headers: { ...corsHeaders, "Content-Type": "application/json" }
+        });
       }
 
-     // -------------------------------------------------------------
-// METEO FUSIONNÉE (METAR + Open-Meteo) — PRO+++
-// -------------------------------------------------------------
-if (path.includes("/api/meteo")) {
-  const apt = (url.searchParams.get("apt") || "EBLG").toUpperCase();
-
-  // Coordonnées ND Airbus
-  const coords = AIRPORT_COORDS[apt] || AIRPORT_COORDS.EBLG;
-
-  // -----------------------------
-  // METAR VATSIM
-  // -----------------------------
-  let metarRaw = "METAR indisponible";
-  try {
-    const metarRes = await fetch(`https://metar.vatsim.net/${apt}`);
-    if (metarRes.ok) metarRaw = (await metarRes.text()).trim();
-  } catch (e) {
-    metarRaw = "METAR indisponible";
-  }
-
-  // -----------------------------
-  // METEO Open-Meteo
-  // -----------------------------
-  let meteo = {
-    main: { temp: 0 },
-    wind: { speed: 0, deg: 0 },
-    weather: [{ description: "Indisponible", icon: "03d" }]
-  };
-
-  try {
-    const res = await fetch(
-      `https://api.open-meteo.com/v1/forecast?latitude=${coords.lat}&longitude=${coords.lon}&current_weather=true`
-    );
-
-    if (res.ok) {
-      const data = await res.json();
-      const cw = data.current_weather || {};
-
-      meteo = {
-        main: { temp: cw.temperature ?? 0 },
-        wind: {
-          speed: cw.windspeed ?? 0,
-          deg: cw.winddirection ?? 0
-        },
-        weather: [{
-          description: "Ciel dégagé",
-          icon: "01d"
-        }]
-      };
-    }
-  } catch (e) {
-    // On garde les valeurs par défaut
-  }
-
-  return new Response(
-    JSON.stringify({ metar: metarRaw, meteo }),
-    {
-      status: 200,
-      headers: { ...corsHeaders, "Content-Type": "application/json" }
-    }
-  );
-}
       // -------------------------------------------------------------
       // 6. FIDS UNIFIÉ (EBLG officiel + AirLabs + mock)
       // -------------------------------------------------------------
@@ -551,85 +516,83 @@ if (path.includes("/api/meteo")) {
           headers: { ...corsHeaders, "Content-Type": "application/json" }
         });
       }
-// -------------------------------------------------------------
-// 8. METEO FUSIONNÉE (METAR + Open-Meteo)
-// -------------------------------------------------------------
-if (path.includes("/api/meteo")) {
-  const apt = (url.searchParams.get("apt") || "EBLG").toUpperCase();
-
-  // Coordonnées des aéroports
-  const coords = {
-    EBCI: { lat: 50.4594, lon: 4.4536 },
-    EBLG: { lat: 50.6378, lon: 5.4444 }
-  };
-
-  const { lat, lon } = coords[apt] || coords.EBLG;
-
-  // 1) METAR VATSIM
-  let metarRaw = "N/A";
-  try {
-    const metarRes = await fetchWithTimeout(
-      `https://metar.vatsim.net/metar.php?id=${apt}`
-    );
-    if (metarRes.ok) {
-      metarRaw = (await metarRes.text()).trim();
-    }
-  } catch (e) {
-    metarRaw = "METAR indisponible";
-  }
-
-  // 2) METEO Open-Meteo
-  let meteo = {
-    main: { temp: null },
-    wind: { speed: null, deg: null },
-    weather: [{ description: "N/A", icon: "03d" }]
-  };
-
-  try {
-    const wxRes = await fetchWithTimeout(
-      `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current_weather=true`
-    );
-
-    if (wxRes.ok) {
-      const data = await wxRes.json();
-      const cw = data.current_weather;
-
-      const wmoInfo = decodeWmoCode(cw.weathercode ?? 0);
-
-      meteo = {
-        main: { temp: cw.temperature },
-        wind: {
-          speed: cw.windspeed,       // km/h
-          deg: cw.winddirection
-        },
-        weather: [{
-          description: wmoInfo.desc,
-          icon: wmoInfo.icon
-        }]
-      };
-    }
-  } catch (e) {
-    // fallback météo minimal
-    meteo.main.temp = 20;
-    meteo.wind.speed = 5;
-    meteo.wind.deg = 180;
-  }
-
-  // 3) Fusion METAR + METEO
-  const payload = {
-    airport: apt,
-    metar: metarRaw,
-    meteo
-  };
-
-  return new Response(JSON.stringify(payload), {
-    status: 200,
-    headers: { ...corsHeaders, "Content-Type": "application/json" }
-  });
-}
 
       // -------------------------------------------------------------
-      // 7. DEFAULT 404
+      // 7. METEO FUSIONNÉE (METAR + Open-Meteo) — ND Airbus
+      // -------------------------------------------------------------
+      if (path.includes("/api/meteo")) {
+        const apt = (url.searchParams.get("apt") || "EBLG").toUpperCase();
+
+        const coords = {
+          EBCI: { lat: 50.4594, lon: 4.4536 },
+          EBLG: { lat: 50.6378, lon: 5.4444 }
+        };
+
+        const { lat, lon } = coords[apt] || coords.EBLG;
+
+        // METAR VATSIM
+        let metarRaw = "N/A";
+        try {
+          const metarRes = await fetchWithTimeout(
+            `https://metar.vatsim.net/metar.php?id=${apt}`
+          );
+          if (metarRes.ok) {
+            metarRaw = (await metarRes.text()).trim();
+          }
+        } catch (e) {
+          metarRaw = "METAR indisponible";
+        }
+
+        // METEO Open-Meteo
+        let meteo = {
+          main: { temp: null },
+          wind: { speed: null, deg: null },
+          weather: [{ description: "N/A", icon: "03d" }]
+        };
+
+        try {
+          const wxRes = await fetchWithTimeout(
+            `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current_weather=true`
+          );
+
+          if (wxRes.ok) {
+            const data = await wxRes.json();
+            const cw = data.current_weather;
+            const wmoInfo = decodeWmoCode(cw.weathercode ?? 0);
+
+            meteo = {
+              main: { temp: cw.temperature },
+              wind: {
+                speed: cw.windspeed,       // km/h
+                deg: cw.winddirection
+              },
+              weather: [{
+                description: wmoInfo.desc,
+                icon: wmoInfo.icon
+              }]
+            };
+          }
+        } catch (e) {
+          // fallback météo minimal
+          meteo.main.temp = 20;
+          meteo.wind.speed = 5;
+          meteo.wind.deg = 180;
+        }
+
+        const payload = {
+          airport: apt,
+          metar: metarRaw,
+          meteo
+        };
+
+        return new Response(JSON.stringify(payload), {
+          status: 200,
+          headers: { ...corsHeaders, "Content-Type": "application/json" }
+        });
+      }
+
+      // -------------------------------------------------------------
+      // 8. DEFAULT 404
       // -------------------------------------------------------------
       return new Response(JSON.stringify({ error: "Endpoint non trouvé" }), {
         status: 404,
