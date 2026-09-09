@@ -348,7 +348,7 @@ export default {
 // -------------------------------------------------------------
 if (path.includes("/api/meteo")) {
   const apt = (url.searchParams.get("apt") || "EBLG").toUpperCase();
-  const coords = AIRPORTS[apt.toLowerCase()] || AIRPORTS.eblg;
+  const coords = AIRPORT_COORDS[apt] || AIRPORT_COORDS.EBLG;
 
   // METAR VATSIM
   let metarRaw = "METAR indisponible";
