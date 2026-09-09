@@ -132,64 +132,56 @@ createMarkers(sonometersEBLG);
 // ===============================================================
 // 7. Mise à jour cockpit Airbus — recoloration dynamique
 // ===============================================================
-export function renderSonometers(airport, runway) {
+// ===============================================================
+// MODE ALL DYNAMIQUE — ND Airbus PRO+++
+// ===============================================================
+export async function renderSonometersALLDynamic() {
 
-  // 🟦 MODE ALL — afficher EBLG + EBCI avec leurs vraies couleurs
-  if (airport === "ALL") {
+  // 1) Lire METAR EBLG + EBCI via ton Worker
+  const metarEBLG = await fetch(`${WORKER_BASE_URL}/api/metar?station=EBLG`)
+    .then(r => r.json())
+    .catch(() => ({ raw: "" }));
 
-    // EBLG → piste par défaut (22)
-    const ruleEBLG = rules.EBLG["22"];
+  const metarEBCI = await fetch(`${WORKER_BASE_URL}/api/metar?station=EBCI`)
+    .then(r => r.json())
+    .catch(() => ({ raw: "" }));
 
-    Object.values(sonoIndex).forEach(marker => {
-      if (marker._airport !== "EBLG") return;
+  // 2) Extraire direction vent METAR
+  const windDirEBLG = extractWindDir(metarEBLG.raw);
+  const windDirEBCI = extractWindDir(metarEBCI.raw);
 
-      const id = marker._id;
-      let color = "gray";
+  // 3) Déterminer piste active dynamique
+  const runwayEBLG = windDirEBLG > 180 ? "22" : "04";
+  const runwayEBCI = windDirEBCI > 180 ? "24" : "06";
 
-      if (ruleEBLG.green.has(id)) color = "lime";
-      if (ruleEBLG.red.has(id))   color = "red";
+  // 4) Récupérer règles cockpit Airbus
+  const ruleEBLG = rules.EBLG[runwayEBLG];
+  const ruleEBCI = rules.EBCI[runwayEBCI];
 
-      marker.setStyle({ color, fillColor: color });
-    });
-
-    // EBCI → piste par défaut (24)
-    const ruleEBCI = rules.EBCI["24"];
-
-    Object.values(sonoIndex).forEach(marker => {
-      if (marker._airport !== "EBCI") return;
-
-      const id = marker._id;
-      let color = "gray";
-
-      if (ruleEBCI.green.has(id)) color = "lime";
-      if (ruleEBCI.red.has(id))   color = "red";
-
-      marker.setStyle({ color, fillColor: color });
-    });
-
-    return;
-  }
-
-  // 🟦 MODE NORMAL (EBLG ou EBCI)
-  const airportRules = rules[airport];
-  if (!airportRules) return;
-
-  const rule = airportRules[runway];
-  if (!rule) return;
-
+  // 5) Recoloration dynamique EBLG
   Object.values(sonoIndex).forEach(marker => {
-    if (marker._airport !== airport) return;
+    if (marker._airport !== "EBLG") return;
 
     const id = marker._id;
-
     let color = "gray";
-    if (rule.green.has(id)) color = "lime";
-    if (rule.red.has(id))   color = "red";
 
-    marker.setStyle({
-      color,
-      fillColor: color
-    });
+    if (ruleEBLG.green.has(id)) color = "lime";
+    if (ruleEBLG.red.has(id))   color = "red";
+
+    marker.setStyle({ color, fillColor: color });
+  });
+
+  // 6) Recoloration dynamique EBCI
+  Object.values(sonoIndex).forEach(marker => {
+    if (marker._airport !== "EBCI") return;
+
+    const id = marker._id;
+    let color = "gray";
+
+    if (ruleEBCI.green.has(id)) color = "lime";
+    if (ruleEBCI.red.has(id))   color = "red";
+
+    marker.setStyle({ color, fillColor: color });
   });
 }
 
