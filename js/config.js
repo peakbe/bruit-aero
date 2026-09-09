@@ -7,13 +7,7 @@
 export const WORKER_BASE_URL =
   "https://bruit-aero-proxy.pnyr682w7f.workers.dev";
 
-// Coordonnées des aéroports
-export const AIRPORTS = {
-  EBLG: { lat: 50.6374, lon: 5.4432 },
-  EBCI: { lat: 50.4592, lon: 4.4538 }
-};
-
-// Coordonnées pour la carte (ALL = vue générale)
+// Coordonnées des aéroports pour la carte (ALL = vue générale)
 export const AIRPORT_COORDS = {
   EBCI: [50.4592, 4.4538],
   EBLG: [50.6374, 5.4432],
