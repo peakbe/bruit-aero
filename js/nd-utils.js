@@ -54,41 +54,76 @@ export function updateNdSonometersStatus(sonometersEnabled, sonoLayer) {
   el.style.color = "#38bdf8"; // cyan Airbus
 }
 
-// ND — composantes vent
-export function updateNdWindComponents(airport, metarEBLG, metarEBCI, lastWindSpeedEBLG, lastWindSpeedEBCI, RUNWAY_HEADINGS) {
-  const el = document.getElementById("nd-windcomp");
-  if (!el) return;
+// ===============================================================
+// ND Airbus — Composantes vent PRO+++
+// ===============================================================
+// Cache ND pour éviter recalculs inutiles
+let lastNdState = {
+  airport: null,
+  windDir: null,
+  windSpeed: null,
+  runway: null
+};
 
-  const windDeg = airport === "EBLG"
-    ? metarEBLG?.windDeg
-    : metarEBCI?.windDeg;
+export function updateNdWindComponentsOptimized(
+  airport,
+  metarEBLG,
+  metarEBCI,
+  windEBLG,
+  windEBCI,
+  RUNWAY_HEADINGS
+) {
 
-  if (!windDeg) {
-    el.textContent = "---";
-    el.style.color = "#fbbf24";
+  // 🟦 Mode ALL → ND OFF
+  if (airport === "ALL") {
+    if (lastNdState.airport !== "ALL") {
+      ndSetWindArrow(null);
+      ndSetWindText("—");
+      ndSetRunway(null);
+      ndSetWindComponents(null);
+      lastNdState.airport = "ALL";
+    }
     return;
   }
 
-  const runway = airport === "EBLG"
-    ? (windDeg > 180 ? "22" : "04")
-    : (windDeg > 180 ? "24" : "06");
+  const isEBLG = airport === "EBLG";
+  const metar = isEBLG ? metarEBLG : metarEBCI;
+  const windSpeed = isEBLG ? windEBLG : windEBCI;
 
-  const runwayHeading = RUNWAY_HEADINGS[airport][runway];
+  if (!metar || !windSpeed) return;
 
-  const diff = windDeg - runwayHeading;
-  const angle = ((diff + 540) % 360) - 180;
+  const windDir = metar.wind?.deg ?? 0;
 
-  const windSpeedMs = airport === "EBLG"
-    ? lastWindSpeedEBLG ?? 0
-    : lastWindSpeedEBCI ?? 0;
+  const runway = windDir > 180
+    ? (isEBLG ? "22" : "24")
+    : (isEBLG ? "04" : "06");
 
-  const windSpeedKt = Math.round(windSpeedMs * 1.94384);
+  // 🟦 Si rien n’a changé → on ne fait rien
+  if (
+    lastNdState.airport === airport &&
+    lastNdState.windDir === windDir &&
+    lastNdState.windSpeed === windSpeed &&
+    lastNdState.runway === runway
+  ) {
+    return; // 🟩 ND déjà à jour
+  }
 
-  const headwind = Math.round(windSpeedKt * Math.cos(angle * Math.PI / 180));
-  const crosswind = Math.round(windSpeedKt * Math.sin(angle * Math.PI / 180));
+  // 🟦 Mise à jour cache
+  lastNdState = { airport, windDir, windSpeed, runway };
 
-  const cwDir = crosswind > 0 ? "→" : "←";
+  // 🟦 Calcul composantes vent
+  const rwyHeading = RUNWAY_HEADINGS[airport][runway];
+  const angle = windDir - rwyHeading;
+  const rad = angle * Math.PI / 180;
 
-  el.textContent = `${headwind} kt / ${Math.abs(crosswind)} kt ${cwDir}`;
-  el.style.color = "#38bdf8";
+  const headwind = Math.round(windSpeed * Math.cos(rad));
+  const crosswind = Math.round(windSpeed * Math.sin(rad));
+
+  // 🟦 Mise à jour ND Airbus
+  ndSetWindArrow(windDir);
+  ndSetWindText(`${windDir}° / ${windSpeed} kt`);
+  ndSetRunway(runway);
+  ndSetWindComponents({ headwind, crosswind, angle });
 }
+
+
