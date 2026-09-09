@@ -344,6 +344,67 @@ export default {
       }
 
       // -------------------------------------------------------------
+// X. METEO FUSIONNÉE (METAR + Open-Meteo)
+// -------------------------------------------------------------
+if (path.includes("/api/meteo")) {
+  const apt = (url.searchParams.get("apt") || "EBLG").toUpperCase();
+  const coords = AIRPORTS[apt.toLowerCase()] || AIRPORTS.eblg;
+
+  // METAR VATSIM
+  let metarRaw = "METAR indisponible";
+  try {
+    const metarRes = await fetchWithTimeout(
+      `https://metar.vatsim.net/metar.php?id=${apt}`
+    );
+    if (metarRes.ok) {
+      metarRaw = (await metarRes.text()).trim();
+    }
+  } catch (e) {
+    metarRaw = "METAR indisponible";
+  }
+
+  // METEO Open-Meteo
+  let meteo = {
+    main: { temp: 20 },
+    wind: { speed: 0, deg: 0 },
+    weather: [{ description: "Indisponible", icon: "03d" }]
+  };
+
+  try {
+    const res = await fetchWithTimeout(
+      `https://api.open-meteo.com/v1/forecast?latitude=${coords.lat}&longitude=${coords.lng}&current_weather=true`
+    );
+
+    if (res.ok) {
+      const data = await res.json();
+      const cw = data.current_weather || {};
+      const wmoInfo = decodeWmoCode(cw.weathercode ?? 0);
+
+      meteo = {
+        main: { temp: cw.temperature ?? 20 },
+        wind: {
+          speed: cw.windspeed
+            ? Math.round((cw.windspeed) * 10) / 10 // km/h
+            : 0,
+          deg: cw.winddirection ?? 0
+        },
+        weather: [{ description: wmoInfo.desc, icon: wmoInfo.icon }]
+      };
+    }
+  } catch (e) {
+    // on garde le meteo par défaut
+  }
+
+  return new Response(
+    JSON.stringify({ metar: metarRaw, meteo }),
+    {
+      status: 200,
+      headers: { ...corsHeaders, "Content-Type": "application/json" }
+    }
+  );
+}
+
+      // -------------------------------------------------------------
       // 6. FIDS UNIFIÉ (EBLG officiel + AirLabs + mock)
       // -------------------------------------------------------------
       if (path.includes("/api/fids")) {
