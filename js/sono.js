@@ -133,11 +133,44 @@ createMarkers(sonometersEBLG);
 // 7. Mise à jour cockpit Airbus — recoloration dynamique
 // ===============================================================
 // ===============================================================
+// RENDER SONOMETERS — cockpit Airbus PRO+++
+// ===============================================================
+export function renderSonometers(airport, runway) {
+
+  // 🟦 MODE ALL → dynamique
+  if (airport === "ALL") {
+    renderSonometersALLDynamic();
+    return;
+  }
+
+  // 🟦 MODE NORMAL (EBLG / EBCI)
+  const airportRules = rules[airport];
+  if (!airportRules) return;
+
+  const rule = airportRules[runway];
+  if (!rule) return;
+
+  Object.values(sonoIndex).forEach(marker => {
+    if (marker._airport !== airport) return;
+
+    const id = marker._id;
+
+    let color = "gray";
+    if (rule.green.has(id)) color = "lime";
+    if (rule.red.has(id))   color = "red";
+
+    marker.setStyle({
+      color,
+      fillColor: color
+    });
+  });
+}
+
+// ===============================================================
 // MODE ALL DYNAMIQUE — ND Airbus PRO+++
 // ===============================================================
-export async function renderSonometers() {
+export async function renderSonometersALLDynamic() {
 
-  // 1) Lire METAR EBLG + EBCI via ton Worker
   const metarEBLG = await fetch(`${WORKER_BASE_URL}/api/metar?station=EBLG`)
     .then(r => r.json())
     .catch(() => ({ raw: "" }));
@@ -146,19 +179,15 @@ export async function renderSonometers() {
     .then(r => r.json())
     .catch(() => ({ raw: "" }));
 
-  // 2) Extraire direction vent METAR
   const windDirEBLG = extractWindDir(metarEBLG.raw);
   const windDirEBCI = extractWindDir(metarEBCI.raw);
 
-  // 3) Déterminer piste active dynamique
   const runwayEBLG = windDirEBLG > 180 ? "22" : "04";
   const runwayEBCI = windDirEBCI > 180 ? "24" : "06";
 
-  // 4) Récupérer règles cockpit Airbus
   const ruleEBLG = rules.EBLG[runwayEBLG];
   const ruleEBCI = rules.EBCI[runwayEBCI];
 
-  // 5) Recoloration dynamique EBLG
   Object.values(sonoIndex).forEach(marker => {
     if (marker._airport !== "EBLG") return;
 
@@ -171,7 +200,6 @@ export async function renderSonometers() {
     marker.setStyle({ color, fillColor: color });
   });
 
-  // 6) Recoloration dynamique EBCI
   Object.values(sonoIndex).forEach(marker => {
     if (marker._airport !== "EBCI") return;
 
