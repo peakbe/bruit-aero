@@ -41,6 +41,9 @@ window.lastWindSpeedEBCI = 0;
 // ===============================================================
 document.addEventListener("DOMContentLoaded", async () => {
   initRadarMap();
+  setTimeout(() => {
+  map.invalidateSize();
+}, 150);
 
   updateFIDS();
   setInterval(updateFIDS, RADAR_REFRESH_MS);
