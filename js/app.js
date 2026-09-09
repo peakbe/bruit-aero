@@ -3,7 +3,7 @@
 // ===============================================================
 import { map, initRadarMap, drawApproachDepartureCones } from "./map.js";
 import { updateFIDS } from "./fids.js";
-import { renderSonometers, sonoLayer } from "./sono.js";
+import { renderSonometers, renderSonometersALLDynami, sonoLayer } from "./sono.js";
 import {
   updateWindTrend,
   updateNdWindComponents,
