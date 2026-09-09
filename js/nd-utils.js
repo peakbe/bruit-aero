@@ -65,7 +65,7 @@ let lastNdState = {
   runway: null
 };
 
-export function updateNdWindComponentsOptimized(
+export function updateNdWindComponents(
   airport,
   metarEBLG,
   metarEBCI,
