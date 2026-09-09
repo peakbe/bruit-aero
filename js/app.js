@@ -208,30 +208,22 @@ function updateRunwaySonometers() {
 window.filterAirportView = function (airport) {
   currentAirport = airport;
 
-  // 🟦 CAS "ALL" — ND NE DOIT PAS ÊTRE MIS À JOUR
   if (airport === "ALL") {
+  renderSonometersALLDynamic();
 
-    // Pas de ND ici → évite le crash RUNWAY_HEADINGS["ALL"]
-    updateNdSonometersStatus(sonometersEnabled, sonoLayer);
+  const target = AIRPORT_COORDS.ALL;
+  map.setView([target.lat, target.lon], 8, { animate: true });
 
-    if (sonometersEnabled) updateRunwaySonometers();
+  updateNdSonometersStatus(sonometersEnabled, sonoLayer);
 
-    // Vue générale
-    const target = AIRPORT_COORDS.ALL;
-    map.setView([target.lat, target.lon], 8, { animate: true });
+  document.querySelectorAll(".airport-icon-btn").forEach(btn =>
+    btn.classList.remove("active")
+  );
+  const btn = document.querySelector(`button[onclick="filterAirportView('ALL')"]`);
+  if (btn) btn.classList.add("active");
 
-    // Recoloration cockpit Airbus pour ALL
-    renderSonometers("ALL", null);
-
-    // Boutons
-    document.querySelectorAll(".airport-icon-btn").forEach(btn =>
-      btn.classList.remove("active")
-    );
-    const btn = document.querySelector(`button[onclick="filterAirportView('ALL')"]`);
-    if (btn) btn.classList.add("active");
-
-    return; // 🟩 IMPORTANT : on sort ici
-  }
+  return;
+}
 
   // 🟦 CAS EBLG / EBCI — logique normale ND Airbus
   updateNdWindComponents(
