@@ -5,6 +5,9 @@
 import { map } from "./map.js";
 import { WORKER_BASE_URL } from "./config.js";
 
+// Historique vent pour les mini-graphes
+const windHistory = {};   // { "F017": [12, 14, 11, ...] }
+
 // ===============================================================
 // 1. Conversion DMS → décimal (optimisée)
 // ===============================================================
