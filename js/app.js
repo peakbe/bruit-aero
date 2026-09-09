@@ -266,26 +266,44 @@ function setupSonometersToggle() {
   btn.innerHTML = "🎧 Sonomètres";
 
   btn.onclick = () => {
-    sonometersEnabled = !sonometersEnabled;
+  sonometersEnabled = !sonometersEnabled;
 
-    if (sonometersEnabled) {
-      btn.classList.add("active");
-      updateRunwaySonometers();
-    } else {
-      btn.classList.remove("active");
-      sonoLayer.clearLayers();
+  if (sonometersEnabled) {
+    btn.classList.add("active");
+
+    // Réaffiche le layer si absent
+    if (!map.hasLayer(sonoLayer)) {
+      map.addLayer(sonoLayer);
     }
 
-    updateNdSonometersStatus(sonometersEnabled, sonoLayer);
-    updateNdWindComponents(
-      currentAirport,
-      window.metarEBLG,
-      window.metarEBCI,
-      window.lastWindSpeedEBLG,
-      window.lastWindSpeedEBCI,
-      RUNWAY_HEADINGS
-    );
-  };
+    // Recoloration selon l’aéroport actif
+    if (currentAirport === "ALL") {
+      renderSonometersALLDynamic();
+    } else {
+      updateRunwaySonometers();   // ta fonction existante
+    }
+
+  } else {
+    btn.classList.remove("active");
+
+    // Désactive l’affichage SANS détruire les markers
+    if (map.hasLayer(sonoLayer)) {
+      map.removeLayer(sonoLayer);
+    }
+  }
+
+  updateNdSonometersStatus(sonometersEnabled, sonoLayer);
+
+  updateNdWindComponents(
+    currentAirport,
+    window.metarEBLG,
+    window.metarEBCI,
+    window.lastWindSpeedEBLG,
+    window.lastWindSpeedEBCI,
+    RUNWAY_HEADINGS
+  );
+};
+
 
   bar.appendChild(btn);
 }
