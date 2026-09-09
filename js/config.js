@@ -9,9 +9,9 @@ export const WORKER_BASE_URL =
 
 // Coordonnées des aéroports pour la carte (ALL = vue générale)
 export const AIRPORT_COORDS = {
-  EBCI: [50.4592, 4.4538],
-  EBLG: [50.6374, 5.4432],
-  ALL:  [50.55, 4.95]
+  EBCI: { lat: 50.4592, lon: 4.4538 },
+  EBLG: { lat: 50.6374, lon: 5.4432 },
+  ALL:  { lat: 50.55, lon: 4.95 }
 };
 
 // Headings des pistes (utile pour ND / ILS)
