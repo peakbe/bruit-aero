@@ -42,11 +42,6 @@ window.lastWindSpeedEBCI = 0;
 document.addEventListener("DOMContentLoaded", async () => {
   initRadarMap();
 
-window.addEventListener("load", () => {
-  map.invalidateSize();
-});
-
-
   updateFIDS();
   setInterval(updateFIDS, RADAR_REFRESH_MS);
 
@@ -67,6 +62,10 @@ window.addEventListener("load", () => {
 
   setupSonometersToggle();
   setupRecenterButton();
+});
+
+window.addEventListener("load", () => {
+  map.invalidateSize();
 });
 
 // ===============================================================
