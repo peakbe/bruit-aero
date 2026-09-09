@@ -63,7 +63,7 @@ export function updateNdSonometersStatus(enabled, sonoLayer) {
     map.addLayer(sonoLayer);
   }
 
-  // Recoloration dynamique selon l'aéroport actif
+  // Recoloration dynamique selon l’aéroport actif
   if (window.currentAirport === "ALL") {
     renderSonometersALLDynamic();
   } else {
