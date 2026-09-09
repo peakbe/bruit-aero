@@ -279,7 +279,7 @@ function setupRecenterButton() {
   btn.onclick = () => {
     const target = AIRPORT_COORDS[currentAirport] || AIRPORT_COORDS.ALL;
     const zoom = currentAirport === "ALL" ? 8 : 11;
-    map.setView(target, zoom, { animate: true });
+    map.setView([target.lat, target.lon], zoom, { animate: true });
   };
 }
 
