@@ -65,7 +65,9 @@ document.addEventListener("DOMContentLoaded", async () => {
 });
 
 window.addEventListener("load", () => {
-  map.invalidateSize();
+  setTimeout(() => {
+    if (map) map.invalidateSize();
+  }, 150);
 });
 
 // ===============================================================
