@@ -2,10 +2,7 @@
 // map.js — Radar ADS‑B + ND Airbus PRO+++
 // ===============================================================
 
-// ---------------------------------------------------------------
-// IMPORTS
-// ---------------------------------------------------------------
-import { sonoLayer, renderSonometers } from "./sono.js";
+import { sonoLayer } from "./sono.js";
 import { ILS_CONFIG } from "./config-ILS.js";
 import {
   ILS_CONE_LENGTH,
@@ -13,13 +10,10 @@ import {
   RADAR_REFRESH_MS
 } from "./config.js";
 
-// ---------------------------------------------------------------
-// GLOBALS
-// ---------------------------------------------------------------
 export let map = null;
 export const planesLayer = L.layerGroup();
 
-if (!window.ilsLayers) window.ilsLayers = {};   // LOC + GP + cônes
+if (!window.ilsLayers) window.ilsLayers = {};
 
 // ===============================================================
 // 1. INITIALISATION DE LA CARTE
@@ -37,6 +31,9 @@ export function initRadarMap() {
   planesLayer.addTo(map);
   sonoLayer.addTo(map);
 
+  // Correction affichage Leaflet
+  setTimeout(() => map.invalidateSize(), 200);
+
   return map;
 }
 
@@ -53,42 +50,44 @@ export async function updateRadar() {
     const active = new Set();
 
     (data.aircraft || []).forEach(p => {
-      const hex = p.hex;
-      if (!hex || !p.lat || !p.lon) return;
+      if (!p.hex || !p.lat || !p.lon) return;
 
-      active.add(hex);
+      active.add(p.hex);
 
-      let marker = planesLayer.getLayer(hex);
+      let marker = null;
+
+      planesLayer.eachLayer(m => {
+        if (m._hex === p.hex) marker = m;
+      });
 
       if (!marker) {
         marker = L.circleMarker([p.lat, p.lon], {
           radius: 5,
-          color: "#3388ff",
+          color: "#38bdf8",
           weight: 2,
-          fillOpacity: 0.7
+          fillColor: "#0ea5e9",
+          fillOpacity: 0.8
         });
 
+        marker._hex = p.hex;
         marker.options.data = p;
-        planesLayer.addLayer(marker);
-        planesLayer._layers[hex] = marker;
 
         marker.on("click", () => {
-          centerOnAircraft(hex);
-          highlightAircraft(hex);
-          setSelectedAircraft(hex);
-          updateFPV(hex);
+          centerOnAircraft(p.hex);
+          highlightAircraft(p.hex);
+          setSelectedAircraft(p.hex);
+          updateFPV(p.hex);
         });
+
+        planesLayer.addLayer(marker);
       }
 
       marker.setLatLng([p.lat, p.lon]);
       marker.options.data = p;
     });
 
-    Object.keys(planesLayer._layers).forEach(hex => {
-      if (!active.has(hex)) {
-        planesLayer.removeLayer(planesLayer._layers[hex]);
-        delete planesLayer._layers[hex];
-      }
+    planesLayer.eachLayer(marker => {
+      if (!active.has(marker._hex)) planesLayer.removeLayer(marker);
     });
 
   } catch (err) {
@@ -103,28 +102,18 @@ setInterval(updateRadar, RADAR_REFRESH_MS);
 // ===============================================================
 export function drawApproachDepartureCones(airport, lat, lon, windDeg) {
 
-  // ---------------------------------------------------------------
-  // Nettoyage des anciens éléments ILS
-  // ---------------------------------------------------------------
   if (!window.ilsLayers[airport]) window.ilsLayers[airport] = [];
   window.ilsLayers[airport].forEach(layer => map.removeLayer(layer));
   window.ilsLayers[airport] = [];
 
-  // ---------------------------------------------------------------
-  // Détermination piste active
-  // ---------------------------------------------------------------
   const runway = airport === "EBLG"
     ? (windDeg > 180 ? "22" : "04")
     : (windDeg > 180 ? "24" : "06");
 
   const ils = ILS_CONFIG[airport].runways[runway];
-
   const heading = ils.heading;
   const threshold = [ils.threshold.lat, ils.threshold.lon];
 
-  // ===============================================================
-  // 3A — CÔNE ILS GRADIENT
-  // ===============================================================
   const rad = heading * Math.PI / 180;
   const dx = Math.sin(rad) * ILS_CONE_LENGTH / 111320;
   const dy = Math.cos(rad) * ILS_CONE_LENGTH / 111320;
@@ -151,46 +140,36 @@ export function drawApproachDepartureCones(airport, lat, lon, windDeg) {
     window.ilsLayers[airport].push(poly);
   });
 
-  // ===============================================================
-  // 3B — LOCALIZER (LOC)
-  // ===============================================================
   const loc = ils.loc;
   const locStart = [loc.lat, loc.lon];
 
-  const locDx = Math.sin(rad) * 10 / 111320;   // 10 m
+  const locDx = Math.sin(rad) * 10 / 111320;
   const locDy = Math.cos(rad) * 10 / 111320;
 
   const locEnd = [loc.lat + locDy, loc.lon + locDx];
 
   const locLine = L.polyline([locStart, locEnd], {
-    color: "#f87171",   // rouge Airbus LOC
+    color: "#f87171",
     weight: 4,
     opacity: 0.9
   }).addTo(map);
 
   window.ilsLayers[airport].push(locLine);
 
-  // ===============================================================
-  // 3C — GLIDEPATH 3° (GP)
-  // ===============================================================
   const gp = ils.glidepath;
 
-  const fafDistDeg = gp.fafDistanceNm * 1852 / 111320; // NM → degrés
+  const fafDistDeg = gp.fafDistanceNm * 1852 / 111320;
   const gpDx = Math.sin(rad) * fafDistDeg;
   const gpDy = Math.cos(rad) * fafDistDeg;
 
   const fafPoint = [threshold[0] + gpDy, threshold[1] + gpDx];
 
   const gpLine = L.polyline([threshold, fafPoint], {
-    color: "#22c55e",   // vert Airbus GP
+    color: "#22c55e",
     weight: 3,
     dashArray: "6,6",
     opacity: 0.9
   }).addTo(map);
 
   window.ilsLayers[airport].push(gpLine);
-
-  // ---------------------------------------------------------------
-  // FIN — ILS complet (cône + LOC + GP)
-  // ---------------------------------------------------------------
 }
