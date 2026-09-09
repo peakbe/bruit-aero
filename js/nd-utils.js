@@ -206,3 +206,13 @@ export function ndSetWindComponents(components) {
   ndRefs.angleText.textContent     = `${angle}°`;
 }
 
+// Extraction direction vent METAR (ex: "22012KT")
+function extractWindDir(rawMetar) {
+  if (!rawMetar) return 0;
+
+  const match = rawMetar.match(/(\d{3})\d{2}KT/);
+  if (!match) return 0;
+
+  return parseInt(match[1], 10);
+}
+
