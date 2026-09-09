@@ -21,7 +21,7 @@ if (!window.ilsLayers) window.ilsLayers = {};
 export function initRadarMap() {
   if (map) return map;
 
-  map = L.map("map").setView([50.55, 4.95], 8);
+  map = L.map("map").setView([AIRPORT_COORDS.ALL.lat, AIRPORT_COORDS.ALL.lon], 8);
 
   L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
     maxZoom: 19,
