@@ -135,7 +135,7 @@ createMarkers(sonometersEBLG);
 // ===============================================================
 // MODE ALL DYNAMIQUE — ND Airbus PRO+++
 // ===============================================================
-export async function renderSonometersALLDynamic() {
+export async function renderSonometers() {
 
   // 1) Lire METAR EBLG + EBCI via ton Worker
   const metarEBLG = await fetch(`${WORKER_BASE_URL}/api/metar?station=EBLG`)
