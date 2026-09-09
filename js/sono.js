@@ -133,6 +133,93 @@ createMarkers(sonometersEBCI);
 createMarkers(sonometersEBLG);
 
 // ===============================================================
+// MODE ALL DYNAMIQUE — ND Airbus PRO+++
+// ===============================================================
+function extractWindDir(rawMetar) {
+  if (!rawMetar) return 0;
+  const match = rawMetar.match(/(\d{3})\d{2}KT/);
+  return match ? parseInt(match[1], 10) : 0;
+}
+
+export async function renderSonometersALLDynamic() {
+
+  const metarEBLG = await fetch(`${WORKER_BASE_URL}/api/metar?station=EBLG`)
+    .then(r => r.json())
+    .catch(() => ({ raw: "" }));
+
+  const metarEBCI = await fetch(`${WORKER_BASE_URL}/api/metar?station=EBCI`)
+    .then(r => r.json())
+    .catch(() => ({ raw: "" }));
+
+  const windDirEBLG = extractWindDir(metarEBLG.raw);
+  const windDirEBCI = extractWindDir(metarEBCI.raw);
+
+  const runwayEBLG = windDirEBLG > 180 ? "22" : "04";
+  const runwayEBCI = windDirEBCI > 180 ? "24" : "06";
+
+  const ruleEBLG = rules.EBLG[runwayEBLG];
+  const ruleEBCI = rules.EBCI[runwayEBCI];
+
+  Object.values(sonoIndex).forEach(marker => {
+    if (marker._airport !== "EBLG") return;
+
+    const id = marker._id;
+    let color = "gray";
+
+    if (ruleEBLG.green.has(id)) color = "lime";
+    if (ruleEBLG.red.has(id))   color = "red";
+
+    marker.setStyle({ color, fillColor: color });
+  });
+
+  Object.values(sonoIndex).forEach(marker => {
+    if (marker._airport !== "EBCI") return;
+
+    const id = marker._id;
+    let color = "gray";
+
+    if (ruleEBCI.green.has(id)) color = "lime";
+    if (ruleEBCI.red.has(id))   color = "red";
+
+    marker.setStyle({ color, fillColor: color });
+  });
+}
+
+// ===============================================================
+// RENDER SONOMETERS — cockpit Airbus PRO+++
+// ===============================================================
+export function renderSonometers(airport, runway) {
+
+  // 🟦 MODE ALL → dynamique
+  if (airport === "ALL") {
+    renderSonometersALLDynamic();
+    return;
+  }
+
+  // 🟦 MODE NORMAL (EBLG / EBCI)
+  const airportRules = rules[airport];
+  if (!airportRules) return;
+
+  const rule = airportRules[runway];
+  if (!rule) return;
+
+  Object.values(sonoIndex).forEach(marker => {
+    if (marker._airport !== airport) return;
+
+    const id = marker._id;
+
+    let color = "gray";
+    if (rule.green.has(id)) color = "lime";
+    if (rule.red.has(id))   color = "red";
+
+    marker.setStyle({
+      color,
+      fillColor: color
+    });
+  });
+}
+
+// ===============================================================
 // Popup météo + graphique vent — PRO+++
 // ===============================================================
 
@@ -285,95 +372,3 @@ Object.values(sonoIndex).forEach(marker => {
     }
   });
 });
-
-// ===============================================================
-// MODE ALL DYNAMIQUE — ND Airbus PRO+++
-// ===============================================================
-function extractWindDir(rawMetar) {
-  if (!rawMetar) return 0;
-  const match = rawMetar.match(/(\d{3})\d{2}KT/);
-  return match ? parseInt(match[1], 10) : 0;
-}
-
-export async function renderSonometersALLDynamic() {
-
-  const metarEBLG = await fetch(`${WORKER_BASE_URL}/api/metar?station=EBLG`)
-    .then(r => r.json())
-    .catch(() => ({ raw: "" }));
-
-  const metarEBCI = await fetch(`${WORKER_BASE_URL}/api/metar?station=EBCI`)
-    .then(r => r.json())
-    .catch(() => ({ raw: "" }));
-
-  const windDirEBLG = extractWindDir(metarEBLG.raw);
-  const windDirEBCI = extractWindDir(metarEBCI.raw);
-
-  const runwayEBLG = windDirEBLG > 180 ? "22" : "04";
-  const runwayEBCI = windDirEBCI > 180 ? "24" : "06";
-
-  const ruleEBLG = rules.EBLG[runwayEBLG];
-  const ruleEBCI = rules.EBCI[runwayEBCI];
-
-  Object.values(sonoIndex).forEach(marker => {
-    if (marker._airport !== "EBLG") return;
-
-    const id = marker._id;
-    let color = "gray";
-
-    if (ruleEBLG.green.has(id)) color = "lime";
-    if (ruleEBLG.red.has(id))   color = "red";
-
-    marker.setStyle({ color, fillColor: color });
-  });
-
-  Object.values(sonoIndex).forEach(marker => {
-    if (marker._airport !== "EBCI") return;
-
-    const id = marker._id;
-    let color = "gray";
-
-    if (ruleEBCI.green.has(id)) color = "lime";
-    if (ruleEBCI.red.has(id))   color = "red";
-
-    marker.setStyle({ color, fillColor: color });
-  });
-}
-
-// ===============================================================
-// RENDER SONOMETERS — cockpit Airbus PRO+++
-// ===============================================================
-export function renderSonometers(airport, runway) {
-
-  // 🟦 MODE ALL → dynamique
-  if (airport === "ALL") {
-    renderSonometersALLDynamic();
-    return;
-  }
-
-  // 🟦 MODE NORMAL (EBLG / EBCI)
-  const airportRules = rules[airport];
-  if (!airportRules) return;
-
-  const rule = airportRules[runway];
-  if (!rule) return;
-
-  Object.values(sonoIndex).forEach(marker => {
-    if (marker._airport !== airport) return;
-
-    const id = marker._id;
-
-    let color = "gray";
-    if (rule.green.has(id)) color = "lime";
-    if (rule.red.has(id))   color = "red";
-
-    marker.setStyle({
-      color,
-      fillColor: color
-    });
-  });
-}
-
-
-
-
-
