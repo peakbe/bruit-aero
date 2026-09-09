@@ -208,6 +208,32 @@ function updateRunwaySonometers() {
 window.filterAirportView = function (airport) {
   currentAirport = airport;
 
+  // 🟦 CAS "ALL" — ND NE DOIT PAS ÊTRE MIS À JOUR
+  if (airport === "ALL") {
+
+    // Pas de ND ici → évite le crash RUNWAY_HEADINGS["ALL"]
+    updateNdSonometersStatus(sonometersEnabled, sonoLayer);
+
+    if (sonometersEnabled) updateRunwaySonometers();
+
+    // Vue générale
+    const target = AIRPORT_COORDS.ALL;
+    map.setView([target.lat, target.lon], 8, { animate: true });
+
+    // Recoloration cockpit Airbus pour ALL
+    renderSonometers("ALL", null);
+
+    // Boutons
+    document.querySelectorAll(".airport-icon-btn").forEach(btn =>
+      btn.classList.remove("active")
+    );
+    const btn = document.querySelector(`button[onclick="filterAirportView('ALL')"]`);
+    if (btn) btn.classList.add("active");
+
+    return; // 🟩 IMPORTANT : on sort ici
+  }
+
+  // 🟦 CAS EBLG / EBCI — logique normale ND Airbus
   updateNdWindComponents(
     currentAirport,
     window.metarEBLG,
@@ -221,10 +247,10 @@ window.filterAirportView = function (airport) {
 
   if (sonometersEnabled) updateRunwaySonometers();
 
-  const target = AIRPORT_COORDS[currentAirport] || AIRPORT_COORDS.ALL;
-  const zoom = currentAirport === "ALL" ? 8 : 11;
-  map.setView([target.lat, target.lon], zoom, { animate: true });
+  const target = AIRPORT_COORDS[currentAirport];
+  map.setView([target.lat, target.lon], 11, { animate: true });
 
+  // Boutons
   document.querySelectorAll(".airport-icon-btn").forEach(btn =>
     btn.classList.remove("active")
   );
@@ -234,6 +260,7 @@ window.filterAirportView = function (airport) {
   );
   if (btn) btn.classList.add("active");
 };
+
 
 // ===============================================================
 // TOGGLE SONOMÈTRES — cockpit Airbus PRO+++
