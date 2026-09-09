@@ -39,20 +39,43 @@ export function updateWindTrend(prefix, speedKmh, windTrend) {
 }
 
 // ND — statut sonomètres
-export function updateNdSonometersStatus(sonometersEnabled, sonoLayer) {
+import { map } from "./map.js";
+import { renderSonometers, renderSonometersALLDynamic } from "./sono.js";
+
+export function updateNdSonometersStatus(enabled, sonoLayer) {
   const el = document.getElementById("nd-sono");
   if (!el) return;
 
-  if (!sonometersEnabled) {
+  if (!enabled) {
+    // ND Airbus → OFF
     el.textContent = "OFF";
     el.style.color = "#fbbf24"; // amber Airbus
+
+    // Désactive l'affichage mais NE PAS supprimer les markers
+    if (map.hasLayer(sonoLayer)) {
+      map.removeLayer(sonoLayer);
+    }
     return;
   }
 
+  // Ré‑ajoute le layer si absent
+  if (!map.hasLayer(sonoLayer)) {
+    map.addLayer(sonoLayer);
+  }
+
+  // Recoloration dynamique selon l'aéroport actif
+  if (window.currentAirport === "ALL") {
+    renderSonometersALLDynamic();
+  } else {
+    renderSonometers(window.currentAirport, window.activeRunway);
+  }
+
+  // Mise à jour ND Airbus
   const count = sonoLayer.getLayers().length;
   el.textContent = `${count}`;
   el.style.color = "#38bdf8"; // cyan Airbus
 }
+
 
 // ===============================================================
 // ND Airbus — Composantes vent PRO+++
