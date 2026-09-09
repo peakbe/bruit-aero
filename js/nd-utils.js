@@ -126,4 +126,83 @@ export function updateNdWindComponentsOptimized(
   ndSetWindComponents({ headwind, crosswind, angle });
 }
 
+// ===============================================================
+// ND Airbus — helpers DOM PRO
+// ===============================================================
+
+const ndRefs = {
+  windArrow: null,
+  windText: null,
+  runwayText: null,
+  headwindText: null,
+  crosswindText: null,
+  angleText: null
+};
+
+function initNdRefs() {
+  if (!ndRefs.windArrow)   ndRefs.windArrow   = document.getElementById("nd-wind-arrow");
+  if (!ndRefs.windText)    ndRefs.windText    = document.getElementById("nd-wind-text");
+  if (!ndRefs.runwayText)  ndRefs.runwayText  = document.getElementById("nd-runway-text");
+  if (!ndRefs.headwindText) ndRefs.headwindText = document.getElementById("nd-headwind");
+  if (!ndRefs.crosswindText) ndRefs.crosswindText = document.getElementById("nd-crosswind");
+  if (!ndRefs.angleText)   ndRefs.angleText   = document.getElementById("nd-angle");
+}
+
+// ---------------------------------------------------------------
+// Flèche vent
+// ---------------------------------------------------------------
+export function ndSetWindArrow(dirDeg) {
+  initNdRefs();
+  if (!ndRefs.windArrow) return;
+
+  if (dirDeg == null) {
+    ndRefs.windArrow.style.transform = "rotate(0deg)";
+    ndRefs.windArrow.style.opacity = "0.2";
+    return;
+  }
+
+  ndRefs.windArrow.style.transform = `rotate(${dirDeg}deg)`;
+  ndRefs.windArrow.style.opacity = "1";
+}
+
+// ---------------------------------------------------------------
+// Texte vent (ex: "220° / 18 kt")
+// ---------------------------------------------------------------
+export function ndSetWindText(text) {
+  initNdRefs();
+  if (!ndRefs.windText) return;
+
+  ndRefs.windText.textContent = text || "—";
+}
+
+// ---------------------------------------------------------------
+// Piste active (ex: "RWY 22")
+// ---------------------------------------------------------------
+export function ndSetRunway(runway) {
+  initNdRefs();
+  if (!ndRefs.runwayText) return;
+
+  ndRefs.runwayText.textContent = runway ? `RWY ${runway}` : "RWY —";
+}
+
+// ---------------------------------------------------------------
+// Composantes vent (headwind / crosswind / angle)
+// ---------------------------------------------------------------
+export function ndSetWindComponents(components) {
+  initNdRefs();
+  if (!ndRefs.headwindText || !ndRefs.crosswindText || !ndRefs.angleText) return;
+
+  if (!components) {
+    ndRefs.headwindText.textContent = "—";
+    ndRefs.crosswindText.textContent = "—";
+    ndRefs.angleText.textContent = "—";
+    return;
+  }
+
+  const { headwind, crosswind, angle } = components;
+
+  ndRefs.headwindText.textContent  = `${headwind} kt`;
+  ndRefs.crosswindText.textContent = `${crosswind} kt`;
+  ndRefs.angleText.textContent     = `${angle}°`;
+}
 
