@@ -131,8 +131,6 @@ async function fetchWeatherData() {
       updateCompassUI(prefix, windDeg, windSpeedKmh);
 
       autoSelectRunway(apt, windDeg, windSpeedMs);
-      updateRunwaySonometers();
-      updateRunwaySonometers();
 
       drawApproachDepartureCones(
         apt,
@@ -145,6 +143,9 @@ async function fetchWeatherData() {
       console.error(`Erreur météo ${apt} :`, e);
     }
   }
+
+  // Une seule recoloration, après mise à jour des deux METAR
+  updateRunwaySonometers();
 }
 
 // ===============================================================
@@ -188,7 +189,6 @@ function autoSelectRunway(airport, windDeg, windSpeedMs) {
 function updateRunwaySonometers() {
 
   if (!sonometersEnabled) {
-    // Désactive l'affichage SANS détruire les markers
     if (map.hasLayer(sonoLayer)) {
       map.removeLayer(sonoLayer);
     }
@@ -196,19 +196,16 @@ function updateRunwaySonometers() {
     return;
   }
 
-  // Ré‑ajoute le layer si absent
   if (!map.hasLayer(sonoLayer)) {
     map.addLayer(sonoLayer);
   }
 
-  // Lecture METAR mise à jour
   const windEBLG = window.metarEBLG?.windDeg ?? 220;
   const rwyEBLG = windEBLG > 180 ? "22" : "04";
 
   const windEBCI = window.metarEBCI?.windDeg ?? 240;
   const rwyEBCI = windEBCI > 180 ? "24" : "06";
 
-  // Recoloration cockpit Airbus
   renderSonometers("EBLG", rwyEBLG, { reset: true });
   renderSonometers("EBCI", rwyEBCI);
 
@@ -222,23 +219,22 @@ window.filterAirportView = function (airport) {
   currentAirport = airport;
 
   if (airport === "ALL") {
-  renderSonometersALLDynamic();
+    renderSonometersALLDynamic();
 
-  const target = AIRPORT_COORDS.ALL;
-  map.setView([target.lat, target.lon], 8, { animate: true });
+    const target = AIRPORT_COORDS.ALL;
+    map.setView([target.lat, target.lon], 8, { animate: true });
 
-  updateNdSonometersStatus(sonometersEnabled, sonoLayer);
+    updateNdSonometersStatus(sonometersEnabled, sonoLayer);
 
-  document.querySelectorAll(".airport-icon-btn").forEach(btn =>
-    btn.classList.remove("active")
-  );
-  const btn = document.querySelector(`button[onclick="filterAirportView('ALL')"]`);
-  if (btn) btn.classList.add("active");
+    document.querySelectorAll(".airport-icon-btn").forEach(btn =>
+      btn.classList.remove("active")
+    );
+    const btn = document.querySelector(`button[onclick="filterAirportView('ALL')"]`);
+    if (btn) btn.classList.add("active");
 
-  return;
-}
+    return;
+  }
 
-  // 🟦 CAS EBLG / EBCI — logique normale ND Airbus
   updateNdWindComponents(
     currentAirport,
     window.metarEBLG,
@@ -255,7 +251,6 @@ window.filterAirportView = function (airport) {
   const target = AIRPORT_COORDS[currentAirport];
   map.setView([target.lat, target.lon], 11, { animate: true });
 
-  // Boutons
   document.querySelectorAll(".airport-icon-btn").forEach(btn =>
     btn.classList.remove("active")
   );
@@ -265,7 +260,6 @@ window.filterAirportView = function (airport) {
   );
   if (btn) btn.classList.add("active");
 };
-
 
 // ===============================================================
 // TOGGLE SONOMÈTRES — cockpit Airbus PRO+++
@@ -279,44 +273,40 @@ function setupSonometersToggle() {
   btn.innerHTML = "🎧 Sonomètres";
 
   btn.onclick = () => {
-  sonometersEnabled = !sonometersEnabled;
+    sonometersEnabled = !sonometersEnabled;
 
-  if (sonometersEnabled) {
-    btn.classList.add("active");
+    if (sonometersEnabled) {
+      btn.classList.add("active");
 
-    // Réaffiche le layer si absent
-    if (!map.hasLayer(sonoLayer)) {
-      map.addLayer(sonoLayer);
-    }
+      if (!map.hasLayer(sonoLayer)) {
+        map.addLayer(sonoLayer);
+      }
 
-    // Recoloration selon l’aéroport actif
-    if (currentAirport === "ALL") {
-      renderSonometersALLDynamic();
+      if (currentAirport === "ALL") {
+        renderSonometersALLDynamic();
+      } else {
+        updateRunwaySonometers();
+      }
+
     } else {
-      updateRunwaySonometers();   // ta fonction existante
+      btn.classList.remove("active");
+
+      if (map.hasLayer(sonoLayer)) {
+        map.removeLayer(sonoLayer);
+      }
     }
 
-  } else {
-    btn.classList.remove("active");
+    updateNdSonometersStatus(sonometersEnabled, sonoLayer);
 
-    // Désactive l’affichage SANS détruire les markers
-    if (map.hasLayer(sonoLayer)) {
-      map.removeLayer(sonoLayer);
-    }
-  }
-
-  updateNdSonometersStatus(sonometersEnabled, sonoLayer);
-
-  updateNdWindComponents(
-    currentAirport,
-    window.metarEBLG,
-    window.metarEBCI,
-    window.lastWindSpeedEBLG,
-    window.lastWindSpeedEBCI,
-    RUNWAY_HEADINGS
-  );
-};
-
+    updateNdWindComponents(
+      currentAirport,
+      window.metarEBLG,
+      window.metarEBCI,
+      window.lastWindSpeedEBLG,
+      window.lastWindSpeedEBCI,
+      RUNWAY_HEADINGS
+    );
+  };
 
   bar.appendChild(btn);
 }
