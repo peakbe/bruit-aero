@@ -131,6 +131,8 @@ async function fetchWeatherData() {
       updateCompassUI(prefix, windDeg, windSpeedKmh);
 
       autoSelectRunway(apt, windDeg, windSpeedMs);
+      updateRunwaySonometers();
+      updateRunwaySonometers();
 
       drawApproachDepartureCones(
         apt,
@@ -184,18 +186,29 @@ function autoSelectRunway(airport, windDeg, windSpeedMs) {
 // SONOMÈTRES — cockpit Airbus PRO+++
 // ===============================================================
 function updateRunwaySonometers() {
+
   if (!sonometersEnabled) {
-    sonoLayer.clearLayers();
+    // Désactive l'affichage SANS détruire les markers
+    if (map.hasLayer(sonoLayer)) {
+      map.removeLayer(sonoLayer);
+    }
     updateNdSonometersStatus(sonometersEnabled, sonoLayer);
     return;
   }
 
-  const windEBLG = window.metarEBLG.windDeg;
+  // Ré‑ajoute le layer si absent
+  if (!map.hasLayer(sonoLayer)) {
+    map.addLayer(sonoLayer);
+  }
+
+  // Lecture METAR mise à jour
+  const windEBLG = window.metarEBLG?.windDeg ?? 220;
   const rwyEBLG = windEBLG > 180 ? "22" : "04";
 
-  const windEBCI = window.metarEBCI.windDeg;
+  const windEBCI = window.metarEBCI?.windDeg ?? 240;
   const rwyEBCI = windEBCI > 180 ? "24" : "06";
 
+  // Recoloration cockpit Airbus
   renderSonometers("EBLG", rwyEBLG, { reset: true });
   renderSonometers("EBCI", rwyEBCI);
 
