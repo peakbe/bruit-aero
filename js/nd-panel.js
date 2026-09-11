@@ -20,7 +20,8 @@ export function setSelectedAircraft(hex) {
 function updateNdPanel() {
     if (!selectedHex) return;
 
-    const plane = planesLayer._layers[selectedHex];
+    const plane = planeIndex[selectedHex];
+
     if (!plane) return;
 
     const p = plane.options.data;
