@@ -86,7 +86,7 @@ export async function updateRadar() {
           fillOpacity: 0.8
         });
 
-        marker._hex = p.hex;
+        marker._leaflet_id = p.hex;
         marker.options.data = p;
 
         marker.on("click", () => {
