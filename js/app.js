@@ -129,6 +129,15 @@ async function fetchWeatherData() {
 
       updateWindTrend(prefix, windSpeedKmh, windTrend);
       updateCompassUI(prefix, windDeg, windSpeedKmh);
+      
+      updateNdWindComponents(
+  apt,
+  window.metarEBLG,
+  window.metarEBCI,
+  window.lastWindSpeedEBLG,
+  window.lastWindSpeedEBCI,
+  RUNWAY_HEADINGS
+);
 
       autoSelectRunway(apt, windDeg, windSpeedMs);
 
