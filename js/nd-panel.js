@@ -2,7 +2,7 @@
 // ND Airbus — Panneau HDG / TRK / GS / TAS / WIND
 // ===============================================================
 
-import { planesLayer } from "./map.js";
+import { planesLayer, planeIndex } from "./map.js";
 import { updateFPV } from "./nd.js";
 
 setInterval(() => {
