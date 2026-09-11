@@ -18,10 +18,10 @@ export let map = null;
 
 // Dictionnaire avion → lookup O(1)
 export const planesLayer = L.layerGroup();
-const planeIndex = {}; // { hex: marker }
-export const planeIndex = planeIndex;
+export const planeIndex = {};   // ✔ export correct
 
 if (!window.ilsLayers) window.ilsLayers = {};
+
 
 // ===============================================================
 // 1. INITIALISATION DE LA CARTE — PRO+++
