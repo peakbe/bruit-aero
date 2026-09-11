@@ -11,6 +11,11 @@ import {
   AIRPORT_COORDS
 } from "./config.js";
 
+// Ajout nécessaire pour ND Airbus
+import { centerOnAircraft, highlightAircraft, updateFPV } from "./nd.js";
+import { setSelectedAircraft } from "./nd-panel.js";
+
+
 // ===============================================================
 // GLOBALS
 // ===============================================================
