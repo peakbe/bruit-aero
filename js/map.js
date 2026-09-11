@@ -19,6 +19,7 @@ export let map = null;
 // Dictionnaire avion → lookup O(1)
 export const planesLayer = L.layerGroup();
 const planeIndex = {}; // { hex: marker }
+export const planeIndex = planeIndex;
 
 if (!window.ilsLayers) window.ilsLayers = {};
 
