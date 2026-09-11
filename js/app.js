@@ -24,6 +24,8 @@ import {
 // GLOBAL STATE
 // ===============================================================
 let currentAirport = "EBLG";
+window.currentAirport = currentAirport;   // ✔ ND sync
+
 let sonometersEnabled = true;
 
 const windTrend = {
@@ -35,6 +37,7 @@ window.metarEBLG = { windDeg: 0 };
 window.metarEBCI = { windDeg: 0 };
 window.lastWindSpeedEBLG = 0;
 window.lastWindSpeedEBCI = 0;
+window.activeRunway = null;              // ✔ ND sync
 
 // ===============================================================
 // INITIALISATION
@@ -48,6 +51,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   await fetchWeatherData();
   updateRunwaySonometers();
   updateNdSonometersStatus(sonometersEnabled, sonoLayer);
+
   updateNdWindComponents(
     currentAirport,
     window.metarEBLG,
@@ -129,15 +133,15 @@ async function fetchWeatherData() {
 
       updateWindTrend(prefix, windSpeedKmh, windTrend);
       updateCompassUI(prefix, windDeg, windSpeedKmh);
-      
+
       updateNdWindComponents(
-  apt,
-  window.metarEBLG,
-  window.metarEBCI,
-  window.lastWindSpeedEBLG,
-  window.lastWindSpeedEBCI,
-  RUNWAY_HEADINGS
-);
+        apt,
+        window.metarEBLG,
+        window.metarEBCI,
+        window.lastWindSpeedEBLG,
+        window.lastWindSpeedEBCI,
+        RUNWAY_HEADINGS
+      );
 
       autoSelectRunway(apt, windDeg, windSpeedMs);
 
@@ -153,7 +157,6 @@ async function fetchWeatherData() {
     }
   }
 
-  // Une seule recoloration, après mise à jour des deux METAR
   updateRunwaySonometers();
 }
 
@@ -215,6 +218,9 @@ function updateRunwaySonometers() {
   const windEBCI = window.metarEBCI?.windDeg ?? 240;
   const rwyEBCI = windEBCI > 180 ? "24" : "06";
 
+  // ✔ ND sync
+  window.activeRunway = currentAirport === "EBLG" ? rwyEBLG : rwyEBCI;
+
   renderSonometers("EBLG", rwyEBLG, { reset: true });
   renderSonometers("EBCI", rwyEBCI);
 
@@ -226,6 +232,7 @@ function updateRunwaySonometers() {
 // ===============================================================
 window.filterAirportView = function (airport) {
   currentAirport = airport;
+  window.currentAirport = currentAirport;   // ✔ ND sync
 
   if (airport === "ALL") {
     renderSonometersALLDynamic();
