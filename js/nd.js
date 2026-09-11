@@ -59,8 +59,10 @@ export function highlightAircraft(hex) {
 // ---------------------------------------------------------------
 // 3. FPV Airbus — mise à jour
 // ---------------------------------------------------------------
+import { planeIndex } from "./map.js";
+
 export function updateFPV(hex) {
-    const plane = planesLayer._layers[hex];
+    const plane = planeIndex[hex];
     if (!plane) return;
 
     const p = plane.options.data;
@@ -85,3 +87,4 @@ export function updateFPV(hex) {
         rotationOrigin: "center center"
     }).addTo(map);
 }
+
