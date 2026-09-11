@@ -97,44 +97,40 @@ export function updateNdWindComponents(
   RUNWAY_HEADINGS
 ) {
 
-  // 🟦 Mode ALL → ND OFF
   if (airport === "ALL") {
-    if (lastNdState.airport !== "ALL") {
-      ndSetWindArrow(null);
-      ndSetWindText("—");
-      ndSetRunway(null);
-      ndSetWindComponents(null);
-      lastNdState.airport = "ALL";
-    }
+    ndSetWindArrow(null);
+    ndSetWindText("—");
+    ndSetRunway(null);
+    ndSetWindComponents(null);
+    lastNdState.airport = "ALL";
     return;
   }
 
   const isEBLG = airport === "EBLG";
   const metar = isEBLG ? metarEBLG : metarEBCI;
-  const windSpeed = isEBLG ? windEBLG : windEBCI;
 
-  if (!metar || !windSpeed) return;
+  // ✔ windDeg correct
+  const windDir = metar.windDeg ?? 0;
 
-  const windDir = metar.wind?.deg ?? 0;
+  // ✔ conversion m/s → kt
+  const windSpeed = (isEBLG ? windEBLG : windEBCI) * 1.94384;
 
   const runway = windDir > 180
     ? (isEBLG ? "22" : "24")
     : (isEBLG ? "04" : "06");
 
-  // 🟦 Si rien n’a changé → on ne fait rien
+  // Cache ND
   if (
     lastNdState.airport === airport &&
     lastNdState.windDir === windDir &&
     lastNdState.windSpeed === windSpeed &&
     lastNdState.runway === runway
   ) {
-    return; // 🟩 ND déjà à jour
+    return;
   }
 
-  // 🟦 Mise à jour cache
   lastNdState = { airport, windDir, windSpeed, runway };
 
-  // 🟦 Calcul composantes vent
   const rwyHeading = RUNWAY_HEADINGS[airport][runway];
   const angle = windDir - rwyHeading;
   const rad = angle * Math.PI / 180;
@@ -142,9 +138,8 @@ export function updateNdWindComponents(
   const headwind = Math.round(windSpeed * Math.cos(rad));
   const crosswind = Math.round(windSpeed * Math.sin(rad));
 
-  // 🟦 Mise à jour ND Airbus
   ndSetWindArrow(windDir);
-  ndSetWindText(`${windDir}° / ${windSpeed} kt`);
+  ndSetWindText(`${windDir}° / ${Math.round(windSpeed)} kt`);
   ndSetRunway(runway);
   ndSetWindComponents({ headwind, crosswind, angle });
 }
