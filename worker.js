@@ -404,6 +404,7 @@ if (path.includes("/api/fids")) {
   return response;
 }
 
+      // 6.4 fids-dyn
       if (path.includes("/api/fids-dyn")) {
   const airportCode = (url.searchParams.get("airport") || "EBLG").toUpperCase();
 
@@ -510,6 +511,40 @@ if (path.includes("/api/fids")) {
     status: 200,
     headers: { ...corsHeaders, "Content-Type": "application/json" }
   });
+}
+
+      function computeStatus(f, airportLat, airportLon) {
+  const alt = f[7];        // altitude en mètres
+  const speed = f[9];      // vitesse en m/s
+  const track = f[10];     // track
+  const lat = f[6];
+  const lon = f[5];
+
+  const speedKt = speed / 0.514444;
+
+  // Distance à l'aéroport
+  const R = 6371e3;
+  const φ1 = lat * Math.PI/180;
+  const φ2 = airportLat * Math.PI/180;
+  const Δφ = (airportLat - lat) * Math.PI/180;
+  const Δλ = (airportLon - lon) * Math.PI/180;
+
+  const a = Math.sin(Δφ/2)**2 +
+            Math.cos(φ1)*Math.cos(φ2)*Math.sin(Δλ/2)**2;
+  const d = R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a)); // en mètres
+
+  // AU SOL
+  if (alt < 80 && speedKt < 40) return "Au sol";
+
+  // EN MONTÉE
+  if (alt > 300 && speedKt > 120) return "En montée";
+
+  // EN APPROCHE
+  if (alt < 1500 && speedKt > 120 && speedKt < 250 && d < 25000) {
+    return "En approche";
+  }
+
+  return "En vol";
 }
 
           // -------------------------------------------------------------
