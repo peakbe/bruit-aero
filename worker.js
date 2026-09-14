@@ -98,6 +98,29 @@ function computeStatus(a, apt) {
   return "En vol";
 }
 
+// fonction de prédiction
+function computePredictedRole(a, apt) {
+  const d = haversine(a.lat, a.lon, apt.lat, apt.lon);
+  const alt = a.alt_m;
+  const speedKt = a.speed_ms / 0.514444;
+
+  // Direction vers l'aéroport
+  const dirToApt = Math.atan2(apt.lon - a.lon, apt.lat - a.lat) * 180 / Math.PI;
+  const diffDir = angleDiff(a.track, dirToApt);
+
+  // ARRIVÉE PRÉVUE : avion en descente vers l'aéroport
+  if (alt > 1500 && alt < 8000 && speedKt > 200 && d < 80000 && diffDir < 40) {
+    return "Arrivée prévue";
+  }
+
+  // DÉPART PROBABLE : avion très bas, proche, en montée
+  if (alt < 1500 && speedKt > 120 && d < 15000) {
+    return "Départ probable";
+  }
+
+  return null;
+}
+
 // -------------------------------------------------------------
 // ETA / ETD réaliste
 // -------------------------------------------------------------
@@ -153,60 +176,54 @@ export default {
           const states = await fetchReadsb(base, apt);
 
           states.forEach(a => {
-            const status = computeStatus(a, apt);
-            const timeStr = computeTimeStr(a, apt);
+  const status = computeStatus(a, apt);
+  const predicted = computePredictedRole(a, apt);
+  const timeStr = computeTimeStr(a, apt);
 
-            if (status === "En approche") {
-              arrivals.push({
-                flight: a.callsign,
-                city: "Inconnu",
-                time: timeStr,
-                status,
-                hex: a.hex
-              });
-            }
+  // Arrivées réelles
+  if (status === "En approche") {
+    arrivals.push({
+      flight: a.callsign,
+      city: "Inconnu",
+      time: timeStr,
+      status,
+      hex: a.hex
+    });
+  }
 
-            if (status === "En montée" || status === "Au sol") {
-              departures.push({
-                flight: a.callsign,
-                city: "Inconnu",
-                time: timeStr,
-                status,
-                hex: a.hex
-              });
-            }
-          });
-        } catch (e) {
-          console.error("FIDS ADS-B v2 KO:", e);
-        }
+  // Départs réels
+  if (status === "En montée" || status === "Au sol") {
+    departures.push({
+      flight: a.callsign,
+      city: "Inconnu",
+      time: timeStr,
+      status,
+      hex: a.hex
+    });
+  }
 
-        // Fallback minimal si ciel vide
-        if (arrivals.length === 0 && departures.length === 0) {
-          const now = new Date();
-          const t = (m) => {
-            const d = new Date(now.getTime() + m * 60000);
-            return d.toLocaleTimeString("fr-BE", {
-              hour: "2-digit",
-              minute: "2-digit",
-              timeZone: "Europe/Brussels"
-            });
-          };
+  // Prédiction : arrivée prévue
+  if (predicted === "Arrivée prévue") {
+    arrivals.push({
+      flight: a.callsign,
+      city: "Inconnu",
+      time: timeStr,
+      status: "Arrivée prévue",
+      hex: a.hex
+    });
+  }
 
-          departures = [
-            { flight: "3V801", city: "Alicante (ALC)", time: t(15), status: "Programmé", hex: null },
-            { flight: "XQ120", city: "Antalya (AYT)", time: t(45), status: "Programmé", hex: null }
-          ];
-        }
-
-        return new Response(JSON.stringify({
-          airport: airportCode,
-          arrivals,
-          departures
-        }), {
-          status: 200,
-          headers: { ...corsHeaders, "Content-Type": "application/json" }
-        });
-      }
+  // Prédiction : départ probable
+  if (predicted === "Départ probable") {
+    departures.push({
+      flight: a.callsign,
+      city: "Inconnu",
+      time: timeStr,
+      status: "Départ probable",
+      hex: a.hex
+    });
+  }
+});
 
       // -------------------------------------------------------------
       // DEFAULT
