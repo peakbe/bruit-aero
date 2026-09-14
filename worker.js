@@ -1,5 +1,5 @@
 // =================================================================
-// WORKER CLOUDFLARE - PROXY AÉRO ND AIRBUS PRO+++
+// WORKER CLOUDFLARE - FIDS ADS-B PRO+++ ND AIRBUS
 // =================================================================
 
 const corsHeaders = {
@@ -9,7 +9,7 @@ const corsHeaders = {
 };
 
 const UA = "AeroNoiseMonitor/1.0 (https://aero-sonic-pulse.base44.app)";
-const DIST_NM = 25;
+const DIST_NM = 50; // rayon pour ADS-B multi
 
 const AIRPORTS = {
   ebci: { lat: 50.4594, lon: 4.4536 },
@@ -45,6 +45,19 @@ function decodeWmoCode(code) {
   return { desc: "Nuageux", icon: "03d" };
 }
 
+function haversine(lat1, lon1, lat2, lon2) {
+  const R = 6371e3;
+  const φ1 = lat1 * Math.PI / 180;
+  const φ2 = lat2 * Math.PI / 180;
+  const Δφ = (lat2 - lat1) * Math.PI / 180;
+  const Δλ = (lon2 - lon1) * Math.PI / 180;
+
+  const a = Math.sin(Δφ / 2) ** 2 +
+            Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ / 2) ** 2;
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c; // m
+}
+
 // -------------------------------------------------------------
 // ADS-B helpers (adsb.lol / adsb.fi)
 // -------------------------------------------------------------
@@ -67,19 +80,16 @@ async function fetchReadsb(base, ap, relay) {
       const altFt = typeof a.alt_baro === "number" ? a.alt_baro : 0;
       const speedKt = typeof a.gs === "number" ? a.gs : 0;
 
-      return [
-        a.hex || "unknown",
-        (a.flight || a.r || "Inconnu").trim(),
-        "BE",
-        Math.floor(Date.now() / 1000),
-        Math.floor(Date.now() / 1000),
-        a.lon,
-        a.lat,
-        altFt * 0.3048,
-        a.alt_baro === "ground",
-        speedKt * 0.514444,
-        typeof a.track === "number" ? a.track : 0
-      ];
+      return {
+        hex: a.hex || "unknown",
+        callsign: (a.flight || a.r || "Inconnu").trim(),
+        lat: a.lat,
+        lon: a.lon,
+        alt_m: altFt * 0.3048,
+        on_ground: a.alt_baro === "ground",
+        speed_ms: speedKt * 0.514444,
+        track: typeof a.track === "number" ? a.track : 0
+      };
     });
 }
 
@@ -92,32 +102,16 @@ async function fetchBothAdsb(base, relay) {
 }
 
 // -------------------------------------------------------------
-// Statut dynamique FR24 (En approche / En montée / Au sol / En vol)
+// Statut dynamique (En approche / En montée / Au sol / En vol)
 // -------------------------------------------------------------
-function computeStatus(f, airportLat, airportLon) {
-  const lon = f[5];
-  const lat = f[6];
-  const alt = f[7];   // m
-  const speed = f[9]; // m/s
-
-  if (!lat || !lon) return "En vol";
-
-  const speedKt = speed / 0.514444;
-
-  const R = 6371e3;
-  const φ1 = lat * Math.PI/180;
-  const φ2 = airportLat * Math.PI/180;
-  const Δφ = (airportLat - lat) * Math.PI/180;
-  const Δλ = (airportLon - lon) * Math.PI/180;
-
-  const a = Math.sin(Δφ/2)**2 +
-            Math.cos(φ1)*Math.cos(φ2)*Math.sin(Δλ/2)**2;
-  const d = R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a)); // m
+function computeStatusFromAdsb(a, aptLat, aptLon) {
+  const alt = a.alt_m;
+  const speedKt = a.speed_ms / 0.514444;
+  const d = haversine(a.lat, a.lon, aptLat, aptLon); // m
 
   if (alt < 80 && speedKt < 40) return "Au sol";
-  if (alt > 300 && speedKt > 120) return "En montée";
+  if (alt > 300 && speedKt > 120 && d < 10000) return "En montée";
   if (alt < 1500 && speedKt > 120 && speedKt < 250 && d < 25000) return "En approche";
-
   return "En vol";
 }
 
@@ -298,82 +292,73 @@ export default {
       }
 
       // -------------------------------------------------------------
-      // 6. FIDS DYNAMIQUE (FR24 JSON) — EBCI / EBLG
+      // 6. FIDS DYNAMIQUE ADS-B — EBCI / EBLG
       // -------------------------------------------------------------
-      if (path.includes("/api/fids-dyn")) {
+      if (path.includes("/api/fids-adsb")) {
         const airportCode = (url.searchParams.get("airport") || "EBLG").toUpperCase();
-
-        const fr24Url =
-          "https://data-cloud.flightradar24.com/zones/fcgi/feed.json?bounds=52,49,2,7&faa=1&satellite=1&mlat=1&flarm=1&adsb=1&gnd=1&air=1&vehicles=0&estimated=1";
+        const aptKey = airportCode.toLowerCase();
+        const apt = AIRPORTS[aptKey];
 
         let arrivals = [];
         let departures = [];
 
+        if (!apt) {
+          return new Response(JSON.stringify({
+            airport: airportCode,
+            arrivals: [],
+            departures: []
+          }), {
+            status: 200,
+            headers: { ...corsHeaders, "Content-Type": "application/json" }
+          });
+        }
+
+        // On utilise adsb.lol comme source principale
         try {
-          const res = await fetchWithTimeout(fr24Url, {
-            headers: {
-              "User-Agent": "Mozilla/5.0",
-              "Accept": "application/json"
+          const base = "https://api.adsb.lol/v2";
+          const states = await fetchReadsb(base, apt, null);
+
+          states.forEach(a => {
+            const status = computeStatusFromAdsb(a, apt.lat, apt.lon);
+            const d = haversine(a.lat, a.lon, apt.lat, apt.lon); // m
+            const speedKt = a.speed_ms / 0.514444;
+
+            // ETA / ETD approximatif
+            let timeStr = "--:--";
+            if (speedKt > 50) {
+              const tSec = d / a.speed_ms;
+              const eta = new Date(Date.now() + tSec * 1000);
+              timeStr = eta.toLocaleTimeString("fr-BE", {
+                hour: "2-digit",
+                minute: "2-digit",
+                timeZone: "Europe/Brussels"
+              });
+            }
+
+            // Arrivée (en approche)
+            if (status === "En approche") {
+              arrivals.push({
+                flight: a.callsign || "Inconnu",
+                city: "Inconnu",
+                time: timeStr,
+                status,
+                hex: a.hex
+              });
+            }
+
+            // Départ (en montée ou au sol proche)
+            if (status === "En montée" || (status === "Au sol" && d < 5000)) {
+              departures.push({
+                flight: a.callsign || "Inconnu",
+                city: "Inconnu",
+                time: timeStr,
+                status,
+                hex: a.hex
+              });
             }
           });
-
-          if (res.ok) {
-            const data = await res.json();
-            const systemKeys = ["full_count", "version", "stats"];
-
-            Object.keys(data).forEach(key => {
-              if (systemKeys.includes(key) || !Array.isArray(data[key])) return;
-
-              const f = data[key];
-              const lat = f[1];
-              const lon = f[2];
-              if (!lat || !lon) return;
-
-              const hex = key;
-              const callsign = f[16] || f[13] || "Inconnu";
-              const origin = f[11] || "";
-              const dest = f[12] || "";
-              const eta = f[9] || 0;
-
-              const timeStr = eta
-                ? new Date(eta * 1000).toLocaleTimeString("fr-BE", {
-                    hour: "2-digit",
-                    minute: "2-digit",
-                    timeZone: "Europe/Brussels"
-                  })
-                : "--:--";
-
-              const aptKey = airportCode.toLowerCase();
-              const aptCoords = AIRPORTS[aptKey];
-              const status = aptCoords
-                ? computeStatus(f, aptCoords.lat, aptCoords.lon)
-                : "En vol";
-
-              // Départ
-              if (origin.toUpperCase() === airportCode) {
-                departures.push({
-                  flight: callsign,
-                  city: dest || "Inconnu",
-                  time: timeStr,
-                  status,
-                  hex
-                });
-              }
-
-              // Arrivée
-              if (dest.toUpperCase() === airportCode) {
-                arrivals.push({
-                  flight: callsign,
-                  city: origin || "Inconnu",
-                  time: timeStr,
-                  status,
-                  hex
-                });
-              }
-            });
-          }
         } catch (e) {
-          console.error("FR24 FIDS dyn KO:", e);
+          console.error("FIDS ADS-B KO:", e);
         }
 
         // Mock si vraiment vide
