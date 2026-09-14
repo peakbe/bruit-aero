@@ -1,58 +1,80 @@
 // ===============================================================
-// ND Airbus — Panneau HDG / TRK / GS / TAS / WIND
+// ND Airbus — Panneau HDG / TRK / GS / TAS / WIND (PRO v3)
 // ===============================================================
 
-import { planesLayer, planeIndex } from "./map.js";
+import { planeIndex } from "./map.js";
 import { updateFPV } from "./nd.js";
-
-setInterval(() => {
-    if (selectedHex) updateFPV(selectedHex);
-}, 1000);
 
 let selectedHex = null;
 
-// Appelé depuis fids.js ou nd.js
+// ---------------------------------------------------------------
+// Sélection avion depuis ND / FIDS
+// ---------------------------------------------------------------
 export function setSelectedAircraft(hex) {
-    selectedHex = hex;
+  selectedHex = hex;
 }
 
-// Mise à jour du panneau ND Airbus
+// ---------------------------------------------------------------
+// Mise à jour panneau ND Airbus
+// ---------------------------------------------------------------
 function updateNdPanel() {
-    if (!selectedHex) return;
+  if (!selectedHex) return;
 
-    const plane = planeIndex[selectedHex];
+  const plane = planeIndex[selectedHex];
+  if (!plane) return;
 
-    if (!plane) return;
+  const p = plane.options.data;
+  if (!p) return;
 
-    const p = plane.options.data;
+  // -----------------------------
+  // HDG / TRK — fallback Airbus
+  // -----------------------------
+  const hdg =
+    p.heading ||
+    p.true_heading ||
+    p.mag_heading ||
+    p.track ||
+    0;
 
-    // Heading (track)
-    const hdg = Math.round(p.track || p.heading || 0);
+  const trk = p.track || hdg;
 
-    // Track = heading réel sol
-    const trk = Math.round(p.track || hdg);
+  const hdgNorm = Math.round(((hdg % 360) + 360) % 360);
+  const trkNorm = Math.round(((trk % 360) + 360) % 360);
 
-    // Ground Speed (GS)
-    const gs = Math.round(p.gs || p.speed || 0);
+  // -----------------------------
+  // GS / TAS
+  // -----------------------------
+  const gsKt = Math.round(
+    p.gs ||
+    (p.speed_ms ? p.speed_ms / 0.514444 : 0)
+  );
 
-    // True Airspeed (TAS) — estimation
-    const tas = Math.round(gs * 1.05);
+  const tasKt = Math.round(gsKt * 1.05);
 
-    // Vent (si disponible)
-    const windDir = p.wind_direction || "---";
-    const windSpd = p.wind_speed || "---";
+  // -----------------------------
+  // Vent
+  // -----------------------------
+  const windDir = p.wind_direction ?? "---";
+  const windSpd = p.wind_speed ?? "---";
 
-    document.getElementById("nd-hdg").innerText = hdg;
-    document.getElementById("nd-trk").innerText = trk;
-    document.getElementById("nd-gs").innerText = gs + " kt";
-    document.getElementById("nd-tas").innerText = tas + " kt";
-    document.getElementById("nd-wind").innerText = `${windDir}° / ${windSpd} kt`;
+  // -----------------------------
+  // Injection cockpit Airbus
+  // -----------------------------
+  document.getElementById("nd-hdg").innerText = hdgNorm;
+  document.getElementById("nd-trk").innerText = trkNorm;
+  document.getElementById("nd-gs").innerText = `${gsKt} kt`;
+  document.getElementById("nd-tas").innerText = `${tasKt} kt`;
+  document.getElementById("nd-wind").innerText = `${windDir}° / ${windSpd} kt`;
 }
+
+// ---------------------------------------------------------------
+// Boussole vent / LOC / GP — PRO v3
+// ---------------------------------------------------------------
 export function updateCompassUI(prefix, windDeg, windSpeedKmh) {
   const needle = document.getElementById(`${prefix}-compass-needle`);
-  const label = document.getElementById(`${prefix}-compass-label`);
-  const loc = document.getElementById(`${prefix}-compass-loc`);
-  const gp = document.getElementById(`${prefix}-compass-gp`);
+  const label  = document.getElementById(`${prefix}-compass-label`);
+  const loc    = document.getElementById(`${prefix}-compass-loc`);
+  const gp     = document.getElementById(`${prefix}-compass-gp`);
   const windVec = document.getElementById(`${prefix}-compass-wind`);
 
   if (!needle || !label || !loc || !gp || !windVec) return;
@@ -60,29 +82,28 @@ export function updateCompassUI(prefix, windDeg, windSpeedKmh) {
   // Aiguille vent
   needle.style.transform = `rotate(${windDeg}deg)`;
 
-  // Vector wind arrow — même angle que le vent
+  // Flèche vent
   windVec.style.transform = `rotate(${windDeg}deg) translate(-50%, -50%)`;
 
-  // LOC approximatif : on aligne la piste sur le vent (comme ton ND vent)
-  // EBCI: 24/06, EBLG: 22/04
+  // Runway heading (Airbus-style)
   let runwayHeading = 0;
 
-  if (prefix === "ebci") {
-    runwayHeading = windDeg > 180 ? 240 : 60;
-  } else if (prefix === "eblg") {
-    runwayHeading = windDeg > 180 ? 220 : 40;
-  }
+  if (prefix === "ebci") runwayHeading = windDeg > 180 ? 240 : 60;
+  if (prefix === "eblg") runwayHeading = windDeg > 180 ? 220 : 40;
 
   loc.style.transform = `rotate(${runwayHeading}deg)`;
+  gp.style.transform  = `rotate(${runwayHeading}deg)`;
 
-  // Glidepath 3° : on le représente comme une petite barre verte légèrement décalée
-  // Ici, on le garde aligné sur la piste (LOC), mais tu peux le décaler si tu veux
-  gp.style.transform = `rotate(${runwayHeading}deg)`;
-
-  // Label Airbus
+  // Label cockpit
   label.textContent = `${windDeg}° / ${windSpeedKmh} km/h`;
 }
 
-
-// Mise à jour automatique
-setInterval(updateNdPanel, 2000);
+// ---------------------------------------------------------------
+// Mise à jour automatique ND + FPV
+// ---------------------------------------------------------------
+setInterval(() => {
+  if (selectedHex) {
+    updateNdPanel();
+    updateFPV(selectedHex);
+  }
+}, 1000);
