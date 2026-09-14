@@ -1,71 +1,58 @@
 // ===============================================================
-// ND Airbus — centrage + surbrillance + FPV PRO v3
+// ND Airbus — Panneau HDG / TRK / GS / TAS / WIND + METEO PRO v3
 // ===============================================================
 
-import { setSelectedAircraft } from "./nd-panel.js";
-import { map, planeIndex } from "./map.js";
+import { planeIndex } from "./map.js";
+import { updateFPV } from "./nd.js";
 
-// ===============================================================
-// 0. FPV Airbus — icône optimisée
-// ===============================================================
-const fpvIcon = L.divIcon({
-  className: "fpv-icon",
-  html: `
-    <svg width="42" height="42" viewBox="0 0 42 42">
-      <circle cx="21" cy="21" r="10" stroke="#00ffff" stroke-width="2" fill="none"/>
-      <line x1="11" y1="21" x2="31" y2="21" stroke="#00ffff" stroke-width="2"/>
-      <line x1="16" y1="26" x2="21" y2="32" stroke="#00ffff" stroke-width="2"/>
-      <line x1="26" y1="26" x2="21" y2="32" stroke="#00ffff" stroke-width="2"/>
-    </svg>
-  `,
-  iconSize: [42, 42],
-  iconAnchor: [21, 21]
-});
+let selectedHex = null;
+let meteoData = null;   // météo stockée ici
 
-let fpvMarker = null;
-
-// ===============================================================
-// 1. Centrage avion — ND Airbus PRO v3
-// ===============================================================
-export function centerOnAircraft(hex) {
-  const plane = planeIndex[hex];
-  if (!plane) return;
-
-  const { lat, lon } = plane.options.data;
-  map.setView([lat, lon], 11, { animate: true });
+// ---------------------------------------------------------------
+// Sélection avion depuis ND / FIDS
+// ---------------------------------------------------------------
+export function setSelectedAircraft(hex) {
+  selectedHex = hex;
 }
 
-// ===============================================================
-// 2. Surbrillance avion — ND Airbus PRO v3
-// ===============================================================
-export function highlightAircraft(hex) {
-  const plane = planeIndex[hex];
-  if (!plane) return;
+// ---------------------------------------------------------------
+// Récupération METEO depuis Worker
+// ---------------------------------------------------------------
+async function fetchMeteo(airport = "EBLG") {
+  try {
+    const res = await fetch(
+      `https://bruit-aero-proxy.pnyr682w7f.workers.dev/api/meteo?apt=${airport}`,
+      { cache: "no-store" }
+    );
+    if (!res.ok) return;
 
-  plane.setStyle({
-    color: "#00ffff",   // cyan Airbus
-    weight: 4
-  });
-
-  setTimeout(() => {
-    plane.setStyle({
-      color: "#38bdf8", // bleu cockpit Airbus
-      weight: 2
-    });
-  }, 2500);
+    meteoData = await res.json();
+  } catch (e) {
+    console.error("METEO KO:", e);
+  }
 }
 
-// ===============================================================
-// 3. FPV Airbus — PRO v3 (stabilisé)
-// ===============================================================
-export function updateFPV(hex) {
-  const plane = planeIndex[hex];
+// Mise à jour météo toutes les 60 s
+setInterval(() => {
+  fetchMeteo("EBLG");
+  fetchMeteo("EBCI");
+}, 60000);
+
+// ---------------------------------------------------------------
+// Mise à jour panneau ND Airbus
+// ---------------------------------------------------------------
+function updateNdPanel() {
+  if (!selectedHex) return;
+
+  const plane = planeIndex[selectedHex];
   if (!plane) return;
 
   const p = plane.options.data;
   if (!p) return;
 
-  // Fallback HDG/TRK Airbus-grade
+  // -----------------------------
+  // HDG / TRK — fallback Airbus
+  // -----------------------------
   const hdg =
     p.heading ||
     p.true_heading ||
@@ -75,29 +62,58 @@ export function updateFPV(hex) {
 
   const trk = p.track || hdg;
 
-  // Drift HDG/TRK
-  const drift = trk - hdg;
+  const hdgNorm = Math.round(((hdg % 360) + 360) % 360);
+  const trkNorm = Math.round(((trk % 360) + 360) % 360);
 
-  // FPV = track corrigé du drift
-  let fpv = trk - drift;
+  // -----------------------------
+  // GS / TAS
+  // -----------------------------
+  const gsKt = Math.round(
+    p.gs ||
+    (p.speed_ms ? p.speed_ms / 0.514444 : 0)
+  );
 
-  // Normalisation 0–360°
-  fpv = ((fpv % 360) + 360) % 360;
+  const tasKt = Math.round(gsKt * 1.05);
 
-  const lat = p.lat;
-  const lon = p.lon;
+  // -----------------------------
+  // METEO ND Airbus
+  // -----------------------------
+  let windDir = "---";
+  let windSpd = "---";
+  let temp = "---";
 
-  // Mise à jour FPV existant
-  if (fpvMarker) {
-    fpvMarker.setLatLng([lat, lon]);
-    fpvMarker.setRotationAngle(fpv);
-    return;
+  if (meteoData && meteoData.meteo) {
+    windDir = meteoData.meteo.wind.deg ?? "---";
+    windSpd = Math.round((meteoData.meteo.wind.speed ?? 0) / 1.852); // km/h → kt
+    temp = Math.round(meteoData.meteo.main.temp ?? "---");
   }
 
-  // Création FPV
-  fpvMarker = L.marker([lat, lon], {
-    icon: fpvIcon,
-    rotationAngle: fpv,
-    rotationOrigin: "center center"
-  }).addTo(map);
+  // WINDCOMP (composante vent)
+  let windComp = "---";
+  if (windDir !== "---" && trkNorm !== "---" && windSpd !== "---") {
+    const diff = Math.abs(windDir - trkNorm);
+    windComp = Math.round(windSpd * Math.cos(diff * Math.PI / 180));
+  }
+
+  // -----------------------------
+  // Injection cockpit Airbus
+  // -----------------------------
+  document.getElementById("nd-hdg").innerText = hdgNorm;
+  document.getElementById("nd-trk").innerText = trkNorm;
+  document.getElementById("nd-gs").innerText = `${gsKt} kt`;
+  document.getElementById("nd-tas").innerText = `${tasKt} kt`;
+
+  document.getElementById("nd-wind").innerText = `${windDir}° / ${windSpd} kt`;
+  document.getElementById("nd-temp").innerText = `${temp}°C`;
+  document.getElementById("nd-windcomp").innerText = `${windComp} kt`;
 }
+
+// ---------------------------------------------------------------
+// Mise à jour automatique ND + FPV
+// ---------------------------------------------------------------
+setInterval(() => {
+  if (selectedHex) {
+    updateNdPanel();
+    updateFPV(selectedHex);
+  }
+}, 1000);
