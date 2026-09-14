@@ -8,6 +8,20 @@ import { setSelectedAircraft } from "./nd-panel.js";
 const API_BASE = "https://bruit-aero-proxy.pnyr682w7f.workers.dev/api/fids";
 const AIRPORTS = ["EBCI", "EBLG"];
 
+let fidsFilter = "all"; // all | arr | dep
+window.setFidsFilter = function(filter) {
+  fidsFilter = filter;
+
+  document.querySelectorAll(".fids-btn").forEach(btn =>
+    btn.classList.remove("active")
+  );
+
+  document.querySelector(`button[onclick="setFidsFilter('${filter}')"]`)
+    ?.classList.add("active");
+
+  updateFIDS(); // rafraîchit immédiatement
+};
+
 // ---------------------------------------------------------------
 // 1. Récupération des données FIDS via Worker
 // ---------------------------------------------------------------
