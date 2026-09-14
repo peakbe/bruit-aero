@@ -1,5 +1,5 @@
 // ===============================================================
-// map.js — Radar ADS‑B + ND Airbus PRO+++
+// map.js — Radar ADS‑B + ND Airbus PRO+++ (Optimisé)
 // ===============================================================
 
 import { sonoLayer } from "./sono.js";
@@ -11,22 +11,19 @@ import {
   AIRPORT_COORDS
 } from "./config.js";
 
-// Ajout nécessaire pour ND Airbus
 import { centerOnAircraft, highlightAircraft, updateFPV } from "./nd.js";
 import { setSelectedAircraft } from "./nd-panel.js";
-
 
 // ===============================================================
 // GLOBALS
 // ===============================================================
 export let map = null;
 
-// Dictionnaire avion → lookup O(1)
+// Lookup avion → O(1)
 export const planesLayer = L.layerGroup();
-export const planeIndex = {};   // ✔ export correct
+export const planeIndex = {};
 
 if (!window.ilsLayers) window.ilsLayers = {};
-
 
 // ===============================================================
 // 1. INITIALISATION DE LA CARTE — PRO+++
@@ -34,7 +31,11 @@ if (!window.ilsLayers) window.ilsLayers = {};
 export function initRadarMap() {
   if (map) return map;
 
-  map = L.map("map").setView(
+  map = L.map("map", {
+    preferCanvas: true,          // ✔ accélère le rendu
+    zoomControl: false,          // ✔ style cockpit
+    worldCopyJump: true          // ✔ évite glitch en pan
+  }).setView(
     [AIRPORT_COORDS.ALL.lat, AIRPORT_COORDS.ALL.lon],
     8
   );
@@ -47,10 +48,8 @@ export function initRadarMap() {
   planesLayer.addTo(map);
   sonoLayer.addTo(map);
 
-  // Correction affichage Leaflet (GitHub Pages + preload CSS)
-  setTimeout(() => {
-    if (map) map.invalidateSize();
-  }, 200);
+  // Correction affichage Leaflet
+  setTimeout(() => map.invalidateSize(), 200);
 
   return map;
 }
@@ -61,14 +60,15 @@ export function initRadarMap() {
 export async function updateRadar() {
   try {
     const res = await fetch(
-      "https://bruit-aero-proxy.pnyr682w7f.workers.dev/api/adsb"
+      "https://bruit-aero-proxy.pnyr682w7f.workers.dev/api/adsb",
+      { cache: "no-store" }
     );
     const data = await res.json();
 
     const active = new Set();
 
-    (data.aircraft || []).forEach(p => {
-      if (!p.hex || !p.lat || !p.lon) return;
+    for (const p of (data.aircraft || [])) {
+      if (!p.hex || !p.lat || !p.lon) continue;
 
       active.add(p.hex);
 
@@ -83,7 +83,8 @@ export async function updateRadar() {
           color: "#38bdf8",
           weight: 2,
           fillColor: "#0ea5e9",
-          fillOpacity: 0.8
+          fillOpacity: 0.8,
+          renderer: map.getRenderer(map) // ✔ accélère Canvas
         });
 
         marker._leaflet_id = p.hex;
@@ -100,20 +101,20 @@ export async function updateRadar() {
         planeIndex[p.hex] = marker;
       }
 
-      // Mise à jour position
+      // Mise à jour position + data
       marker.setLatLng([p.lat, p.lon]);
       marker.options.data = p;
-    });
+    }
 
     // -------------------------------------------------------------
     // Suppression des avions disparus — PRO+++
     // -------------------------------------------------------------
-    Object.keys(planeIndex).forEach(hex => {
+    for (const hex in planeIndex) {
       if (!active.has(hex)) {
         planesLayer.removeLayer(planeIndex[hex]);
         delete planeIndex[hex];
       }
-    });
+    }
 
   } catch (err) {
     console.error("Erreur radar ADS‑B:", err);
@@ -128,16 +129,17 @@ setInterval(updateRadar, RADAR_REFRESH_MS);
 export function drawApproachDepartureCones(airport, lat, lon, windDeg) {
 
   // Nettoyage ancien ILS
-  if (!window.ilsLayers[airport]) window.ilsLayers[airport] = [];
-  window.ilsLayers[airport].forEach(layer => map.removeLayer(layer));
+  const layers = window.ilsLayers[airport] || [];
+  layers.forEach(layer => map.removeLayer(layer));
   window.ilsLayers[airport] = [];
 
   // ---------------------------------------------------------------
   // Détermination piste active
   // ---------------------------------------------------------------
-  const runway = airport === "EBLG"
-    ? (windDeg > 180 ? "22" : "04")
-    : (windDeg > 180 ? "24" : "06");
+  const runway =
+    airport === "EBLG"
+      ? (windDeg > 180 ? "22" : "04")
+      : (windDeg > 180 ? "24" : "06");
 
   const ils = ILS_CONFIG[airport].runways[runway];
   const heading = ils.heading;
@@ -161,7 +163,7 @@ export function drawApproachDepartureCones(airport, lat, lon, windDeg) {
     { opacity: 0.12, weight: 1 }
   ];
 
-  coneLayers.forEach(layer => {
+  for (const layer of coneLayers) {
     const poly = L.polygon([threshold, left, right], {
       color: "#38bdf8",
       weight: layer.weight,
@@ -171,7 +173,7 @@ export function drawApproachDepartureCones(airport, lat, lon, windDeg) {
     }).addTo(map);
 
     window.ilsLayers[airport].push(poly);
-  });
+  }
 
   // ---------------------------------------------------------------
   // LOCALIZER (LOC) — PRO+++
