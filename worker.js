@@ -11,7 +11,6 @@ const corsHeaders = {
 const UA = "AeroNoiseMonitor/1.0 (https://aero-sonic-pulse.base44.app)";
 const DIST_NM = 25;
 
-// Coordonnées pour ADS-B (radar)
 const AIRPORTS = {
   ebci: { lat: 50.4594, lon: 4.4536 },
   eblg: { lat: 50.6378, lon: 5.4444 },
@@ -22,9 +21,6 @@ const RELAYS = [
   (u) => `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(u)}`,
 ];
 
-// -------------------------------------------------------------
-// Utils
-// -------------------------------------------------------------
 async function fetchWithTimeout(url, options = {}, timeoutMs = 4000) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
@@ -47,7 +43,7 @@ function decodeWmoCode(code) {
 }
 
 // -------------------------------------------------------------
-// ADS-B helpers (adsb.lol / adsb.fi)
+// ADS-B helpers
 // -------------------------------------------------------------
 async function fetchReadsb(base, ap, relay) {
   const target = `${base}/lat/${ap.lat}/lon/${ap.lon}/dist/${DIST_NM}`;
@@ -107,136 +103,33 @@ export default {
     try {
 
       // -------------------------------------------------------------
-      // 1. ADS-B MULTI-SOURCES (adsb.lol → adsb.fi → FR24 → OpenSky)
+      // 1. ADS-B MULTI-SOURCES
       // -------------------------------------------------------------
-      if (path.includes("/api/opensky") || path.includes("/api/adsb-multi")) {
-        try {
-          const LOL = "https://api.adsb.lol/v2";
-          const FI = "https://opendata.adsb.fi/api/v2";
+      if (path.includes("/api/adsb-multi")) {
+        const LOL = "https://api.adsb.lol/v2";
+        const FI = "https://opendata.adsb.fi/api/v2";
 
-          let mappedStates = [];
+        let mappedStates = [];
 
-          for (const [base, relay] of [
-            [LOL, null],
-            [FI, null],
-            [LOL, 0],
-            [FI, 0],
-            [LOL, 1],
-          ]) {
-            mappedStates = await fetchBothAdsb(base, relay);
-            if (mappedStates.length > 0) break;
-          }
-
-          if (mappedStates.length > 0) {
-            const seen = new Set();
-            const dedup = mappedStates.filter((s) => {
-              const k = `${s[0]}|${s[1]}`;
-              if (seen.has(k)) return false;
-              seen.add(k);
-              return true;
-            });
-
-            return new Response(JSON.stringify({ states: dedup }), {
-              status: 200,
-              headers: { ...corsHeaders, "Content-Type": "application/json" }
-            });
-          }
-        } catch (e) {
-          console.log("ADSB direct/proxy indisponible, bascule FR24...", e);
+        for (const [base, relay] of [
+          [LOL, null],
+          [FI, null],
+          [LOL, 0],
+          [FI, 0],
+          [LOL, 1],
+        ]) {
+          mappedStates = await fetchBothAdsb(base, relay);
+          if (mappedStates.length > 0) break;
         }
 
-        // FR24 fallback
-        try {
-          const fr24Url =
-            "https://data-cloud.flightradar24.com/zones/fcgi/feed.json?bounds=52.0,49.0,2.0,7.0&faa=1&satellite=1&mlat=1&flarm=1&adsb=1&gnd=0&air=1&vehicles=0&estimated=0";
-
-          const fr24Res = await fetchWithTimeout(fr24Url, {
-            headers: {
-              "User-Agent": "Mozilla/5.0",
-              "Accept": "application/json"
-            }
-          });
-
-          if (fr24Res.ok) {
-            const data = await fr24Res.json();
-            const mappedStates = [];
-            const systemKeys = ["full_count", "version", "stats"];
-
-            Object.keys(data).forEach(key => {
-              if (systemKeys.includes(key) || !Array.isArray(data[key])) return;
-
-              const f = data[key];
-              const lat = f[1];
-              const lon = f[2];
-              if (!lat || !lon || (lat === 0 && lon === 0)) return;
-
-              const altitudeFeet = typeof f[4] === "number" ? f[4] : 0;
-              const speedKts = typeof f[5] === "number" ? f[5] : 0;
-
-              const altitudeMeters = altitudeFeet * 0.3048;
-              const speedMs = speedKts * 0.514444;
-
-              if (speedMs < 30 || altitudeMeters < 150) return;
-
-              mappedStates.push([
-                key,
-                f[16] || f[13] || "Inconnu",
-                "BE",
-                f[10] || 0,
-                f[10] || 0,
-                lon,
-                lat,
-                altitudeMeters,
-                false,
-                speedMs,
-                f[3] || 0
-              ]);
-            });
-
-            if (mappedStates.length > 0) {
-              return new Response(JSON.stringify({ states: mappedStates }), {
-                status: 200,
-                headers: { ...corsHeaders, "Content-Type": "application/json" }
-              });
-            }
-          }
-        } catch (e) {
-          console.log("FR24 indisponible, bascule OpenSky...", e);
-        }
-
-        // OpenSky fallback
-        try {
-          const openskyUrl =
-            "https://opensky-network.org/api/states/all?lamin=49.0&lomin=2.0&lamax=52.0&lomax=7.0";
-
-          const openskyRes = await fetchWithTimeout(openskyUrl, {
-            headers: {
-              "User-Agent": "Mozilla/5.0",
-              "Accept": "application/json"
-            }
-          });
-
-          if (openskyRes.ok) {
-            const data = await openskyRes.json();
-            if (data && Array.isArray(data.states)) {
-              return new Response(JSON.stringify(data), {
-                status: 200,
-                headers: { ...corsHeaders, "Content-Type": "application/json" }
-              });
-            }
-          }
-        } catch (e) {
-          console.log("OpenSky indisponible...", e);
-        }
-
-        return new Response(JSON.stringify({ states: [] }), {
+        return new Response(JSON.stringify({ states: mappedStates }), {
           status: 200,
           headers: { ...corsHeaders, "Content-Type": "application/json" }
         });
       }
 
       // -------------------------------------------------------------
-      // 2. ADS-B Airplanes.live (radar map.js)
+      // 2. ADS-B Airplanes.live
       // -------------------------------------------------------------
       if (path.startsWith("/api/adsb")) {
         try {
@@ -256,7 +149,7 @@ export default {
             status: 200,
             headers: { ...corsHeaders, "Content-Type": "application/json" }
           });
-        } catch (e) {
+        } catch {
           return new Response(JSON.stringify({ aircraft: [] }), {
             status: 200,
             headers: { ...corsHeaders, "Content-Type": "application/json" }
@@ -264,7 +157,7 @@ export default {
         }
       }
 
-      // -------------------------------------------------------------
+          // -------------------------------------------------------------
       // 3. METEO ACTUELLE (Open-Meteo → format OpenWeather-like)
       // -------------------------------------------------------------
       if (path.includes("/api/weather")) {
@@ -440,4 +333,215 @@ export default {
         // Départs
         try {
           const depUrl =
-            `https://airlabs.co/api/v9/schedules?dep_icao=${airportCode}&api_key
+            `https://airlabs.co/api/v9/schedules?dep_icao=${airportCode}&api_key=${airlabsKey}`;
+
+          const resDep = await fetchWithTimeout(depUrl);
+          if (resDep.ok) {
+            const data = await resDep.json();
+            if (Array.isArray(data.response)) {
+              const list = data.response;
+              departures = departures.concat(
+                list.slice(0, 30).map(f => {
+                  const timeRaw = f.dep_time || f.dep_estimated || f.dep_time_utc;
+                  let formattedTime = "--:--";
+                  if (timeRaw) {
+                    const m = timeRaw.match(/\d{2}:\d{2}/);
+                    if (m) formattedTime = m[0];
+                  }
+
+                  let status = "Programmé";
+                  const rawStatus = (f.status || "").toLowerCase();
+                  if (rawStatus.includes("active") || rawStatus.includes("en-route")) status = "En vol / Parti";
+                  else if (rawStatus.includes("landed")) status = "Atterri";
+                  else if (rawStatus.includes("cancelled")) status = "Annulé";
+
+                  return {
+                    flight: f.flight_number || f.flight_iata || f.flight_icao || "N/C",
+                    city: f.arr_iata || f.arr_icao || "Inconnu",
+                    time: formattedTime,
+                    status,
+                    hex: f.hex || null
+                  };
+                })
+              );
+            }
+          }
+        } catch (e) {
+          console.error("Échec AirLabs départs...", e);
+        }
+
+        // Arrivées
+        try {
+          const arrUrl =
+            `https://airlabs.co/api/v9/schedules?arr_icao=${airportCode}&api_key=${airlabsKey}`;
+
+          const resArr = await fetchWithTimeout(arrUrl);
+          if (resArr.ok) {
+            const data = await resArr.json();
+            if (Array.isArray(data.response)) {
+              const list = data.response;
+              arrivals = arrivals.concat(
+                list.slice(0, 30).map(f => {
+                  const timeRaw = f.arr_time || f.arr_estimated || f.arr_time_utc;
+                  let formattedTime = "--:--";
+                  if (timeRaw) {
+                    const m = timeRaw.match(/\d{2}:\d{2}/);
+                    if (m) formattedTime = m[0];
+                  }
+
+                  let status = "Programmé";
+                  const rawStatus = (f.status || "").toLowerCase();
+                  if (rawStatus.includes("active") || rawStatus.includes("en-route")) status = "En vol";
+                  else if (rawStatus.includes("landed")) status = "Atterri";
+                  else if (rawStatus.includes("cancelled")) status = "Annulé";
+
+                  return {
+                    flight: f.flight_number || f.flight_iata || f.flight_icao || "N/C",
+                    city: f.dep_iata || f.dep_icao || "Inconnu",
+                    time: formattedTime,
+                    status,
+                    hex: f.hex || null
+                  };
+                })
+              );
+            }
+          }
+        } catch (e) {
+          console.error("Échec AirLabs arrivées...", e);
+        }
+
+        // 6.3 Mock si tout est vide
+        if (arrivals.length === 0 && departures.length === 0) {
+          const getDynamicTime = (offset) => {
+            const now = new Date();
+            now.setMinutes(now.getMinutes() + offset);
+            return now.toLocaleTimeString("fr-BE", {
+              hour: "2-digit",
+              minute: "2-digit",
+              timeZone: "Europe/Brussels"
+            });
+          };
+
+          if (airportCode === "EBCI") {
+            departures = [
+              { flight: "FR2104", city: "Marseille (MRS)", time: getDynamicTime(15), status: "Embarquement", hex: null },
+              { flight: "W64512", city: "Bucarest (OTP)", time: getDynamicTime(45), status: "Programmé", hex: null }
+            ];
+          } else {
+            departures = [
+              { flight: "3V801", city: "Alicante (ALC)", time: getDynamicTime(10), status: "Embarquement", hex: null },
+              { flight: "XQ120", city: "Antalya (AYT)", time: getDynamicTime(35), status: "Programmé", hex: null }
+            ];
+          }
+        }
+
+        const payload = {
+          airport: airportCode,
+          arrivals,
+          departures
+        };
+
+        const response = new Response(JSON.stringify(payload), {
+          status: 200,
+          headers: {
+            ...corsHeaders,
+            "Content-Type": "application/json",
+            "Cache-Control": "public, max-age=300"
+          }
+        });
+
+        ctx.waitUntil(cache.put(cacheKey, response.clone()));
+        return response;
+      }
+
+          // -------------------------------------------------------------
+      // 7. METEO FUSIONNÉE (METAR + Open-Meteo) — ND Airbus
+      // -------------------------------------------------------------
+      if (path.includes("/api/meteo")) {
+        const apt = (url.searchParams.get("apt") || "EBLG").toUpperCase();
+
+        const coords = {
+          EBCI: { lat: 50.4594, lon: 4.4536 },
+          EBLG: { lat: 50.6378, lon: 5.4444 }
+        };
+
+        const { lat, lon } = coords[apt] || coords.EBLG;
+
+        // METAR VATSIM
+        let metarRaw = "N/A";
+        try {
+          const metarRes = await fetchWithTimeout(
+            `https://metar.vatsim.net/metar.php?id=${apt}`
+          );
+          if (metarRes.ok) {
+            metarRaw = (await metarRes.text()).trim();
+          }
+        } catch (e) {
+          metarRaw = "METAR indisponible";
+        }
+
+        // METEO Open-Meteo
+        let meteo = {
+          main: { temp: null },
+          wind: { speed: null, deg: null },
+          weather: [{ description: "N/A", icon: "03d" }]
+        };
+
+        try {
+          const wxRes = await fetchWithTimeout(
+            `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current_weather=true`
+          );
+
+          if (wxRes.ok) {
+            const data = await wxRes.json();
+            const cw = data.current_weather;
+            const wmoInfo = decodeWmoCode(cw.weathercode ?? 0);
+
+            meteo = {
+              main: { temp: cw.temperature },
+              wind: {
+                speed: cw.windspeed,       // km/h
+                deg: cw.winddirection
+              },
+              weather: [{
+                description: wmoInfo.desc,
+                icon: wmoInfo.icon
+              }]
+            };
+          }
+        } catch (e) {
+          meteo.main.temp = 20;
+          meteo.wind.speed = 5;
+          meteo.wind.deg = 180;
+        }
+
+        const payload = {
+          airport: apt,
+          metar: metarRaw,
+          meteo
+        };
+
+        return new Response(JSON.stringify(payload), {
+          status: 200,
+          headers: { ...corsHeaders, "Content-Type": "application/json" }
+        });
+      }
+
+      // -------------------------------------------------------------
+      // 8. DEFAULT 404
+      // -------------------------------------------------------------
+      return new Response(JSON.stringify({ error: "Endpoint non trouvé" }), {
+        status: 404,
+        headers: corsHeaders
+      });
+
+    } catch (err) {
+      return new Response(JSON.stringify({ error: err.message }), {
+        status: 500,
+        headers: { ...corsHeaders, "Content-Type": "application/json" }
+      });
+    }
+  }
+};
+
+    
