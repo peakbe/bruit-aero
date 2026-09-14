@@ -82,18 +82,19 @@ function renderFIDS(icao, arrivals, departures) {
   else if (fidsFilter === "dep") list = departures;
   else list = [...arrivals, ...departures];
 
-  let cssClass = "fids-dep"; // défaut = départ
-
-if (f.status.includes("Approche")) cssClass = "fids-app";
-if (f.status.includes("montée")) cssClass = "fids-up";
-if (f.status.includes("sol")) cssClass = "fids-gnd";
-if (f.status.includes("Annulé")) cssClass = "fids-cnl";
-
-if (fidsFilter === "arr") cssClass = "fids-arr";
-
   list.slice(0, 20).forEach(f => {
     const div = document.createElement("div");
+
+    // Couleur selon statut
+    let cssClass = "fids-dep";
+    if (f.status.includes("Approche")) cssClass = "fids-app";
+    if (f.status.includes("montée")) cssClass = "fids-up";
+    if (f.status.includes("sol")) cssClass = "fids-gnd";
+    if (f.status.includes("Annulé")) cssClass = "fids-cnl";
+    if (fidsFilter === "arr") cssClass = "fids-arr";
+
     div.className = `fids-row ${cssClass}`;
+
     div.innerHTML = `
       <span class="fids-time">${f.time || "--:--"}</span>
       <span class="fids-flight">${f.flight || "???"}</span>
@@ -111,3 +112,4 @@ if (fidsFilter === "arr") cssClass = "fids-arr";
     container.appendChild(div);
   });
 }
+
