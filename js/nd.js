@@ -3,21 +3,80 @@
 // ===============================================================
 
 import { planeIndex } from "./map.js";
-import { updateFPV } from "./nd.js";
+
+// ===============================================================
+// FPV Airbus — icône + logique PRO v3
+// ===============================================================
+const fpvIcon = L.divIcon({
+  className: "fpv-icon",
+  html: `
+    <svg width="42" height="42" viewBox="0 0 42 42">
+      <circle cx="21" cy="21" r="10" stroke="#00ffff" stroke-width="2" fill="none"/>
+      <line x1="11" y1="21" x2="31" y2="21" stroke="#00ffff" stroke-width="2"/>
+      <line x1="16" y1="26" x2="21" y2="32" stroke="#00ffff" stroke-width="2"/>
+      <line x1="26" y1="26" x2="21" y2="32" stroke="#00ffff" stroke-width="2"/>
+    </svg>
+  `,
+  iconSize: [42, 42],
+  iconAnchor: [21, 21]
+});
+
+let fpvMarker = null;
+
+// ---------------------------------------------------------------
+// EXPORT : updateFPV (Airbus FPV)
+// ---------------------------------------------------------------
+export function updateFPV(hex) {
+  const plane = planeIndex[hex];
+  if (!plane) return;
+
+  const p = plane.options.data;
+  if (!p) return;
+
+  const hdg =
+    p.heading ||
+    p.true_heading ||
+    p.mag_heading ||
+    p.track ||
+    0;
+
+  const trk = p.track || hdg;
+
+  const drift = trk - hdg;
+  let fpv = trk - drift;
+
+  fpv = ((fpv % 360) + 360) % 360;
+
+  const lat = p.lat;
+  const lon = p.lon;
+
+  if (fpvMarker) {
+    fpvMarker.setLatLng([lat, lon]);
+    fpvMarker.setRotationAngle(fpv);
+    return;
+  }
+
+  fpvMarker = L.marker([lat, lon], {
+    icon: fpvIcon,
+    rotationAngle: fpv,
+    rotationOrigin: "center center"
+  }).addTo(map);
+}
+
+// ===============================================================
+// METAR + WX Radar + Rose METAR
+// ===============================================================
 
 let selectedHex = null;
 let metarData = null;
 let wxData = null;
 
-// ---------------------------------------------------------------
-// Sélection avion depuis ND / FIDS
-// ---------------------------------------------------------------
 export function setSelectedAircraft(hex) {
   selectedHex = hex;
 }
 
 // ---------------------------------------------------------------
-// 1. Récupération METAR (vent + QNH + tendance)
+// METAR
 // ---------------------------------------------------------------
 async function fetchMetar(station = "EBLG") {
   try {
@@ -35,7 +94,7 @@ async function fetchMetar(station = "EBLG") {
 }
 
 // ---------------------------------------------------------------
-// 2. Récupération WX Radar (Open-Meteo)
+// WX Radar
 // ---------------------------------------------------------------
 async function fetchWx(apt = "EBLG") {
   try {
@@ -51,7 +110,6 @@ async function fetchWx(apt = "EBLG") {
   }
 }
 
-// Mise à jour météo toutes les 60 s
 setInterval(() => {
   fetchMetar("EBLG");
   fetchMetar("EBCI");
@@ -60,7 +118,7 @@ setInterval(() => {
 }, 60000);
 
 // ---------------------------------------------------------------
-// Parse METAR → vent + QNH + tendance
+// Parse METAR
 // ---------------------------------------------------------------
 function parseMetar(raw) {
   if (!raw) return null;
@@ -86,7 +144,7 @@ function parseMetar(raw) {
 }
 
 // ---------------------------------------------------------------
-// 3. Rose des vents METAR (Airbus)
+// Rose METAR
 // ---------------------------------------------------------------
 function updateWindRose() {
   if (!metarData) return;
@@ -100,40 +158,34 @@ function updateWindRose() {
 
   if (!rose || !arrow || !label) return;
 
-  // Rotation rose
   rose.style.transform = `rotate(${deg}deg)`;
-
-  // Flèche vent
   arrow.style.transform = `rotate(${deg}deg) translate(0, -12px)`;
   arrow.style.transition = "transform 0.8s linear";
 
-  // Label cockpit
   label.textContent = `${deg}° / ${spd} kt`;
 }
 
 // ---------------------------------------------------------------
-// 4. WX Radar — intensité précipitations
+// WX Radar
 // ---------------------------------------------------------------
 function updateWxRadar() {
   if (!wxData?.list?.[0]) return;
 
-  const precip = wxData.list[0].pop * 100; // %
+  const precip = wxData.list[0].pop * 100;
   const radar = document.getElementById("nd-wx-radar");
 
   if (!radar) return;
 
-  // Couleurs Airbus WX
-  let color = "rgba(0,255,0,0.3)";   // vert léger
-
-  if (precip > 30) color = "rgba(255,255,0,0.35)";  // jaune
-  if (precip > 60) color = "rgba(255,128,0,0.4)";   // orange
-  if (precip > 80) color = "rgba(255,0,0,0.45)";     // rouge
+  let color = "rgba(0,255,0,0.3)";
+  if (precip > 30) color = "rgba(255,255,0,0.35)";
+  if (precip > 60) color = "rgba(255,128,0,0.4)";
+  if (precip > 80) color = "rgba(255,0,0,0.45)";
 
   radar.style.background = color;
 }
 
 // ---------------------------------------------------------------
-// 5. Mise à jour panneau ND Airbus
+// ND Panel
 // ---------------------------------------------------------------
 function updateNdPanel() {
   if (!selectedHex) return;
@@ -165,7 +217,7 @@ function updateNdPanel() {
 }
 
 // ---------------------------------------------------------------
-// 6. Mise à jour automatique ND + FPV + Rose + WX Radar
+// Mise à jour automatique ND + FPV + Rose + WX Radar
 // ---------------------------------------------------------------
 setInterval(() => {
   if (selectedHex) {
