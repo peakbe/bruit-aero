@@ -404,6 +404,113 @@ if (path.includes("/api/fids")) {
   return response;
 }
 
+      if (path.includes("/api/fids-dyn")) {
+  const airportCode = (url.searchParams.get("airport") || "EBLG").toUpperCase();
+
+  const fr24Url =
+    "https://data-cloud.flightradar24.com/zones/fcgi/feed.json?bounds=52,49,2,7&faa=1&satellite=1&mlat=1&flarm=1&adsb=1&gnd=1&air=1&vehicles=0&estimated=1";
+
+  let arrivals = [];
+  let departures = [];
+
+  try {
+    const res = await fetchWithTimeout(fr24Url, {
+      headers: {
+        "User-Agent": "Mozilla/5.0",
+        "Accept": "application/json"
+      }
+    });
+
+    if (res.ok) {
+      const data = await res.json();
+      const systemKeys = ["full_count", "version", "stats"];
+
+      Object.keys(data).forEach(key => {
+        if (systemKeys.includes(key) || !Array.isArray(data[key])) return;
+
+        const f = data[key];
+        const lat = f[1];
+        const lon = f[2];
+        if (!lat || !lon) return;
+
+        const hex = key;
+        const callsign = f[16] || f[13] || "Inconnu";
+        const origin = f[11] || "";
+        const dest = f[12] || "";
+        const eta = f[9] || 0;   // timestamp
+        const timeStr = eta
+          ? new Date(eta * 1000).toLocaleTimeString("fr-BE", {
+              hour: "2-digit",
+              minute: "2-digit",
+              timeZone: "Europe/Brussels"
+            })
+          : "--:--";
+
+        const status = f[8] === 1 ? "En vol" : "Au sol";
+
+        // Départ de l'aéroport
+        if (origin.toUpperCase() === airportCode) {
+          departures.push({
+            flight: callsign,
+            city: dest || "Inconnu",
+            time: timeStr,
+            status,
+            hex
+          });
+        }
+
+        // Arrivée vers l'aéroport
+        if (dest.toUpperCase() === airportCode) {
+          arrivals.push({
+            flight: callsign,
+            city: origin || "Inconnu",
+            time: timeStr,
+            status,
+            hex
+          });
+        }
+      });
+    }
+  } catch (e) {
+    console.error("FR24 FIDS dyn KO:", e);
+  }
+
+  // Mock si vraiment vide
+  if (arrivals.length === 0 && departures.length === 0) {
+    const getDynamicTime = (offset) => {
+      const now = new Date();
+      now.setMinutes(now.getMinutes() + offset);
+      return now.toLocaleTimeString("fr-BE", {
+        hour: "2-digit",
+        minute: "2-digit",
+        timeZone: "Europe/Brussels"
+      });
+    };
+
+    if (airportCode === "EBCI") {
+      departures = [
+        { flight: "FR2104", city: "Marseille (MRS)", time: getDynamicTime(15), status: "Embarquement", hex: null },
+        { flight: "W64512", city: "Bucarest (OTP)", time: getDynamicTime(45), status: "Programmé", hex: null }
+      ];
+    } else {
+      departures = [
+        { flight: "3V801", city: "Alicante (ALC)", time: getDynamicTime(10), status: "Embarquement", hex: null },
+        { flight: "XQ120", city: "Antalya (AYT)", time: getDynamicTime(35), status: "Programmé", hex: null }
+      ];
+    }
+  }
+
+  const payload = {
+    airport: airportCode,
+    arrivals,
+    departures
+  };
+
+  return new Response(JSON.stringify(payload), {
+    status: 200,
+    headers: { ...corsHeaders, "Content-Type": "application/json" }
+  });
+}
 
           // -------------------------------------------------------------
       // 7. METEO FUSIONNÉE (METAR + Open-Meteo) — ND Airbus
