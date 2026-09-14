@@ -1,9 +1,9 @@
 // ===============================================================
-// ND Airbus — centrage + surbrillance + FPV PRO+++
+// ND Airbus — centrage + surbrillance + FPV PRO v3
 // ===============================================================
 
 import { setSelectedAircraft } from "./nd-panel.js";
-import { map, planesLayer, planeIndex } from "./map.js";
+import { map, planeIndex } from "./map.js";
 
 // ===============================================================
 // 0. FPV Airbus — icône optimisée
@@ -25,7 +25,7 @@ const fpvIcon = L.divIcon({
 let fpvMarker = null;
 
 // ===============================================================
-// 1. Centrage avion — ND Airbus PRO+++
+// 1. Centrage avion — ND Airbus PRO v3
 // ===============================================================
 export function centerOnAircraft(hex) {
   const plane = planeIndex[hex];
@@ -36,43 +36,53 @@ export function centerOnAircraft(hex) {
 }
 
 // ===============================================================
-// 2. Surbrillance avion — ND Airbus PRO+++
+// 2. Surbrillance avion — ND Airbus PRO v3
 // ===============================================================
 export function highlightAircraft(hex) {
   const plane = planeIndex[hex];
   if (!plane) return;
 
   plane.setStyle({
-    color: "#00ffff",
+    color: "#00ffff",   // cyan Airbus
     weight: 4
   });
 
   setTimeout(() => {
     plane.setStyle({
-      color: "#38bdf8",
+      color: "#38bdf8", // bleu cockpit Airbus
       weight: 2
     });
   }, 2500);
 }
 
 // ===============================================================
-// 3. FPV Airbus — PRO+++
+// 3. FPV Airbus — PRO v3 (stabilisé)
 // ===============================================================
 export function updateFPV(hex) {
   const plane = planeIndex[hex];
   if (!plane) return;
 
   const p = plane.options.data;
+  if (!p) return;
 
-  // Heading / Track fallback
-  const hdg = p.heading || p.true_heading || p.mag_heading || p.track || 0;
+  // Fallback HDG/TRK Airbus-grade
+  const hdg =
+    p.heading ||
+    p.true_heading ||
+    p.mag_heading ||
+    p.track ||
+    0;
+
   const trk = p.track || hdg;
 
-  // Drift = différence HDG/TRK
+  // Drift HDG/TRK
   const drift = trk - hdg;
 
   // FPV = track corrigé du drift
-  const fpv = trk - drift;
+  let fpv = trk - drift;
+
+  // Normalisation 0–360°
+  fpv = ((fpv % 360) + 360) % 360;
 
   const lat = p.lat;
   const lon = p.lon;
