@@ -141,16 +141,12 @@ h1 {
 }
 
 .card {
-  background: radial-gradient(circle at top left,
-    rgba(15, 23, 42, 0.95) 0,
-    rgba(15, 23, 42, 0.9) 40%,
-    rgba(15, 23, 42, 0.85) 100%);
-  border-radius: 12px;
+  background: var(--airbus-panel);
   border: 1px solid var(--border);
-  padding: 16px 16px 14px;
-  box-shadow: 0 10px 25px -18px rgba(0, 0, 0, 0.9);
-  position: relative;
-  }
+  border-radius: 10px;
+  padding: 16px;
+  box-shadow: 0 0 22px rgba(0, 0, 0, 0.6);
+}
 
 .card::before {
   content: "";
@@ -226,54 +222,104 @@ h1 {
    ============================================================ */
 
 .rose-des-vents {
-  min-width: 90px;
-  display: flex;
-  justify-content: center;
-  align-items: center;
+  width: 110px;
+  height: 110px;
+  position: relative;
+  margin: auto;
 }
 
 .compass {
-  width: 90px;
-  height: 90px;
+  width: 110px;
+  height: 110px;
   border-radius: 50%;
-  border: 1px solid #334155;
+  background: radial-gradient(circle at center, #0f172a 0, #020617 70%);
+  border: 2px solid #334155;
   position: relative;
-  background: radial-gradient(circle at center,
-    #0f172a 0,
-    #020617 70%);
   box-shadow: 0 0 12px rgba(15, 23, 42, 0.9);
 }
 
 .compass-ring {
   position: absolute;
-  inset: 8px;
+  inset: 10px;
   border-radius: 50%;
   border: 1px dashed #475569;
 }
 
-.compass-needle {
-  position: absolute;
-  width: 2px;
-  height: 32px;
-  background: #38bdf8;
-  top: 14px;
-  left: 50%;
-  transform-origin: bottom center;
-   transform: translateX(-50%);
-  border-radius: 999px;
-  box-shadow: 0 0 6px rgba(56, 189, 248, 0.9);
-}
-
 .compass-center {
   position: absolute;
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
+  width: 12px;
+  height: 12px;
   background: #e5e7eb;
+  border-radius: 50%;
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
-  box-shadow: 0 0 6px rgba(148, 163, 184, 0.9);
+}
+
+/* Aiguille vent METAR */
+.compass-needle {
+  position: absolute;
+  width: 2px;
+  height: 40px;
+  background: var(--airbus-cyan);
+  top: 10px;
+  left: 50%;
+  transform-origin: bottom center;
+  transform: translateX(-50%);
+  border-radius: 999px;
+  box-shadow: 0 0 6px rgba(0, 229, 255, 0.9);
+}
+
+/* LOC runway */
+.compass-loc {
+  position: absolute;
+  width: 2px;
+  height: 48px;
+  background: var(--airbus-amber);
+  top: 6px;
+  left: 50%;
+  transform-origin: bottom center;
+  transform: translateX(-50%);
+  border-radius: 999px;
+  box-shadow: 0 0 6px rgba(255, 176, 0, 0.9);
+}
+
+/* Glidepath 3° */
+.compass-gp {
+  position: absolute;
+  width: 2px;
+  height: 32px;
+  background: var(--airbus-green);
+  top: 22px;
+  left: 50%;
+  transform-origin: bottom center;
+  transform: translateX(-50%);
+  border-radius: 999px;
+  box-shadow: 0 0 6px rgba(50, 255, 126, 0.9);
+}
+
+/* Wind vector Airbus */
+.compass-wind-vector {
+  position: absolute;
+  width: 40px;
+  height: 2px;
+  background: var(--airbus-cyan);
+  top: 50%;
+  left: 50%;
+  transform-origin: left center;
+  transform: translate(-50%, -50%);
+  border-radius: 999px;
+  box-shadow: 0 0 6px rgba(0, 229, 255, 0.9);
+}
+
+.compass-wind-vector::after {
+  content: "";
+  position: absolute;
+  right: -5px;
+  top: -3px;
+  border-left: 7px solid var(--airbus-cyan);
+  border-top: 4px solid transparent;
+  border-bottom: 4px solid transparent;
 }
 
 .compass-label {
@@ -281,60 +327,8 @@ h1 {
   width: 100%;
   text-align: center;
   bottom: 4px;
-  font-size: 0.7rem;
-  color: #9ca3af;
-}
-
-/* LOC */
-.compass-loc {
-  position: absolute;
-  width: 2px;
-  height: 40px;
-  background: #f97316;
-  top: 10px;
-  left: 50%;
-  transform-origin: bottom center;
-   transform: translateX(-50%);
-  border-radius: 999px;
-  box-shadow: 0 0 6px rgba(248, 113, 22, 0.9);
-}
-
-/* Glidepath 3° */
-.compass-gp {
-  position: absolute;
-  width: 2px;
-  height: 26px;
-  background: #22c55e;
-  top: 24px;
-  left: 50%;
-  transform-origin: bottom center;
-   transform: translateX(-50%);
-  border-radius: 999px;
-  box-shadow: 0 0 6px rgba(34, 197, 94, 0.9);
-}
-
-/* Wind vector Airbus */
-.compass-wind-vector {
-  position: absolute;
-  width: 34px;
-  height: 2px;
-  background: #38bdf8;
-  top: 50%;
-  left: 50%;
-  transform-origin: left center;
-   transform: translate(-50%, -50%);
-  border-radius: 999px;
-  box-shadow: 0 0 6px rgba(56, 189, 248, 0.9);
-}
-
-.compass-wind-vector::after {
-  content: "";
-  position: absolute;
-  right: -4px;
-  top: -3px;
-  border-left: 6px solid #38bdf8;
-  border-top: 4px solid transparent;
-  border-bottom: 4px solid transparent;
+  font-size: 0.75rem;
+  color: var(--airbus-label);
 }
 
 .compass-needle,
@@ -342,20 +336,6 @@ h1 {
 .compass-loc,
 .compass-gp {
   transition: transform 0.25s cubic-bezier(0.25, 0.1, 0.25, 1);
-}
-
-.windtrend {
-  background: #0f172a;
-  border: 1px solid #334155;
-  border-radius: 6px;
-  margin-top: 6px;
-}
-
-.windtrend-label {
-  font-size: 10px;
-  color: #64748b;
-  text-align: center;
-  margin-top: 2px;
 }
 
 /* ============================================================
@@ -382,18 +362,35 @@ h1 {
   padding: 6px 10px;
   margin-bottom: 4px;
   background: rgba(15, 23, 42, 0.85);
-  border-left: 3px solid #38bdf8;
+  border-left: 3px solid var(--airbus-cyan);
   border-radius: 4px;
   color: #e2e8f0;
   font-size: 13px;
   cursor: pointer;
   transition: background 0.18s ease, transform 0.12s ease;
+}
 
-   .fids-arr { border-color: #00e676; }   /* Arrivées */
-.fids-dep { border-color: #42a5f5; }   /* Départs */
-.fids-app { border-color: #ffb74d; }   /* En approche */
-.fids-up  { border-color: #00e5ff; }   /* En montée */
-.fids-gnd { border-color: #9e9e9e; }   /* Au sol */
-.fids-cnl { border-color: #ef5350; }   /* Annulé */
-   
+.fids-arr { border-color: var(--airbus-green); }
+.fids-dep { border-color: #42a5f5; }
+.fids-app { border-color: var(--airbus-amber); }
+.fids-up  { border-color: var(--airbus-cyan); }
+.fids-gnd { border-color: #9e9e9e; }
+.fids-cnl { border-color: var(--airbus-red); }
+
+   /* ============================================================
+  ND avionique
+   ============================================================ */
+.nd-value {
+  font-size: 1.6rem;
+  font-weight: 600;
+  color: var(--airbus-cyan);
+  letter-spacing: 0.04em;
+}
+
+.nd-label {
+  font-size: 0.75rem;
+  color: var(--airbus-label);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
 
