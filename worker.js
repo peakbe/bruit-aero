@@ -427,51 +427,57 @@ if (path.includes("/api/fids")) {
       const systemKeys = ["full_count", "version", "stats"];
 
       Object.keys(data).forEach(key => {
-        if (systemKeys.includes(key) || !Array.isArray(data[key])) return;
+  if (systemKeys.includes(key) || !Array.isArray(data[key])) return;
 
-        const f = data[key];
-        const lat = f[1];
-        const lon = f[2];
-        if (!lat || !lon) return;
+  const f = data[key];
+  const lat = f[1];
+  const lon = f[2];
+  if (!lat || !lon) return;
 
-        const hex = key;
-        const callsign = f[16] || f[13] || "Inconnu";
-        const origin = f[11] || "";
-        const dest = f[12] || "";
-        const eta = f[9] || 0;   // timestamp
-        const timeStr = eta
-          ? new Date(eta * 1000).toLocaleTimeString("fr-BE", {
-              hour: "2-digit",
-              minute: "2-digit",
-              timeZone: "Europe/Brussels"
-            })
-          : "--:--";
+  const hex = key;
+  const callsign = f[16] || f[13] || "Inconnu";
+  const origin = f[11] || "";
+  const dest = f[12] || "";
+  const eta = f[9] || 0;
 
-        const status = f[8] === 1 ? "En vol" : "Au sol";
+  const timeStr = eta
+    ? new Date(eta * 1000).toLocaleTimeString("fr-BE", {
+        hour: "2-digit",
+        minute: "2-digit",
+        timeZone: "Europe/Brussels"
+      })
+    : "--:--";
 
-        // Départ de l'aéroport
-        if (origin.toUpperCase() === airportCode) {
-          departures.push({
-            flight: callsign,
-            city: dest || "Inconnu",
-            time: timeStr,
-            status,
-            hex
-          });
-        }
+  // 🟦 INSERTION EXACTE ICI
+  const status = computeStatus(
+    f,
+    AIRPORTS[airportCode.toLowerCase()].lat,
+    AIRPORTS[airportCode.toLowerCase()].lon
+  );
 
-        // Arrivée vers l'aéroport
-        if (dest.toUpperCase() === airportCode) {
-          arrivals.push({
-            flight: callsign,
-            city: origin || "Inconnu",
-            time: timeStr,
-            status,
-            hex
-          });
-        }
-      });
-    }
+  // Départ
+  if (origin.toUpperCase() === airportCode) {
+    departures.push({
+      flight: callsign,
+      city: dest || "Inconnu",
+      time: timeStr,
+      status,
+      hex
+    });
+  }
+
+  // Arrivée
+  if (dest.toUpperCase() === airportCode) {
+    arrivals.push({
+      flight: callsign,
+      city: origin || "Inconnu",
+      time: timeStr,
+      status,
+      hex
+    });
+  }
+});
+
   } catch (e) {
     console.error("FR24 FIDS dyn KO:", e);
   }
