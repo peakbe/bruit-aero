@@ -291,112 +291,107 @@ export default {
         });
       }
 
-      // -------------------------------------------------------------
-      // 6. FIDS DYNAMIQUE ADS-B — EBCI / EBLG
-      // -------------------------------------------------------------
-      if (path.includes("/api/fids-adsb")) {
-        const airportCode = (url.searchParams.get("airport") || "EBLG").toUpperCase();
-        const aptKey = airportCode.toLowerCase();
-        const apt = AIRPORTS[aptKey];
+     // -------------------------------------------------------------
+// 6. FIDS DYNAMIQUE ADS-B — EBCI / EBLG
+// -------------------------------------------------------------
+if (path.includes("/api/fids-adsb")) {
+  const airportCode = (url.searchParams.get("airport") || "EBLG").toUpperCase();
+  const aptKey = airportCode.toLowerCase();
+  const apt = AIRPORTS[aptKey];
 
-        let arrivals = [];
-        let departures = [];
+  let arrivals = [];
+  let departures = [];
 
-        if (!apt) {
-          return new Response(JSON.stringify({
-            airport: airportCode,
-            arrivals: [],
-            departures: []
-          }), {
-            status: 200,
-            headers: { ...corsHeaders, "Content-Type": "application/json" }
-          });
-        }
+  if (!apt) {
+    return new Response(JSON.stringify({
+      airport: airportCode,
+      arrivals: [],
+      departures: []
+    }), {
+      status: 200,
+      headers: { ...corsHeaders, "Content-Type": "application/json" }
+    });
+  }
 
-        // On utilise adsb.lol comme source principale
-        try {
-          const base = "https://api.adsb.lol/v2";
-          const states = await fetchReadsb(base, apt, null);
+  try {
+    const base = "https://api.adsb.lol/v2";
+    const states = await fetchReadsb(base, apt, null);
 
-          states.forEach(a => {
-            const status = computeStatusFromAdsb(a, apt.lat, apt.lon);
-            const d = haversine(a.lat, a.lon, apt.lat, apt.lon); // m
-            const speedKt = a.speed_ms / 0.514444;
+    states.forEach(a => {
+      const status = computeStatusFromAdsb(a, apt.lat, apt.lon);
+      const d = haversine(a.lat, a.lon, apt.lat, apt.lon);
+      const speedKt = a.speed_ms / 0.514444;
 
-            // ETA / ETD approximatif
-            let timeStr = "--:--";
-            if (speedKt > 50) {
-              const tSec = d / a.speed_ms;
-              const eta = new Date(Date.now() + tSec * 1000);
-              timeStr = eta.toLocaleTimeString("fr-BE", {
-                hour: "2-digit",
-                minute: "2-digit",
-                timeZone: "Europe/Brussels"
-              });
-            }
-
-            // Arrivée (en approche)
-            if (status === "En approche") {
-              arrivals.push({
-                flight: a.callsign || "Inconnu",
-                city: "Inconnu",
-                time: timeStr,
-                status,
-                hex: a.hex
-              });
-            }
-
-            // Départ (en montée ou au sol proche)
-            if (status === "En montée" || (status === "Au sol" && d < 5000)) {
-              departures.push({
-                flight: a.callsign || "Inconnu",
-                city: "Inconnu",
-                time: timeStr,
-                status,
-                hex: a.hex
-              });
-            }
-          });
-        } catch (e) {
-          console.error("FIDS ADS-B KO:", e);
-        }
-
-        // Mock si vraiment vide
-        if (arrivals.length === 0 && departures.length === 0) {
-          const getDynamicTime = (offset) => {
-            const now = new Date();
-            now.setMinutes(now.getMinutes() + offset);
-            return now.toLocaleTimeString("fr-BE", {
-              hour: "2-digit",
-              minute: "2-digit",
-              timeZone: "Europe/Brussels"
-            });
-          };
-
-          if (airportCode === "EBCI") {
-            departures = [
-              { flight: "FR2104", city: "Marseille (MRS)", time: getDynamicTime(15), status: "Embarquement", hex: null },
-              { flight: "W64512", city: "Bucarest (OTP)", time: getDynamicTime(45), status: "Programmé", hex: null }
-            ];
-          } else {
-            departures = [
-              { flight: "3V801", city: "Alicante (ALC)", time: getDynamicTime(10), status: "Embarquement", hex: null },
-              { flight: "XQ120", city: "Antalya (AYT)", time: getDynamicTime(35), status: "Programmé", hex: null }
-            ];
-          }
-        }
-
-        const payload = {
-          airport: airportCode,
-          arrivals,
-          departures
-        };
-
-        return new Response(JSON.stringify(payload), {
-          status: 200,
-          headers: { ...corsHeaders, "Content-Type": "application/json" }
+      let timeStr = "--:--";
+      if (speedKt > 50) {
+        const tSec = d / a.speed_ms;
+        const eta = new Date(Date.now() + tSec * 1000);
+        timeStr = eta.toLocaleTimeString("fr-BE", {
+          hour: "2-digit",
+          minute: "2-digit",
+          timeZone: "Europe/Brussels"
         });
       }
+
+      if (status === "En approche") {
+        arrivals.push({
+          flight: a.callsign || "Inconnu",
+          city: "Inconnu",
+          time: timeStr,
+          status,
+          hex: a.hex
+        });
+      }
+
+      if (status === "En montée" || (status === "Au sol" && d < 5000)) {
+        departures.push({
+          flight: a.callsign || "Inconnu",
+          city: "Inconnu",
+          time: timeStr,
+          status,
+          hex: a.hex
+        });
+      }
+    });
+  } catch (e) {
+    console.error("FIDS ADS-B KO:", e);
+  }
+
+  if (arrivals.length === 0 && departures.length === 0) {
+    const getDynamicTime = (offset) => {
+      const now = new Date();
+      now.setMinutes(now.getMinutes() + offset);
+      return now.toLocaleTimeString("fr-BE", {
+        hour: "2-digit",
+        minute: "2-digit",
+        timeZone: "Europe/Brussels"
+      });
+    };
+
+    if (airportCode === "EBCI") {
+      departures = [
+        { flight: "FR2104", city: "Marseille (MRS)", time: getDynamicTime(15), status: "Embarquement", hex: null },
+        { flight: "W64512", city: "Bucarest (OTP)", time: getDynamicTime(45), status: "Programmé", hex: null }
+      ];
+    } else {
+      departures = [
+        { flight: "3V801", city: "Alicante (ALC)", time: getDynamicTime(10), status: "Embarquement", hex: null },
+        { flight: "XQ120", city: "Antalya (AYT)", time: getDynamicTime(35), status: "Programmé", hex: null }
+      ];
+    }
+  }
+
+  const payload = {
+    airport: airportCode,
+    arrivals,
+    departures
+  };
+
+  return new Response(JSON.stringify(payload), {
+    status: 200,
+    headers: { ...corsHeaders, "Content-Type": "application/json" }
+  });
+}
 
       // -------------------------------------------------------------
       // 7. METEO FUSIONNÉE (METAR + Open-Meteo) — ND Airbus
