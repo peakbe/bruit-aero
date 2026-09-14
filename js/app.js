@@ -9,7 +9,7 @@ import {
   updateNdWindComponents,
   updateNdSonometersStatus
 } from "./nd-utils.js";
-import { updateCompassUI } from "./nd-panel.js";
+import { updateCompassUI } from "./nd.js";
 
 import {
   WORKER_BASE_URL,
