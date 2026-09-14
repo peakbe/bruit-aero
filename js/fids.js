@@ -1,12 +1,11 @@
 // ===============================================================
-// FIDS Unifié — EBCI + EBLG (Worker proxy)
+// FIDS Unifié — EBCI + EBLG (Worker ADS‑B PRO v2)
 // ===============================================================
 
 import { centerOnAircraft, highlightAircraft } from "./nd.js";
 import { setSelectedAircraft } from "./nd-panel.js";
 
 const API_BASE = "https://bruit-aero-proxy.pnyr682w7f.workers.dev/api/fids-adsb";
-
 const AIRPORTS = ["EBCI", "EBLG"];
 
 // ---------------------------------------------------------------
@@ -37,8 +36,8 @@ export async function fetchFIDS(icao) {
     const data = await res.json();
 
     return {
-      arrivals: data.arrivals || [],
-      departures: data.departures || []
+      arrivals: Array.isArray(data.arrivals) ? data.arrivals : [],
+      departures: Array.isArray(data.departures) ? data.departures : []
     };
   } catch (err) {
     console.error("Erreur FIDS dyn:", err);
@@ -47,29 +46,61 @@ export async function fetchFIDS(icao) {
 }
 
 // ---------------------------------------------------------------
-// 2. Mise à jour globale FIDS
+// 2. Tri par heure cockpit Airbus
+// ---------------------------------------------------------------
+function sortByTime(list) {
+  return list.sort((a, b) => {
+    const ta = parseTime(a.time);
+    const tb = parseTime(b.time);
+    return ta - tb;
+  });
+}
+
+function parseTime(t) {
+  if (!t || typeof t !== "string") return 999999;
+  const m = t.match(/(\d{2}):(\d{2})/);
+  if (!m) return 999999;
+  return parseInt(m[1], 10) * 60 + parseInt(m[2], 10);
+}
+
+// ---------------------------------------------------------------
+// 3. Mise à jour globale FIDS
 // ---------------------------------------------------------------
 export async function updateFIDS() {
   for (const icao of AIRPORTS) {
     const { arrivals, departures } = await fetchFIDS(icao);
-    renderFIDS(icao, arrivals, departures);
+
+    // Tri cockpit Airbus
+    const arrSorted = sortByTime(arrivals);
+    const depSorted = sortByTime(departures);
+
+    renderFIDS(icao, arrSorted, depSorted);
   }
 }
 
 // ---------------------------------------------------------------
-// 3. Format HH:MM cockpit Airbus
+// 4. Normalisation statut → classes CSS cockpit
 // ---------------------------------------------------------------
-function formatTime(t) {
-  if (!t) return "--:--";
-  try {
-    return t.split("T")[1].replace("Z", "").slice(0, 5);
-  } catch {
-    return "--:--";
-  }
+function getCssClass(status, filter) {
+  const s = status.toLowerCase();
+
+  if (s.includes("approche")) return "fids-app";
+  if (s.includes("montée")) return "fids-up";
+  if (s.includes("sol")) return "fids-gnd";
+  if (s.includes("annul")) return "fids-cnl";
+
+  // Filtre Arrivées
+  if (filter === "arr") return "fids-arr";
+
+  // Filtre Départs
+  if (filter === "dep") return "fids-dep";
+
+  // Par défaut → départ (bleu)
+  return "fids-dep";
 }
 
 // ---------------------------------------------------------------
-// 4. Rendu HTML des vols
+// 5. Rendu HTML des vols
 // ---------------------------------------------------------------
 function renderFIDS(icao, arrivals, departures) {
   const id = icao === "EBCI" ? "fids-ebci" : "fids-eblg";
@@ -82,17 +113,11 @@ function renderFIDS(icao, arrivals, departures) {
   else if (fidsFilter === "dep") list = departures;
   else list = [...arrivals, ...departures];
 
+  // Limite cockpit : max 20 lignes
   list.slice(0, 20).forEach(f => {
     const div = document.createElement("div");
 
-    // Couleur selon statut
-    let cssClass = "fids-dep";
-    if (f.status.includes("Approche")) cssClass = "fids-app";
-    if (f.status.includes("montée")) cssClass = "fids-up";
-    if (f.status.includes("sol")) cssClass = "fids-gnd";
-    if (f.status.includes("Annulé")) cssClass = "fids-cnl";
-    if (fidsFilter === "arr") cssClass = "fids-arr";
-
+    const cssClass = getCssClass(f.status || "", fidsFilter);
     div.className = `fids-row ${cssClass}`;
 
     div.innerHTML = `
@@ -112,4 +137,3 @@ function renderFIDS(icao, arrivals, departures) {
     container.appendChild(div);
   });
 }
-
