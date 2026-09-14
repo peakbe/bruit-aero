@@ -21,6 +21,9 @@ const RELAYS = [
   (u) => `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(u)}`,
 ];
 
+// -------------------------------------------------------------
+// Utils
+// -------------------------------------------------------------
 async function fetchWithTimeout(url, options = {}, timeoutMs = 4000) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
@@ -43,7 +46,7 @@ function decodeWmoCode(code) {
 }
 
 // -------------------------------------------------------------
-// ADS-B helpers
+// ADS-B helpers (adsb.lol / adsb.fi)
 // -------------------------------------------------------------
 async function fetchReadsb(base, ap, relay) {
   const target = `${base}/lat/${ap.lat}/lon/${ap.lon}/dist/${DIST_NM}`;
@@ -88,6 +91,36 @@ async function fetchBothAdsb(base, relay) {
   return [...ebci, ...eblg];
 }
 
+// -------------------------------------------------------------
+// Statut dynamique FR24 (En approche / En montée / Au sol / En vol)
+// -------------------------------------------------------------
+function computeStatus(f, airportLat, airportLon) {
+  const lon = f[5];
+  const lat = f[6];
+  const alt = f[7];   // m
+  const speed = f[9]; // m/s
+
+  if (!lat || !lon) return "En vol";
+
+  const speedKt = speed / 0.514444;
+
+  const R = 6371e3;
+  const φ1 = lat * Math.PI/180;
+  const φ2 = airportLat * Math.PI/180;
+  const Δφ = (airportLat - lat) * Math.PI/180;
+  const Δλ = (airportLon - lon) * Math.PI/180;
+
+  const a = Math.sin(Δφ/2)**2 +
+            Math.cos(φ1)*Math.cos(φ2)*Math.sin(Δλ/2)**2;
+  const d = R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a)); // m
+
+  if (alt < 80 && speedKt < 40) return "Au sol";
+  if (alt > 300 && speedKt > 120) return "En montée";
+  if (alt < 1500 && speedKt > 120 && speedKt < 250 && d < 25000) return "En approche";
+
+  return "En vol";
+}
+
 // =================================================================
 // HANDLER PRINCIPAL
 // =================================================================
@@ -103,7 +136,7 @@ export default {
     try {
 
       // -------------------------------------------------------------
-      // 1. ADS-B MULTI-SOURCES
+      // 1. ADS-B MULTI-SOURCES (adsb.lol / adsb.fi)
       // -------------------------------------------------------------
       if (path.includes("/api/adsb-multi")) {
         const LOL = "https://api.adsb.lol/v2";
@@ -129,7 +162,7 @@ export default {
       }
 
       // -------------------------------------------------------------
-      // 2. ADS-B Airplanes.live
+      // 2. ADS-B Airplanes.live (radar map.js)
       // -------------------------------------------------------------
       if (path.startsWith("/api/adsb")) {
         try {
@@ -157,7 +190,7 @@ export default {
         }
       }
 
-          // -------------------------------------------------------------
+      // -------------------------------------------------------------
       // 3. METEO ACTUELLE (Open-Meteo → format OpenWeather-like)
       // -------------------------------------------------------------
       if (path.includes("/api/weather")) {
@@ -265,295 +298,122 @@ export default {
       }
 
       // -------------------------------------------------------------
-// 6. FIDS UNIFIÉ (EBLG officiel + AirLabs + mock)
-// -------------------------------------------------------------
-if (path.includes("/api/fids")) {
-  const airportCode = (url.searchParams.get("airport") || "EBLG").toUpperCase();
-
-  const cache = caches.default;
-  const cacheKey = new Request(url.toString(), request);
-  let cachedResponse = await cache.match(cacheKey);
-  if (cachedResponse) return cachedResponse;
-
-  let arrivals = [];
-  let departures = [];
-
-  // 6.1 FIDS officiel Liège Airport
-  if (airportCode === "EBLG") {
-    try {
-      const arrRes = await fetchWithTimeout(
-        "https://fids.liegeairport.com/api/flights/Arrivals",
-        { headers: { "User-Agent": "Mozilla/5.0", "Accept": "application/json" } }
-      );
-
-      const depRes = await fetchWithTimeout(
-        "https://fids.liegeairport.com/api/flights/Departures",
-        { headers: { "User-Agent": "Mozilla/5.0", "Accept": "application/json" } }
-      );
-
-      if (arrRes.ok) {
-        const rawArr = await arrRes.json();
-        arrivals = rawArr.map(f => ({
-          flight: f.flightNumber || f.callsign || "N/C",
-          city: f.origin || f.airport || "Inconnu",
-          time: f.scheduledTime || f.estimatedTime || "--:--",
-          status: f.status || "Programmé",
-          hex: f.hex || null
-        }));
-      }
-
-      if (depRes.ok) {
-        const rawDep = await depRes.json();
-        departures = rawDep.map(f => ({
-          flight: f.flightNumber || f.callsign || "N/C",
-          city: f.destination || f.airport || "Inconnu",
-          time: f.scheduledTime || f.estimatedTime || "--:--",
-          status: f.status || "Programmé",
-          hex: f.hex || null
-        }));
-      }
-    } catch (e) {
-      console.error("FIDS EBLG KO → fallback AirLabs");
-    }
-  }
-
-  // 6.2 AirLabs (EBCI + fallback EBLG)
-  const airlabsKey = env.AIRLABS_API_KEY || "VOTRE_CLE_AIRLABS";
-
-  // Départs
-  try {
-    const depUrl = `https://airlabs.co/api/v9/schedules?dep_icao=${airportCode}&api_key=${airlabsKey}`;
-    const resDep = await fetchWithTimeout(depUrl);
-    if (resDep.ok) {
-      const data = await resDep.json();
-      if (Array.isArray(data.response)) {
-        departures = departures.concat(
-          data.response.map(f => ({
-            flight: f.flight_iata || f.flight_icao || "N/C",
-            city: f.arr_iata || f.arr_icao || "Inconnu",
-            time: (f.dep_time_utc || "").slice(11, 16) || "--:--",
-            status: f.status || "Programmé",
-            hex: f.hex || null
-          }))
-        );
-      }
-    }
-  } catch {}
-
-  // Arrivées
-  try {
-    const arrUrl = `https://airlabs.co/api/v9/schedules?arr_icao=${airportCode}&api_key=${airlabsKey}`;
-    const resArr = await fetchWithTimeout(arrUrl);
-    if (resArr.ok) {
-      const data = await resArr.json();
-      if (Array.isArray(data.response)) {
-        arrivals = arrivals.concat(
-          data.response.map(f => ({
-            flight: f.flight_iata || f.flight_icao || "N/C",
-            city: f.dep_iata || f.dep_icao || "Inconnu",
-            time: (f.arr_time_utc || "").slice(11, 16) || "--:--",
-            status: f.status || "Programmé",
-            hex: f.hex || null
-          }))
-        );
-      }
-    }
-  } catch {}
-
-  // 6.3 Mock si tout est vide
-  if (arrivals.length === 0 && departures.length === 0) {
-    const getDynamicTime = (offset) => {
-      const now = new Date();
-      now.setMinutes(now.getMinutes() + offset);
-      return now.toLocaleTimeString("fr-BE", {
-        hour: "2-digit",
-        minute: "2-digit",
-        timeZone: "Europe/Brussels"
-      });
-    };
-
-    if (airportCode === "EBCI") {
-      departures = [
-        { flight: "FR2104", city: "Marseille (MRS)", time: getDynamicTime(15), status: "Embarquement", hex: null },
-        { flight: "W64512", city: "Bucarest (OTP)", time: getDynamicTime(45), status: "Programmé", hex: null }
-      ];
-    } else {
-      departures = [
-        { flight: "3V801", city: "Alicante (ALC)", time: getDynamicTime(10), status: "Embarquement", hex: null },
-        { flight: "XQ120", city: "Antalya (AYT)", time: getDynamicTime(35), status: "Programmé", hex: null }
-      ];
-    }
-  }
-
-  const payload = {
-    airport: airportCode,
-    arrivals,
-    departures
-  };
-
-  const response = new Response(JSON.stringify(payload), {
-    status: 200,
-    headers: {
-      ...corsHeaders,
-      "Content-Type": "application/json",
-      "Cache-Control": "public, max-age=300"
-    }
-  });
-
-  ctx.waitUntil(cache.put(cacheKey, response.clone()));
-  return response;
-}
-
-      // 6.4 fids-dyn
+      // 6. FIDS DYNAMIQUE (FR24 JSON) — EBCI / EBLG
+      // -------------------------------------------------------------
       if (path.includes("/api/fids-dyn")) {
-  const airportCode = (url.searchParams.get("airport") || "EBLG").toUpperCase();
+        const airportCode = (url.searchParams.get("airport") || "EBLG").toUpperCase();
 
-  const fr24Url =
-    "https://data-cloud.flightradar24.com/zones/fcgi/feed.json?bounds=52,49,2,7&faa=1&satellite=1&mlat=1&flarm=1&adsb=1&gnd=1&air=1&vehicles=0&estimated=1";
+        const fr24Url =
+          "https://data-cloud.flightradar24.com/zones/fcgi/feed.json?bounds=52,49,2,7&faa=1&satellite=1&mlat=1&flarm=1&adsb=1&gnd=1&air=1&vehicles=0&estimated=1";
 
-  let arrivals = [];
-  let departures = [];
+        let arrivals = [];
+        let departures = [];
 
-  try {
-    const res = await fetchWithTimeout(fr24Url, {
-      headers: {
-        "User-Agent": "Mozilla/5.0",
-        "Accept": "application/json"
+        try {
+          const res = await fetchWithTimeout(fr24Url, {
+            headers: {
+              "User-Agent": "Mozilla/5.0",
+              "Accept": "application/json"
+            }
+          });
+
+          if (res.ok) {
+            const data = await res.json();
+            const systemKeys = ["full_count", "version", "stats"];
+
+            Object.keys(data).forEach(key => {
+              if (systemKeys.includes(key) || !Array.isArray(data[key])) return;
+
+              const f = data[key];
+              const lat = f[1];
+              const lon = f[2];
+              if (!lat || !lon) return;
+
+              const hex = key;
+              const callsign = f[16] || f[13] || "Inconnu";
+              const origin = f[11] || "";
+              const dest = f[12] || "";
+              const eta = f[9] || 0;
+
+              const timeStr = eta
+                ? new Date(eta * 1000).toLocaleTimeString("fr-BE", {
+                    hour: "2-digit",
+                    minute: "2-digit",
+                    timeZone: "Europe/Brussels"
+                  })
+                : "--:--";
+
+              const aptKey = airportCode.toLowerCase();
+              const aptCoords = AIRPORTS[aptKey];
+              const status = aptCoords
+                ? computeStatus(f, aptCoords.lat, aptCoords.lon)
+                : "En vol";
+
+              // Départ
+              if (origin.toUpperCase() === airportCode) {
+                departures.push({
+                  flight: callsign,
+                  city: dest || "Inconnu",
+                  time: timeStr,
+                  status,
+                  hex
+                });
+              }
+
+              // Arrivée
+              if (dest.toUpperCase() === airportCode) {
+                arrivals.push({
+                  flight: callsign,
+                  city: origin || "Inconnu",
+                  time: timeStr,
+                  status,
+                  hex
+                });
+              }
+            });
+          }
+        } catch (e) {
+          console.error("FR24 FIDS dyn KO:", e);
+        }
+
+        // Mock si vraiment vide
+        if (arrivals.length === 0 && departures.length === 0) {
+          const getDynamicTime = (offset) => {
+            const now = new Date();
+            now.setMinutes(now.getMinutes() + offset);
+            return now.toLocaleTimeString("fr-BE", {
+              hour: "2-digit",
+              minute: "2-digit",
+              timeZone: "Europe/Brussels"
+            });
+          };
+
+          if (airportCode === "EBCI") {
+            departures = [
+              { flight: "FR2104", city: "Marseille (MRS)", time: getDynamicTime(15), status: "Embarquement", hex: null },
+              { flight: "W64512", city: "Bucarest (OTP)", time: getDynamicTime(45), status: "Programmé", hex: null }
+            ];
+          } else {
+            departures = [
+              { flight: "3V801", city: "Alicante (ALC)", time: getDynamicTime(10), status: "Embarquement", hex: null },
+              { flight: "XQ120", city: "Antalya (AYT)", time: getDynamicTime(35), status: "Programmé", hex: null }
+            ];
+          }
+        }
+
+        const payload = {
+          airport: airportCode,
+          arrivals,
+          departures
+        };
+
+        return new Response(JSON.stringify(payload), {
+          status: 200,
+          headers: { ...corsHeaders, "Content-Type": "application/json" }
+        });
       }
-    });
 
-    if (res.ok) {
-      const data = await res.json();
-      const systemKeys = ["full_count", "version", "stats"];
-
-      Object.keys(data).forEach(key => {
-  if (systemKeys.includes(key) || !Array.isArray(data[key])) return;
-
-  const f = data[key];
-  const lat = f[1];
-  const lon = f[2];
-  if (!lat || !lon) return;
-
-  const hex = key;
-  const callsign = f[16] || f[13] || "Inconnu";
-  const origin = f[11] || "";
-  const dest = f[12] || "";
-  const eta = f[9] || 0;
-
-  const timeStr = eta
-    ? new Date(eta * 1000).toLocaleTimeString("fr-BE", {
-        hour: "2-digit",
-        minute: "2-digit",
-        timeZone: "Europe/Brussels"
-      })
-    : "--:--";
-
-  // 🟦 INSERTION EXACTE ICI
-  const status = computeStatus(
-    f,
-    AIRPORTS[airportCode.toLowerCase()].lat,
-    AIRPORTS[airportCode.toLowerCase()].lon
-  );
-
-  // Départ
-  if (origin.toUpperCase() === airportCode) {
-    departures.push({
-      flight: callsign,
-      city: dest || "Inconnu",
-      time: timeStr,
-      status,
-      hex
-    });
-  }
-
-  // Arrivée
-  if (dest.toUpperCase() === airportCode) {
-    arrivals.push({
-      flight: callsign,
-      city: origin || "Inconnu",
-      time: timeStr,
-      status,
-      hex
-    });
-  }
-});
-
-  } catch (e) {
-    console.error("FR24 FIDS dyn KO:", e);
-  }
-
-  // Mock si vraiment vide
-  if (arrivals.length === 0 && departures.length === 0) {
-    const getDynamicTime = (offset) => {
-      const now = new Date();
-      now.setMinutes(now.getMinutes() + offset);
-      return now.toLocaleTimeString("fr-BE", {
-        hour: "2-digit",
-        minute: "2-digit",
-        timeZone: "Europe/Brussels"
-      });
-    };
-
-    if (airportCode === "EBCI") {
-      departures = [
-        { flight: "FR2104", city: "Marseille (MRS)", time: getDynamicTime(15), status: "Embarquement", hex: null },
-        { flight: "W64512", city: "Bucarest (OTP)", time: getDynamicTime(45), status: "Programmé", hex: null }
-      ];
-    } else {
-      departures = [
-        { flight: "3V801", city: "Alicante (ALC)", time: getDynamicTime(10), status: "Embarquement", hex: null },
-        { flight: "XQ120", city: "Antalya (AYT)", time: getDynamicTime(35), status: "Programmé", hex: null }
-      ];
-    }
-  }
-
-  const payload = {
-    airport: airportCode,
-    arrivals,
-    departures
-  };
-
-  return new Response(JSON.stringify(payload), {
-    status: 200,
-    headers: { ...corsHeaders, "Content-Type": "application/json" }
-  });
-}
-
-      function computeStatus(f, airportLat, airportLon) {
-  const alt = f[7];        // altitude en mètres
-  const speed = f[9];      // vitesse en m/s
-  const track = f[10];     // track
-  const lat = f[6];
-  const lon = f[5];
-
-  const speedKt = speed / 0.514444;
-
-  // Distance à l'aéroport
-  const R = 6371e3;
-  const φ1 = lat * Math.PI/180;
-  const φ2 = airportLat * Math.PI/180;
-  const Δφ = (airportLat - lat) * Math.PI/180;
-  const Δλ = (airportLon - lon) * Math.PI/180;
-
-  const a = Math.sin(Δφ/2)**2 +
-            Math.cos(φ1)*Math.cos(φ2)*Math.sin(Δλ/2)**2;
-  const d = R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a)); // en mètres
-
-  // AU SOL
-  if (alt < 80 && speedKt < 40) return "Au sol";
-
-  // EN MONTÉE
-  if (alt > 300 && speedKt > 120) return "En montée";
-
-  // EN APPROCHE
-  if (alt < 1500 && speedKt > 120 && speedKt < 250 && d < 25000) {
-    return "En approche";
-  }
-
-  return "En vol";
-}
-
-          // -------------------------------------------------------------
+      // -------------------------------------------------------------
       // 7. METEO FUSIONNÉE (METAR + Open-Meteo) — ND Airbus
       // -------------------------------------------------------------
       if (path.includes("/api/meteo")) {
@@ -566,7 +426,6 @@ if (path.includes("/api/fids")) {
 
         const { lat, lon } = coords[apt] || coords.EBLG;
 
-        // METAR VATSIM
         let metarRaw = "N/A";
         try {
           const metarRes = await fetchWithTimeout(
@@ -579,7 +438,6 @@ if (path.includes("/api/fids")) {
           metarRaw = "METAR indisponible";
         }
 
-        // METEO Open-Meteo
         let meteo = {
           main: { temp: null },
           wind: { speed: null, deg: null },
@@ -599,7 +457,7 @@ if (path.includes("/api/fids")) {
             meteo = {
               main: { temp: cw.temperature },
               wind: {
-                speed: cw.windspeed,       // km/h
+                speed: cw.windspeed,
                 deg: cw.winddirection
               },
               weather: [{
@@ -642,5 +500,3 @@ if (path.includes("/api/fids")) {
     }
   }
 };
-
-    
