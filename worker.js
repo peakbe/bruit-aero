@@ -265,194 +265,145 @@ export default {
       }
 
       // -------------------------------------------------------------
-      // 6. FIDS UNIFIÉ (EBLG officiel + AirLabs + mock)
-      // -------------------------------------------------------------
-      if (path.includes("/api/fids")) {
-        const airportCode = (url.searchParams.get("airport") || "EBLG").toUpperCase();
+// 6. FIDS UNIFIÉ (EBLG officiel + AirLabs + mock)
+// -------------------------------------------------------------
+if (path.includes("/api/fids")) {
+  const airportCode = (url.searchParams.get("airport") || "EBLG").toUpperCase();
 
-        const cache = caches.default;
-        const cacheKey = new Request(url.toString(), request);
-        let cachedResponse = await cache.match(cacheKey);
-        if (cachedResponse) return cachedResponse;
+  const cache = caches.default;
+  const cacheKey = new Request(url.toString(), request);
+  let cachedResponse = await cache.match(cacheKey);
+  if (cachedResponse) return cachedResponse;
 
-        let arrivals = [];
-        let departures = [];
+  let arrivals = [];
+  let departures = [];
 
-        // 6.1 FIDS officiel Liège Airport pour EBLG
-        if (airportCode === "EBLG") {
-          try {
-            const arrRes = await fetchWithTimeout(
-              "https://fids.liegeairport.com/api/flights/Arrivals",
-              {
-                headers: {
-                  "User-Agent": "Mozilla/5.0",
-                  "Accept": "application/json"
-                }
-              }
-            );
+  // 6.1 FIDS officiel Liège Airport
+  if (airportCode === "EBLG") {
+    try {
+      const arrRes = await fetchWithTimeout(
+        "https://fids.liegeairport.com/api/flights/Arrivals",
+        { headers: { "User-Agent": "Mozilla/5.0", "Accept": "application/json" } }
+      );
 
-            const depRes = await fetchWithTimeout(
-              "https://fids.liegeairport.com/api/flights/Departures",
-              {
-                headers: {
-                  "User-Agent": "Mozilla/5.0",
-                  "Accept": "application/json"
-                }
-              }
-            );
+      const depRes = await fetchWithTimeout(
+        "https://fids.liegeairport.com/api/flights/Departures",
+        { headers: { "User-Agent": "Mozilla/5.0", "Accept": "application/json" } }
+      );
 
-            if (arrRes.ok) {
-              const rawArr = await arrRes.json();
-              arrivals = rawArr.slice(0, 30).map(f => ({
-                flight: f.flightNumber || f.callsign || f.registration || "N/C",
-                city: f.origin || f.airport || "Inconnu",
-                time: f.scheduledTime || f.estimatedTime || f.time || "--:--",
-                status: f.status || "Programmé",
-                hex: f.hex || null
-              }));
-            }
-
-            if (depRes.ok) {
-              const rawDep = await depRes.json();
-              departures = rawDep.slice(0, 30).map(f => ({
-                flight: f.flightNumber || f.callsign || f.registration || "N/C",
-                city: f.destination || f.airport || "Inconnu",
-                time: f.scheduledTime || f.estimatedTime || f.time || "--:--",
-                status: f.status || "Programmé",
-                hex: f.hex || null
-              }));
-            }
-          } catch (e) {
-            console.error("Échec API FIDS Liège Airport, passage à AirLabs...", e);
-          }
-        }
-
-        // 6.2 AirLabs pour EBCI + fallback EBLG
-        const airlabsKey = env.AIRLABS_API_KEY || "VOTRE_CLE_AIRLABS";
-
-        // Départs
-        try {
-          const depUrl =
-            `https://airlabs.co/api/v9/schedules?dep_icao=${airportCode}&api_key=${airlabsKey}`;
-
-          const resDep = await fetchWithTimeout(depUrl);
-          if (resDep.ok) {
-            const data = await resDep.json();
-            if (Array.isArray(data.response)) {
-              const list = data.response;
-              departures = departures.concat(
-                list.slice(0, 30).map(f => {
-                  const timeRaw = f.dep_time || f.dep_estimated || f.dep_time_utc;
-                  let formattedTime = "--:--";
-                  if (timeRaw) {
-                    const m = timeRaw.match(/\d{2}:\d{2}/);
-                    if (m) formattedTime = m[0];
-                  }
-
-                  let status = "Programmé";
-                  const rawStatus = (f.status || "").toLowerCase();
-                  if (rawStatus.includes("active") || rawStatus.includes("en-route")) status = "En vol / Parti";
-                  else if (rawStatus.includes("landed")) status = "Atterri";
-                  else if (rawStatus.includes("cancelled")) status = "Annulé";
-
-                  return {
-                    flight: f.flight_number || f.flight_iata || f.flight_icao || "N/C",
-                    city: f.arr_iata || f.arr_icao || "Inconnu",
-                    time: formattedTime,
-                    status,
-                    hex: f.hex || null
-                  };
-                })
-              );
-            }
-          }
-        } catch (e) {
-          console.error("Échec AirLabs départs...", e);
-        }
-
-        // Arrivées
-        try {
-          const arrUrl =
-            `https://airlabs.co/api/v9/schedules?arr_icao=${airportCode}&api_key=${airlabsKey}`;
-
-          const resArr = await fetchWithTimeout(arrUrl);
-          if (resArr.ok) {
-            const data = await resArr.json();
-            if (Array.isArray(data.response)) {
-              const list = data.response;
-              arrivals = arrivals.concat(
-                list.slice(0, 30).map(f => {
-                  const timeRaw = f.arr_time || f.arr_estimated || f.arr_time_utc;
-                  let formattedTime = "--:--";
-                  if (timeRaw) {
-                    const m = timeRaw.match(/\d{2}:\d{2}/);
-                    if (m) formattedTime = m[0];
-                  }
-
-                  let status = "Programmé";
-                  const rawStatus = (f.status || "").toLowerCase();
-                  if (rawStatus.includes("active") || rawStatus.includes("en-route")) status = "En vol";
-                  else if (rawStatus.includes("landed")) status = "Atterri";
-                  else if (rawStatus.includes("cancelled")) status = "Annulé";
-
-                  return {
-                    flight: f.flight_number || f.flight_iata || f.flight_icao || "N/C",
-                    city: f.dep_iata || f.dep_icao || "Inconnu",
-                    time: formattedTime,
-                    status,
-                    hex: f.hex || null
-                  };
-                })
-              );
-            }
-          }
-        } catch (e) {
-          console.error("Échec AirLabs arrivées...", e);
-        }
-
-        // 6.3 Mock si tout est vide
-        if (arrivals.length === 0 && departures.length === 0) {
-          const getDynamicTime = (offset) => {
-            const now = new Date();
-            now.setMinutes(now.getMinutes() + offset);
-            return now.toLocaleTimeString("fr-BE", {
-              hour: "2-digit",
-              minute: "2-digit",
-              timeZone: "Europe/Brussels"
-            });
-          };
-
-          if (airportCode === "EBCI") {
-            departures = [
-              { flight: "FR2104", city: "Marseille (MRS)", time: getDynamicTime(15), status: "Embarquement", hex: null },
-              { flight: "W64512", city: "Bucarest (OTP)", time: getDynamicTime(45), status: "Programmé", hex: null }
-            ];
-          } else {
-            departures = [
-              { flight: "3V801", city: "Alicante (ALC)", time: getDynamicTime(10), status: "Embarquement", hex: null },
-              { flight: "XQ120", city: "Antalya (AYT)", time: getDynamicTime(35), status: "Programmé", hex: null }
-            ];
-          }
-        }
-
-        const payload = {
-          airport: airportCode,
-          arrivals,
-          departures
-        };
-
-        const response = new Response(JSON.stringify(payload), {
-          status: 200,
-          headers: {
-            ...corsHeaders,
-            "Content-Type": "application/json",
-            "Cache-Control": "public, max-age=300"
-          }
-        });
-
-        ctx.waitUntil(cache.put(cacheKey, response.clone()));
-        return response;
+      if (arrRes.ok) {
+        const rawArr = await arrRes.json();
+        arrivals = rawArr.map(f => ({
+          flight: f.flightNumber || f.callsign || "N/C",
+          city: f.origin || f.airport || "Inconnu",
+          time: f.scheduledTime || f.estimatedTime || "--:--",
+          status: f.status || "Programmé",
+          hex: f.hex || null
+        }));
       }
+
+      if (depRes.ok) {
+        const rawDep = await depRes.json();
+        departures = rawDep.map(f => ({
+          flight: f.flightNumber || f.callsign || "N/C",
+          city: f.destination || f.airport || "Inconnu",
+          time: f.scheduledTime || f.estimatedTime || "--:--",
+          status: f.status || "Programmé",
+          hex: f.hex || null
+        }));
+      }
+    } catch (e) {
+      console.error("FIDS EBLG KO → fallback AirLabs");
+    }
+  }
+
+  // 6.2 AirLabs (EBCI + fallback EBLG)
+  const airlabsKey = env.AIRLABS_API_KEY || "VOTRE_CLE_AIRLABS";
+
+  // Départs
+  try {
+    const depUrl = `https://airlabs.co/api/v9/schedules?dep_icao=${airportCode}&api_key=${airlabsKey}`;
+    const resDep = await fetchWithTimeout(depUrl);
+    if (resDep.ok) {
+      const data = await resDep.json();
+      if (Array.isArray(data.response)) {
+        departures = departures.concat(
+          data.response.map(f => ({
+            flight: f.flight_iata || f.flight_icao || "N/C",
+            city: f.arr_iata || f.arr_icao || "Inconnu",
+            time: (f.dep_time_utc || "").slice(11, 16) || "--:--",
+            status: f.status || "Programmé",
+            hex: f.hex || null
+          }))
+        );
+      }
+    }
+  } catch {}
+
+  // Arrivées
+  try {
+    const arrUrl = `https://airlabs.co/api/v9/schedules?arr_icao=${airportCode}&api_key=${airlabsKey}`;
+    const resArr = await fetchWithTimeout(arrUrl);
+    if (resArr.ok) {
+      const data = await resArr.json();
+      if (Array.isArray(data.response)) {
+        arrivals = arrivals.concat(
+          data.response.map(f => ({
+            flight: f.flight_iata || f.flight_icao || "N/C",
+            city: f.dep_iata || f.dep_icao || "Inconnu",
+            time: (f.arr_time_utc || "").slice(11, 16) || "--:--",
+            status: f.status || "Programmé",
+            hex: f.hex || null
+          }))
+        );
+      }
+    }
+  } catch {}
+
+  // 6.3 Mock si tout est vide
+  if (arrivals.length === 0 && departures.length === 0) {
+    const getDynamicTime = (offset) => {
+      const now = new Date();
+      now.setMinutes(now.getMinutes() + offset);
+      return now.toLocaleTimeString("fr-BE", {
+        hour: "2-digit",
+        minute: "2-digit",
+        timeZone: "Europe/Brussels"
+      });
+    };
+
+    if (airportCode === "EBCI") {
+      departures = [
+        { flight: "FR2104", city: "Marseille (MRS)", time: getDynamicTime(15), status: "Embarquement", hex: null },
+        { flight: "W64512", city: "Bucarest (OTP)", time: getDynamicTime(45), status: "Programmé", hex: null }
+      ];
+    } else {
+      departures = [
+        { flight: "3V801", city: "Alicante (ALC)", time: getDynamicTime(10), status: "Embarquement", hex: null },
+        { flight: "XQ120", city: "Antalya (AYT)", time: getDynamicTime(35), status: "Programmé", hex: null }
+      ];
+    }
+  }
+
+  const payload = {
+    airport: airportCode,
+    arrivals,
+    departures
+  };
+
+  const response = new Response(JSON.stringify(payload), {
+    status: 200,
+    headers: {
+      ...corsHeaders,
+      "Content-Type": "application/json",
+      "Cache-Control": "public, max-age=300"
+    }
+  });
+
+  ctx.waitUntil(cache.put(cacheKey, response.clone()));
+  return response;
+}
+
 
           // -------------------------------------------------------------
       // 7. METEO FUSIONNÉE (METAR + Open-Meteo) — ND Airbus
