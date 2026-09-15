@@ -71,7 +71,7 @@ async function fetchWeatherData(aptKey, env) {
 // 2. RADAR ADS-B EN DIRECT (OPENSKY / ADSB.LOL)
 // -------------------------------------------------------------
 async function fetchLiveAircraft(apt) {
-  const url = `https://api.adsb.lol/v2/aircraft?lat=\({apt.lat}&lon=\){apt.lon}&dist=${DIST_NM}`;
+  const url = `https://api.adsb.lol/v2/aircraft?lat=${apt.lat}&lon=${apt.lon}&dist=${DIST_NM}`;
   const res = await fetchWithTimeout(url, { headers: { "User-Agent": UA } }, 4000);
   if (!res.ok) return [];
 
