@@ -150,11 +150,6 @@ async function fetchLiveAircraftFailover(airportCode) {
 // -------------------------------------------------------------
 // 4) FIDS logic (statut + prédictions)
 // -------------------------------------------------------------
-function angleDiff(a, b) {
-  let d = Math.abs(a - b) % 360;
-  return d > 180 ? 360 - d : d;
-}
-
 function computeStatus(a, apt) {
   const d = haversine(a.lat, a.lon, apt.lat, apt.lon);
   const alt = a.alt_m;
@@ -163,16 +158,19 @@ function computeStatus(a, apt) {
   const diff22 = angleDiff(a.track, apt.ils22);
   const diff04 = angleDiff(a.track, apt.ils04);
 
-  if (alt < 80 && speedKt < 40 && d < 3000) return "Au sol";
+  // AU SOL
+  if (alt < 100 && speedKt < 60 && d < 5000) return "Au sol";
 
-  if (alt < 3000 && speedKt > 120 && speedKt < 260 && d < 20000) {
-    if (diff22 < 25 || diff04 < 25) return "En approche";
+  // APPROCHE (corridor élargi)
+  if (alt < 5000 && speedKt > 100 && d < 30000) {
+    if (diff22 < 35 || diff04 < 35) return "En approche";
   }
 
-  if (alt > 300 && speedKt > 120 && d < 8000) {
+  // MONTÉE (plus permissif)
+  if (alt > 300 && speedKt > 120 && d < 15000) {
     const dirToApt = Math.atan2(apt.lon - a.lon, apt.lat - a.lat) * 180 / Math.PI;
     const diff = angleDiff(a.track, dirToApt);
-    if (diff > 120) return "En montée";
+    if (diff > 100) return "En montée";
   }
 
   return "En vol";
@@ -186,13 +184,11 @@ function computePredictedRole(a, apt) {
   const dirToApt = Math.atan2(apt.lon - a.lon, apt.lat - a.lat) * 180 / Math.PI;
   const diffDir = angleDiff(a.track, dirToApt);
 
-  if (alt > 1500 && alt < 8000 && speedKt > 200 && d < 80000 && diffDir < 40) {
+  if (alt > 1500 && alt < 10000 && speedKt > 180 && d < 120000 && diffDir < 60)
     return "Arrivée prévue";
-  }
 
-  if (alt < 1500 && speedKt > 120 && d < 15000) {
+  if (alt < 2000 && speedKt > 100 && d < 20000)
     return "Départ probable";
-  }
 
   return null;
 }
