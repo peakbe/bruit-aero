@@ -453,3 +453,9 @@ h1 {
   text-transform: uppercase;
   letter-spacing: 0.06em;
 }
+
+.metar-trend {
+  font-size: 0.85rem;
+  color: var(--airbus-amber);
+  font-weight: 600;
+}
