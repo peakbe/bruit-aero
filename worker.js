@@ -1,25 +1,42 @@
 // =================================================================
-// WORKER CLOUDFLARE PRO v6 - INTEGRATION SECRETS MULTI-API
+// WORKER CLOUDFLARE - METEO + ADS-B FAILOVER + FIDS PRO v8
 // =================================================================
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "GET, HEAD, POST, OPTIONS",
   "Access-Control-Allow-Headers": "Content-Type",
-  "Content-Type": "application/json"
 };
 
 const UA = "AeroNoiseMonitor/1.0";
 const DIST_NM = 50;
 
 const AIRPORTS = {
-  ebci: { lat: 50.4594, lon: 4.4536, ils22: 236, ils04: 56, iata: "CRL", icao: "EBCI" },
-  eblg: { lat: 50.6378, lon: 5.4444, ils22: 220, ils04: 40, iata: "LGG", icao: "EBLG" }
+  ebci: { lat: 50.4594, lon: 4.4536, ils22: 236, ils04: 56 },
+  eblg: { lat: 50.6378, lon: 5.4444, ils22: 220, ils04: 40 }
+};
+
+// Cache simple en mémoire (Cloudflare Worker runtime)
+let lastAircraftCache = {
+  timestamp: 0,
+  byAirport: {}   // { EBLG: [ ... ], EBCI: [ ... ] }
 };
 
 // -------------------------------------------------------------
-// HELPERS & FETCH WITH TIMEOUT
+// Utils
 // -------------------------------------------------------------
+function deg2rad(d) { return d * Math.PI / 180; }
+
+function haversine(lat1, lon1, lat2, lon2) {
+  const R = 6371e3;
+  const dLat = deg2rad(lat2 - lat1);
+  const dLon = deg2rad(lon2 - lon1);
+  const a = Math.sin(dLat/2)**2 +
+            Math.cos(deg2rad(lat1)) * Math.cos(deg2rad(lat2)) *
+            Math.sin(dLon/2)**2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+}
+
 async function fetchWithTimeout(url, options = {}, timeoutMs = 5000) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
@@ -31,150 +48,195 @@ async function fetchWithTimeout(url, options = {}, timeoutMs = 5000) {
 }
 
 // -------------------------------------------------------------
-// 1. MÉTÉO (OPENWEATHERMAP -> OPEN-METEO FALLBACK)
+// 1) Normalisation avion ADS-B
 // -------------------------------------------------------------
-async function fetchWeatherData(aptKey, env) {
-  const apt = AIRPORTS[aptKey];
-
-  // Option 1 : OpenWeatherMap via secret Cloudflare
-  if (env.OPENWEATHER_API_KEY) {
-    try {
-      const url = `https://api.openweathermap.org/data/2.5/weather?lat=\({apt.lat}&lon=\){apt.lon}&units=metric&appid=${env.OPENWEATHER_API_KEY}`;
-      const res = await fetchWithTimeout(url, {}, 4000);
-      if (res.ok) {
-        const j = await res.json();
-        return {
-          main: { temp: j.main.temp },
-          wind: { speed: j.wind.speed * 3.6, deg: j.wind.deg } // m/s -> km/h
-        };
-      }
-    } catch (e) {
-      console.warn("OpenWeatherMap KO, fallback vers Open-Meteo", e);
-    }
-  }
-
-  // Option 2 : Open-Meteo (Sans clé API)
-  const fallbackUrl = `https://api.open-meteo.com/v1/forecast?latitude=\({apt.lat}&longitude=\){apt.lon}&current_weather=true`;
-  const res = await fetchWithTimeout(fallbackUrl, {}, 4000);
-  if (res.ok) {
-    const j = await res.json();
-    return {
-      main: { temp: j.current_weather.temperature },
-      wind: { speed: j.current_weather.windspeed, deg: j.current_weather.winddirection }
-    };
-  }
-
-  return { main: { temp: 15 }, wind: { speed: 10, deg: 220 } };
-}
-
-// -------------------------------------------------------------
-// 2. RADAR ADS-B EN DIRECT (OPENSKY / ADSB.LOL)
-// -------------------------------------------------------------
-async function fetchLiveAircraft(apt) {
-  const url = `https://api.adsb.lol/v2/aircraft?lat=${apt.lat}&lon=${apt.lon}&dist=${DIST_NM}`;
-  const res = await fetchWithTimeout(url, { headers: { "User-Agent": UA } }, 4000);
-  if (!res.ok) return [];
-
-  const j = await res.json();
-  return (j.aircraft || [])
+function normalizeAircraft(list) {
+  return list
     .filter(a => typeof a.lat === "number" && typeof a.lon === "number")
     .map(a => ({
-      hex: a.hex || "unknown",
-      callsign: (a.flight || a.r || "Inconnu").trim(),
-      registration: a.r || "N/C",
-      type: a.t || "N/C",
+      hex: a.hex || a.icao || "unknown",
+      callsign: (a.flight || a.callsign || a.r || "Inconnu").trim(),
+      registration: a.r || a.reg || "N/C",
+      type: a.t || a.type || "N/C",
       lat: a.lat,
-      lng: a.lon,
-      altFt: typeof a.alt_baro === "number" ? a.alt_baro : 0,
-      speedKt: typeof a.gs === "number" ? a.gs : 0,
-      track: typeof a.track === "number" ? a.track : 0
+      lon: a.lon,
+      alt_m: typeof a.alt_baro === "number"
+        ? a.alt_baro * 0.3048
+        : (typeof a.alt === "number" ? a.alt * 0.3048 : 0),
+      speed_ms: typeof a.gs === "number"
+        ? a.gs * 0.514444
+        : (typeof a.speed === "number" ? a.speed * 0.514444 : 0),
+      track: typeof a.track === "number" ? a.track : (a.heading || 0),
+      on_ground: a.alt_baro === "ground" || a.on_ground === true
     }));
 }
 
 // -------------------------------------------------------------
-// 3. TABLEAU FIDS (AIRLABS -> AVIATIONSTACK -> FALLBACK)
+// 2) Sources ADS-B avec failover
 // -------------------------------------------------------------
-async function fetchFidsData(aptKey, type, env) {
+async function fetchFromAdsbLol(apt) {
+  const url = `https://api.adsb.lol/v2/aircraft?lat=${apt.lat}&lon=${apt.lon}&dist=${DIST_NM}`;
+  const res = await fetchWithTimeout(url, { headers: { "User-Agent": UA } }, 4000);
+  if (!res.ok) throw new Error(`ADSB.lol KO: ${res.status}`);
+  const j = await res.json();
+  return normalizeAircraft(j.aircraft || []);
+}
+
+async function fetchFromAirplanesLive(apt) {
+  const url = `https://api.airplanes.live/v2/aircraft?lat=${apt.lat}&lon=${apt.lon}&dist=${DIST_NM}`;
+  const res = await fetchWithTimeout(url, { headers: { "User-Agent": UA } }, 4000);
+  if (!res.ok) throw new Error(`Airplanes.live KO: ${res.status}`);
+  const j = await res.json();
+  return normalizeAircraft(j.aircraft || []);
+}
+
+async function fetchFromOpenSky(apt) {
+  const url = `https://opensky-network.org/api/states/all?lamin=${apt.lat-0.5}&lamax=${apt.lat+0.5}&lomin=${apt.lon-0.5}&lomax=${apt.lon+0.5}`;
+  const res = await fetchWithTimeout(url, { headers: { "User-Agent": UA } }, 4000);
+  if (!res.ok) throw new Error(`OpenSky KO: ${res.status}`);
+  const j = await res.json();
+  const list = (j.states || []).map(s => ({
+    icao: s[0],
+    callsign: s[1],
+    lat: s[6],
+    lon: s[5],
+    alt: s[7],
+    track: s[10],
+    speed: s[9]
+  }));
+  return normalizeAircraft(list);
+}
+
+// -------------------------------------------------------------
+// 3) Fetch avec failover + cache
+// -------------------------------------------------------------
+async function fetchLiveAircraftFailover(airportCode) {
+  const aptKey = airportCode.toLowerCase();
   const apt = AIRPORTS[aptKey];
-  const isDep = type === "departures";
+  if (!apt) return [];
 
-  // --- SOURCE 1 : AIRLABS ---
-  if (env.AIRLABS_API_KEY) {
+  // Cache 60 s
+  const now = Date.now();
+  if (now - lastAircraftCache.timestamp < 60000 &&
+      lastAircraftCache.byAirport[airportCode]) {
+    return lastAircraftCache.byAirport[airportCode];
+  }
+
+  let aircraft = [];
+
+  try {
+    aircraft = await fetchFromAdsbLol(apt);
+  } catch (e1) {
     try {
-      const param = isDep ? `dep_icao=\({apt.icao}` : `arr_icao=\){apt.icao}`;
-      const url = `https://airlabs.co/api/v9/schedules?\({param}&api_key=\){env.AIRLABS_API_KEY}`;
-      const res = await fetchWithTimeout(url, {}, 5000);
-      
-      if (res.ok) {
-        const json = await res.json();
-        if (json.response && json.response.length > 0) {
-          return json.response.slice(0, 10).map(f => ({
-            flight: f.flight_iata || f.flight_icao || "N/C",
-            city: isDep ? (f.arr_iata || f.arr_icao) : (f.dep_iata || f.dep_icao),
-            time: (isDep ? f.dep_time : f.arr_time)?.slice(-5) || "--:--",
-            status: f.status ? f.status.toUpperCase() : "Programmé"
-          }));
+      aircraft = await fetchFromAirplanesLive(apt);
+    } catch (e2) {
+      try {
+        aircraft = await fetchFromOpenSky(apt);
+      } catch (e3) {
+        // Tout KO → on garde éventuellement l’ancien cache
+        if (lastAircraftCache.byAirport[airportCode]) {
+          return lastAircraftCache.byAirport[airportCode];
         }
+        return [];
       }
-    } catch (e) {
-      console.warn("AirLabs FIDS KO, basculement...", e);
     }
   }
 
-  // --- SOURCE 2 : AVIATIONSTACK ---
-  if (env.AVIATIONSTACK_KEY || env["AVIATIONSTACK_KE`"]) {
-    const apiKey = env.AVIATIONSTACK_KEY || env["AVIATIONSTACK_KE`"];
-    try {
-      const param = isDep ? `dep_iata=\({apt.iata}` : `arr_iata=\){apt.iata}`;
-      const url = `http://api.aviationstack.com/v1/flights?access_key=\({apiKey}&\){param}&limit=10`;
-      const res = await fetchWithTimeout(url, {}, 5000);
+  lastAircraftCache.timestamp = now;
+  lastAircraftCache.byAirport[airportCode] = aircraft;
+  return aircraft;
+}
 
-      if (res.ok) {
-        const json = await res.json();
-        if (json.data && json.data.length > 0) {
-          return json.data.map(f => ({
-            flight: f.flight?.iata || f.flight?.icao || "N/C",
-            city: isDep ? f.arrival?.iata : f.departure?.iata,
-            time: (isDep ? f.departure?.scheduled : f.arrival?.scheduled)?.slice(11, 16) || "--:--",
-            status: f.flight_status ? f.flight_status.toUpperCase() : "Programmé"
-          }));
-        }
-      }
-    } catch (e) {
-      console.warn("AviationStack FIDS KO, basculement...", e);
-    }
+// -------------------------------------------------------------
+// 4) FIDS logic (statut + prédictions)
+// -------------------------------------------------------------
+function angleDiff(a, b) {
+  let d = Math.abs(a - b) % 360;
+  return d > 180 ? 360 - d : d;
+}
+
+function computeStatus(a, apt) {
+  const d = haversine(a.lat, a.lon, apt.lat, apt.lon);
+  const alt = a.alt_m;
+  const speedKt = a.speed_ms / 0.514444;
+
+  const diff22 = angleDiff(a.track, apt.ils22);
+  const diff04 = angleDiff(a.track, apt.ils04);
+
+  if (alt < 80 && speedKt < 40 && d < 3000) return "Au sol";
+
+  if (alt < 3000 && speedKt > 120 && speedKt < 260 && d < 20000) {
+    if (diff22 < 25 || diff04 < 25) return "En approche";
   }
 
-  // --- FALLBACK DYNAMIQUE LORSQU'AUCUNE API NE RÉPOND ---
-  const now = new Date();
-  const t = (m) => new Date(now.getTime() + m * 60000).toLocaleTimeString("fr-BE", { hour: "2-digit", minute: "2-digit", timeZone: "Europe/Brussels" });
-
-  if (apt.icao === "EBLG") {
-    return isDep ? [
-      { flight: "3V801", city: "ALC", time: t(12), status: "Embarquement" },
-      { flight: "XQ120", city: "AYT", time: t(30), status: "Programmé" },
-      { flight: "3V551", city: "MAD", time: t(55), status: "Programmé" }
-    ] : [
-      { flight: "3V802", city: "ALC", time: t(15), status: "En approche" },
-      { flight: "FX403", city: "CDG", time: t(40), status: "Programmé" }
-    ];
-  } else {
-    return isDep ? [
-      { flight: "FR2104", city: "MRS", time: t(10), status: "Embarquement" },
-      { flight: "FR6312", city: "BGY", time: t(25), status: "Programmé" },
-      { flight: "W64301", city: "OTP", time: t(45), status: "Programmé" }
-    ] : [
-      { flight: "FR2105", city: "MRS", time: t(20), status: "En approche" },
-      { flight: "FR6313", city: "BGY", time: t(50), status: "Programmé" }
-    ];
+  if (alt > 300 && speedKt > 120 && d < 8000) {
+    const dirToApt = Math.atan2(apt.lon - a.lon, apt.lat - a.lat) * 180 / Math.PI;
+    const diff = angleDiff(a.track, dirToApt);
+    if (diff > 120) return "En montée";
   }
+
+  return "En vol";
+}
+
+function computePredictedRole(a, apt) {
+  const d = haversine(a.lat, a.lon, apt.lat, apt.lon);
+  const alt = a.alt_m;
+  const speedKt = a.speed_ms / 0.514444;
+
+  const dirToApt = Math.atan2(apt.lon - a.lon, apt.lat - a.lat) * 180 / Math.PI;
+  const diffDir = angleDiff(a.track, dirToApt);
+
+  if (alt > 1500 && alt < 8000 && speedKt > 200 && d < 80000 && diffDir < 40) {
+    return "Arrivée prévue";
+  }
+
+  if (alt < 1500 && speedKt > 120 && d < 15000) {
+    return "Départ probable";
+  }
+
+  return null;
+}
+
+function computeTimeStr(a, apt) {
+  const d = haversine(a.lat, a.lon, apt.lat, apt.lon);
+  const speed = a.speed_ms;
+  if (speed < 30) return "--:--";
+
+  const tSec = d / speed;
+  const eta = new Date(Date.now() + tSec * 1000);
+  return eta.toLocaleTimeString("fr-BE", {
+    hour: "2-digit",
+    minute: "2-digit",
+    timeZone: "Europe/Brussels"
+  });
+}
+
+// -------------------------------------------------------------
+// 5) METEO (METAR + Open-Meteo) - /api/meteo
+// -------------------------------------------------------------
+async function fetchMetar(aptCode) {
+  const url = `https://metar.vatsim.net/${aptCode}`;
+  const res = await fetchWithTimeout(url, { headers: { "User-Agent": UA } });
+  if (!res.ok) return "METAR indisponible";
+  return (await res.text()).trim();
+}
+
+async function fetchOpenMeteo(lat, lon) {
+  const url =
+    `https://api.open-meteo.com/v1/forecast` +
+    `?latitude=${lat}&longitude=${lon}` +
+    `&current_weather=true`;
+  const res = await fetchWithTimeout(url);
+  if (!res.ok) return null;
+  const j = await res.json();
+  return j.current_weather || null;
 }
 
 // =================================================================
-// MAIN HANDLER
+// HANDLER
 // =================================================================
 export default {
-  async fetch(request, env) {
+  async fetch(request) {
     if (request.method === "OPTIONS") {
       return new Response(null, { headers: corsHeaders });
     }
@@ -183,46 +245,137 @@ export default {
     const path = url.pathname;
 
     try {
-      // 1) ADS-B Radar
-      if (path.includes("/api/opensky") || path.includes("/api/adsb")) {
-        const airportCode = (url.searchParams.get("airport") || "EBLG").toLowerCase();
-        const apt = AIRPORTS[airportCode] || AIRPORTS.eblg;
-        const aircraft = await fetchLiveAircraft(apt);
-        return new Response(JSON.stringify({ airport: airportCode.toUpperCase(), aircraft }), { status: 200, headers: corsHeaders });
-      }
 
-      // 2) Météo Fusionnée
-      if (path.includes("/api/meteo") || path.includes("/api/weather")) {
-        const aptCode = (url.searchParams.get("apt") || url.searchParams.get("airport") || "EBLG").toLowerCase();
-        const apt = AIRPORTS[aptCode] || AIRPORTS.eblg;
+      // -------------------------------------------------------------
+      // 1) ADS-B brut — /api/adsb?airport=EBLG
+      // -------------------------------------------------------------
+      if (path.includes("/api/adsb")) {
+        const airportCode = (url.searchParams.get("airport") || "EBLG").toUpperCase();
+        const aptKey = airportCode.toLowerCase();
+        const apt = AIRPORTS[aptKey];
 
-        // Fetch METAR VATSIM + Weather simultanés
-        const metarPromise = fetchWithTimeout(`https://metar.vatsim.net/${apt.icao}`, { headers: { "User-Agent": UA } }, 4000)
-          .then(r => r.ok ? r.text() : "METAR Indisponible")
-          .catch(() => "METAR Indisponible");
+        if (!apt) {
+          return new Response(JSON.stringify({ airport: airportCode, aircraft: [] }), {
+            status: 200,
+            headers: { ...corsHeaders, "Content-Type": "application/json" }
+          });
+        }
 
-        const [metarRaw, meteoData] = await Promise.all([metarPromise, fetchWeatherData(aptCode, env)]);
+        const aircraft = await fetchLiveAircraftFailover(airportCode);
 
         return new Response(JSON.stringify({
-          apt: apt.icao,
-          metar: metarRaw.trim(),
-          meteo: meteoData
-        }), { status: 200, headers: corsHeaders });
+          airport: airportCode,
+          aircraft
+        }), {
+          status: 200,
+          headers: { ...corsHeaders, "Content-Type": "application/json" }
+        });
       }
 
-      // 3) FIDS (Grille des vols)
-      if (path.includes("/api/fids")) {
-        const airportCode = (url.searchParams.get("airport") || "EBLG").toLowerCase();
-        const type = (url.searchParams.get("type") || "departures").toLowerCase();
+      // -------------------------------------------------------------
+      // 2) METEO — /api/meteo?apt=EBLG
+      // -------------------------------------------------------------
+      if (path.includes("/api/meteo")) {
+        const aptCode = (url.searchParams.get("apt") || "EBLG").toUpperCase();
+        const aptKey = aptCode.toLowerCase();
+        const apt = AIRPORTS[aptKey];
 
-        const flights = await fetchFidsData(airportCode, type, env);
-        return new Response(JSON.stringify(flights), { status: 200, headers: corsHeaders });
+        if (!apt) {
+          return new Response(JSON.stringify({
+            apt: aptCode,
+            metar: "Aéroport inconnu",
+            meteo: null
+          }), {
+            status: 200,
+            headers: { ...corsHeaders, "Content-Type": "application/json" }
+          });
+        }
+
+        const metar = await fetchMetar(aptCode);
+        const current = await fetchOpenMeteo(apt.lat, apt.lon);
+
+        const meteo = current
+          ? {
+              main: { temp: current.temperature },
+              wind: {
+                speed: current.windspeed,
+                deg: current.winddirection
+              }
+            }
+          : null;
+
+        return new Response(JSON.stringify({
+          apt: aptCode,
+          metar,
+          meteo
+        }), {
+          status: 200,
+          headers: { ...corsHeaders, "Content-Type": "application/json" }
+        });
       }
 
-      return new Response(JSON.stringify({ error: "Endpoint non trouvé" }), { status: 404, headers: corsHeaders });
+      // -------------------------------------------------------------
+      // 3) FIDS ADS-B PRO v8 — /api/fids-adsb?airport=EBLG
+      // -------------------------------------------------------------
+      if (path.includes("/api/fids-adsb")) {
+        const airportCode = (url.searchParams.get("airport") || "EBLG").toUpperCase();
+        const aptKey = airportCode.toLowerCase();
+        const apt = AIRPORTS[aptKey];
+
+        if (!apt) {
+          return new Response(JSON.stringify({
+            airport: airportCode,
+            arrivals: [],
+            departures: []
+          }), { status: 200, headers: corsHeaders });
+        }
+
+        const states = await fetchLiveAircraftFailover(airportCode);
+
+        let arrivals = [];
+        let departures = [];
+
+        states.forEach(a => {
+          const status = computeStatus(a, apt);
+          const predicted = computePredictedRole(a, apt);
+          const timeStr = computeTimeStr(a, apt);
+
+          if (status === "En approche")
+            arrivals.push({ flight: a.callsign, city: "Inconnu", time: timeStr, status, hex: a.hex });
+
+          if (status === "En montée" || status === "Au sol")
+            departures.push({ flight: a.callsign, city: "Inconnu", time: timeStr, status, hex: a.hex });
+
+          if (predicted === "Arrivée prévue")
+            arrivals.push({ flight: a.callsign, city: "Inconnu", time: timeStr, status: predicted, hex: a.hex });
+
+          if (predicted === "Départ probable")
+            departures.push({ flight: a.callsign, city: "Inconnu", time: timeStr, status: predicted, hex: a.hex });
+        });
+
+        return new Response(JSON.stringify({
+          airport: airportCode,
+          arrivals,
+          departures
+        }), {
+          status: 200,
+          headers: { ...corsHeaders, "Content-Type": "application/json" }
+        });
+      }
+
+      // -------------------------------------------------------------
+      // DEFAULT
+      // -------------------------------------------------------------
+      return new Response(JSON.stringify({ error: "Endpoint non trouvé" }), {
+        status: 404,
+        headers: corsHeaders
+      });
 
     } catch (err) {
-      return new Response(JSON.stringify({ error: err.message }), { status: 500, headers: corsHeaders });
+      return new Response(JSON.stringify({ error: err.message }), {
+        status: 500,
+        headers: corsHeaders
+      });
     }
   }
 };
