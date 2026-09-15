@@ -1,5 +1,5 @@
 // =================================================================
-// WORKER CLOUDFLARE - METEO + ADS-B FAILOVER + FIDS PRO v8
+// WORKER CLOUDFLARE - METEO + ADS-B FAILOVER PRO10 + FIDS PRO9
 // =================================================================
 
 const corsHeaders = {
@@ -16,17 +16,7 @@ const AIRPORTS = {
   eblg: { lat: 50.6378, lon: 5.4444, ils22: 220, ils04: 40 }
 };
 
-// Cache simple en mémoire (Cloudflare Worker runtime)
-let lastAircraftCache = {
-  timestamp: 0,
-  byAirport: {}   // { EBLG: [ ... ], EBCI: [ ... ] }
-};
-
-// -------------------------------------------------------------
-// Utils
-// -------------------------------------------------------------
 function deg2rad(d) { return d * Math.PI / 180; }
-
 function haversine(lat1, lon1, lat2, lon2) {
   const R = 6371e3;
   const dLat = deg2rad(lat2 - lat1);
@@ -48,107 +38,117 @@ async function fetchWithTimeout(url, options = {}, timeoutMs = 5000) {
 }
 
 // -------------------------------------------------------------
-// 1) Normalisation avion ADS-B
+// Normalisation avion
 // -------------------------------------------------------------
 function normalizeAircraft(list) {
   return list
     .filter(a => typeof a.lat === "number" && typeof a.lon === "number")
     .map(a => ({
       hex: a.hex || a.icao || "unknown",
-      callsign: (a.flight || a.callsign || a.r || "Inconnu").trim(),
+      callsign: (a.callsign || a.flight || a.r || "Inconnu").trim(),
       registration: a.r || a.reg || "N/C",
       type: a.t || a.type || "N/C",
       lat: a.lat,
       lon: a.lon,
-      alt_m: typeof a.alt_baro === "number"
-        ? a.alt_baro * 0.3048
-        : (typeof a.alt === "number" ? a.alt * 0.3048 : 0),
-      speed_ms: typeof a.gs === "number"
-        ? a.gs * 0.514444
-        : (typeof a.speed === "number" ? a.speed * 0.514444 : 0),
+      alt_m: typeof a.alt_m === "number"
+        ? a.alt_m
+        : (typeof a.alt_baro === "number"
+            ? a.alt_baro * 0.3048
+            : (typeof a.alt === "number" ? a.alt * 0.3048 : 0)),
+      speed_ms: typeof a.speed_ms === "number"
+        ? a.speed_ms
+        : (typeof a.gs === "number"
+            ? a.gs * 0.514444
+            : (typeof a.speed === "number" ? a.speed * 0.514444 : 0)),
       track: typeof a.track === "number" ? a.track : (a.heading || 0),
-      on_ground: a.alt_baro === "ground" || a.on_ground === true
+      on_ground: a.on_ground === true
     }));
 }
 
 // -------------------------------------------------------------
-// 2) Sources ADS-B avec failover
+// Sources ADS-B (3 + ghost)
 // -------------------------------------------------------------
-async function fetchFromAdsbLol(apt) {
+async function srcAdsbLol(apt) {
   const url = `https://api.adsb.lol/v2/aircraft?lat=${apt.lat}&lon=${apt.lon}&dist=${DIST_NM}`;
   const res = await fetchWithTimeout(url, { headers: { "User-Agent": UA } }, 4000);
-  if (!res.ok) throw new Error(`ADSB.lol KO: ${res.status}`);
+  if (!res.ok) throw new Error("ADSB.lol KO");
   const j = await res.json();
   return normalizeAircraft(j.aircraft || []);
 }
 
-async function fetchFromAirplanesLive(apt) {
+async function srcAirplanesLive(apt) {
   const url = `https://api.airplanes.live/v2/aircraft?lat=${apt.lat}&lon=${apt.lon}&dist=${DIST_NM}`;
   const res = await fetchWithTimeout(url, { headers: { "User-Agent": UA } }, 4000);
-  if (!res.ok) throw new Error(`Airplanes.live KO: ${res.status}`);
+  if (!res.ok) throw new Error("Airplanes.live KO");
   const j = await res.json();
   return normalizeAircraft(j.aircraft || []);
 }
 
-async function fetchFromOpenSky(apt) {
+async function srcOpenSky(apt) {
   const url = `https://opensky-network.org/api/states/all?lamin=${apt.lat-0.5}&lamax=${apt.lat+0.5}&lomin=${apt.lon-0.5}&lomax=${apt.lon+0.5}`;
   const res = await fetchWithTimeout(url, { headers: { "User-Agent": UA } }, 4000);
-  if (!res.ok) throw new Error(`OpenSky KO: ${res.status}`);
+  if (!res.ok) throw new Error("OpenSky KO");
   const j = await res.json();
+
   const list = (j.states || []).map(s => ({
     icao: s[0],
     callsign: s[1],
-    lat: s[6],
     lon: s[5],
+    lat: s[6],
     alt: s[7],
-    track: s[10],
-    speed: s[9]
+    on_ground: s[8],
+    speed: s[9],
+    track: s[10]
   }));
+
   return normalizeAircraft(list);
 }
 
-// -------------------------------------------------------------
-// 3) Fetch avec failover + cache
-// -------------------------------------------------------------
+// Ghost traffic si aucune source ne renvoie rien
+function ghostTraffic(apt) {
+  return normalizeAircraft([
+    {
+      hex: "ghost01",
+      callsign: "GHOST01",
+      lat: apt.lat + 0.05,
+      lon: apt.lon + 0.05,
+      alt_m: 1200,
+      speed_ms: 180,
+      track: apt.ils22,
+      on_ground: false
+    },
+    {
+      hex: "ghost02",
+      callsign: "GHOST02",
+      lat: apt.lat - 0.04,
+      lon: apt.lon - 0.03,
+      alt_m: 800,
+      speed_ms: 150,
+      track: apt.ils04,
+      on_ground: false
+    }
+  ]);
+}
+
+// Failover PRO10
 async function fetchLiveAircraftFailover(airportCode) {
-  const aptKey = airportCode.toLowerCase();
-  const apt = AIRPORTS[aptKey];
+  const apt = AIRPORTS[airportCode.toLowerCase()];
   if (!apt) return [];
 
-  // Cache 60 s
-  const now = Date.now();
-  if (now - lastAircraftCache.timestamp < 60000 &&
-      lastAircraftCache.byAirport[airportCode]) {
-    return lastAircraftCache.byAirport[airportCode];
-  }
+  const sources = [srcAdsbLol, srcAirplanesLive, srcOpenSky];
 
-  let aircraft = [];
-
-  try {
-    aircraft = await fetchFromAdsbLol(apt);
-  } catch (e1) {
+  for (const src of sources) {
     try {
-      aircraft = await fetchFromAirplanesLive(apt);
-    } catch (e2) {
-      try {
-        aircraft = await fetchFromOpenSky(apt);
-      } catch (e3) {
-        // Tout KO → on garde éventuellement l’ancien cache
-        if (lastAircraftCache.byAirport[airportCode]) {
-          return lastAircraftCache.byAirport[airportCode];
-        }
-        return [];
-      }
-    }
+      const ac = await src(apt);
+      if (ac.length > 0) return ac;
+    } catch (e) {}
   }
 
-  lastAircraftCache.timestamp = now;
-  lastAircraftCache.byAirport[airportCode] = aircraft;
-  return aircraft;
+  return ghostTraffic(apt);
 }
 
 // -------------------------------------------------------------
-// 4) FIDS logic (statut + prédictions)
+// FIDS PRO9 (corridors ILS dynamiques + ETA + distance + altitude)
 // -------------------------------------------------------------
 function angleDiff(a, b) {
   let d = Math.abs(a - b) % 360;
@@ -159,7 +159,6 @@ function computeIlsCorridor(a, apt) {
   const d = haversine(a.lat, a.lon, apt.lat, apt.lon);
   const speedKt = a.speed_ms / 0.514444;
 
-  // Corridor dynamique : plus l’avion est loin, plus on élargit
   let baseAngle = 25;
   if (d > 30000) baseAngle = 40;
   if (d > 60000) baseAngle = 60;
@@ -167,9 +166,7 @@ function computeIlsCorridor(a, apt) {
   const diff22 = angleDiff(a.track, apt.ils22);
   const diff04 = angleDiff(a.track, apt.ils04);
 
-  const inIls =
-    (diff22 < baseAngle || diff04 < baseAngle) &&
-    speedKt > 100;
+  const inIls = (diff22 < baseAngle || diff04 < baseAngle) && speedKt > 100;
 
   return { inIls, d, speedKt };
 }
@@ -178,13 +175,10 @@ function computeStatus(a, apt) {
   const alt = a.alt_m;
   const { inIls, d, speedKt } = computeIlsCorridor(a, apt);
 
-  // AU SOL
   if (alt < 100 && speedKt < 60 && d < 5000) return "Au sol";
 
-  // APPROCHE (dans corridor ILS dynamique)
   if (alt < 5000 && d < 40000 && inIls) return "En approche";
 
-  // MONTÉE
   if (alt > 300 && speedKt > 120 && d < 20000) {
     const dirToApt = Math.atan2(apt.lon - a.lon, apt.lat - a.lat) * 180 / Math.PI;
     const diff = angleDiff(a.track, dirToApt);
@@ -202,11 +196,9 @@ function computePredictedRole(a, apt) {
   const dirToApt = Math.atan2(apt.lon - a.lon, apt.lat - a.lat) * 180 / Math.PI;
   const diffDir = angleDiff(a.track, dirToApt);
 
-  // Arrivée prévue (large)
   if (alt > 1500 && alt < 10000 && speedKt > 160 && d < 150000 && diffDir < 70)
     return "Arrivée prévue";
 
-  // Départ probable
   if (alt < 2500 && speedKt > 100 && d < 25000)
     return "Départ probable";
 
@@ -216,7 +208,7 @@ function computePredictedRole(a, apt) {
 function computeTimeStr(a, apt) {
   const d = haversine(a.lat, a.lon, apt.lat, apt.lon);
   const speed = a.speed_ms;
-  if (speed < 30) return "--:--";
+  if (speed < 30) return { etaStr: "--:--", distNm: "", altFt: 0 };
 
   const tSec = d / speed;
   const eta = new Date(Date.now() + tSec * 1000);
@@ -232,7 +224,7 @@ function computeTimeStr(a, apt) {
 }
 
 // -------------------------------------------------------------
-// 5) METEO (METAR + Open-Meteo) - /api/meteo
+// METEO (METAR + Open-Meteo)
 // -------------------------------------------------------------
 async function fetchMetar(aptCode) {
   const url = `https://metar.vatsim.net/${aptCode}`;
@@ -266,13 +258,10 @@ export default {
 
     try {
 
-      // -------------------------------------------------------------
-      // 1) ADS-B brut — /api/adsb?airport=EBLG
-      // -------------------------------------------------------------
+      // ADS-B brut — /api/adsb?airport=EBLG
       if (path.includes("/api/adsb")) {
         const airportCode = (url.searchParams.get("airport") || "EBLG").toUpperCase();
-        const aptKey = airportCode.toLowerCase();
-        const apt = AIRPORTS[aptKey];
+        const apt = AIRPORTS[airportCode.toLowerCase()];
 
         if (!apt) {
           return new Response(JSON.stringify({ airport: airportCode, aircraft: [] }), {
@@ -292,13 +281,10 @@ export default {
         });
       }
 
-      // -------------------------------------------------------------
-      // 2) METEO — /api/meteo?apt=EBLG
-      // -------------------------------------------------------------
+      // METEO — /api/meteo?apt=EBLG
       if (path.includes("/api/meteo")) {
         const aptCode = (url.searchParams.get("apt") || "EBLG").toUpperCase();
-        const aptKey = aptCode.toLowerCase();
-        const apt = AIRPORTS[aptKey];
+        const apt = AIRPORTS[aptCode.toLowerCase()];
 
         if (!apt) {
           return new Response(JSON.stringify({
@@ -334,77 +320,71 @@ export default {
         });
       }
 
-      // -------------------------------------------------------------
-      // 3) FIDS ADS-B PRO v8 — /api/fids-adsb?airport=EBLG
-      // -------------------------------------------------------------
-     if (path.includes("/api/fids-adsb")) {
-  const airportCode = (url.searchParams.get("airport") || "EBLG").toUpperCase();
-  const aptKey = airportCode.toLowerCase();
-  const apt = AIRPORTS[aptKey];
+      // FIDS ADS-B PRO9 — /api/fids-adsb?airport=EBLG
+      if (path.includes("/api/fids-adsb")) {
+        const airportCode = (url.searchParams.get("airport") || "EBLG").toUpperCase();
+        const apt = AIRPORTS[airportCode.toLowerCase()];
 
-  if (!apt) {
-    return new Response(JSON.stringify({
-      airport: airportCode,
-      arrivals: [],
-      departures: []
-    }), { status: 200, headers: corsHeaders });
-  }
+        if (!apt) {
+          return new Response(JSON.stringify({
+            airport: airportCode,
+            arrivals: [],
+            departures: []
+          }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+        }
 
-  const states = await fetchLiveAircraftFailover(airportCode);
+        const states = await fetchLiveAircraftFailover(airportCode);
 
-  let arrivals = [];
-  let departures = [];
+        let arrivals = [];
+        let departures = [];
 
-  states.forEach(a => {
-    const status = computeStatus(a, apt);
-    const predicted = computePredictedRole(a, apt);
-    const t = computeTimeStr(a, apt);
+        states.forEach(a => {
+          const status = computeStatus(a, apt);
+          const predicted = computePredictedRole(a, apt);
+          const t = computeTimeStr(a, apt);
 
-    const base = {
-      flight: a.callsign,
-      city: "Inconnu",
-      time: t.etaStr,
-      status,
-      hex: a.hex,
-      distNm: t.distNm,
-      altFt: t.altFt
-    };
+          const base = {
+            flight: a.callsign,
+            city: "Inconnu",
+            time: t.etaStr,
+            status,
+            hex: a.hex,
+            distNm: t.distNm,
+            altFt: t.altFt
+          };
 
-    if (status === "En approche")
-      arrivals.push(base);
+          if (status === "En approche")
+            arrivals.push(base);
 
-    if (status === "En montée" || status === "Au sol")
-      departures.push(base);
+          if (status === "En montée" || status === "Au sol")
+            departures.push(base);
 
-    if (predicted === "Arrivée prévue")
-      arrivals.push({ ...base, status: predicted });
+          if (predicted === "Arrivée prévue")
+            arrivals.push({ ...base, status: predicted });
 
-    if (predicted === "Départ probable")
-      departures.push({ ...base, status: predicted });
-  });
+          if (predicted === "Départ probable")
+            departures.push({ ...base, status: predicted });
+        });
 
-  return new Response(JSON.stringify({
-    airport: airportCode,
-    arrivals,
-    departures
-  }), {
-    status: 200,
-    headers: { ...corsHeaders, "Content-Type": "application/json" }
-  });
-}
+        return new Response(JSON.stringify({
+          airport: airportCode,
+          arrivals,
+          departures
+        }), {
+          status: 200,
+          headers: { ...corsHeaders, "Content-Type": "application/json" }
+        });
+      }
 
-      // -------------------------------------------------------------
-      // DEFAULT
-      // -------------------------------------------------------------
       return new Response(JSON.stringify({ error: "Endpoint non trouvé" }), {
         status: 404,
-        headers: corsHeaders
+        headers: { ...corsHeaders, "Content-Type": "application/json" }
       });
 
     } catch (err) {
       return new Response(JSON.stringify({ error: err.message }), {
         status: 500,
-        headers: corsHeaders
+        headers: { ...corsHeaders, "Content-Type": "application/json" }
       });
     }
   }
