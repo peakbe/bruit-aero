@@ -1,5 +1,5 @@
 // =================================================================
-// WORKER CLOUDFLARE - FIDS ADS-B PRO v3 (Direction + Corridors ILS + Prédiction)
+// WORKER CLOUDFLARE - METEO + ADS-B + FIDS PRO v4
 // =================================================================
 
 const corsHeaders = {
@@ -31,7 +31,7 @@ function haversine(lat1, lon1, lat2, lon2) {
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
 }
 
-async function fetchWithTimeout(url, options = {}, timeoutMs = 4000) {
+async function fetchWithTimeout(url, options = {}, timeoutMs = 5000) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
@@ -41,6 +41,9 @@ async function fetchWithTimeout(url, options = {}, timeoutMs = 4000) {
   }
 }
 
+// -------------------------------------------------------------
+// ADS-B brut (liste avions) - /api/adsb
+// -------------------------------------------------------------
 async function fetchReadsb(base, ap) {
   const url = `${base}/lat/${ap.lat}/lon/${ap.lon}/dist/${DIST_NM}`;
   const res = await fetchWithTimeout(url, {
@@ -66,7 +69,7 @@ async function fetchReadsb(base, ap) {
 }
 
 // -------------------------------------------------------------
-// Statut directionnel + ILS
+// Statut directionnel + ILS (FIDS)
 // -------------------------------------------------------------
 function angleDiff(a, b) {
   let d = Math.abs(a - b) % 360;
@@ -81,15 +84,12 @@ function computeStatus(a, apt) {
   const diff22 = angleDiff(a.track, apt.ils22);
   const diff04 = angleDiff(a.track, apt.ils04);
 
-  // AU SOL PROBABLE
   if (alt < 80 && speedKt < 40 && d < 3000) return "Au sol";
 
-  // EN APPROCHE (corridor ILS)
   if (alt < 3000 && speedKt > 120 && speedKt < 260 && d < 20000) {
     if (diff22 < 25 || diff04 < 25) return "En approche";
   }
 
-  // EN MONTÉE (s'éloigne)
   if (alt > 300 && speedKt > 120 && d < 8000) {
     const dirToApt = Math.atan2(apt.lon - a.lon, apt.lat - a.lat) * 180 / Math.PI;
     const diff = angleDiff(a.track, dirToApt);
@@ -99,9 +99,6 @@ function computeStatus(a, apt) {
   return "En vol";
 }
 
-// -------------------------------------------------------------
-// Prédiction PRO v3
-// -------------------------------------------------------------
 function computePredictedRole(a, apt) {
   const d = haversine(a.lat, a.lon, apt.lat, apt.lon);
   const alt = a.alt_m;
@@ -110,12 +107,10 @@ function computePredictedRole(a, apt) {
   const dirToApt = Math.atan2(apt.lon - a.lon, apt.lat - a.lat) * 180 / Math.PI;
   const diffDir = angleDiff(a.track, dirToApt);
 
-  // ARRIVÉE PRÉVUE
   if (alt > 1500 && alt < 8000 && speedKt > 200 && d < 80000 && diffDir < 40) {
     return "Arrivée prévue";
   }
 
-  // DÉPART PROBABLE
   if (alt < 1500 && speedKt > 120 && d < 15000) {
     return "Départ probable";
   }
@@ -123,9 +118,6 @@ function computePredictedRole(a, apt) {
   return null;
 }
 
-// -------------------------------------------------------------
-// ETA / ETD
-// -------------------------------------------------------------
 function computeTimeStr(a, apt) {
   const d = haversine(a.lat, a.lon, apt.lat, apt.lon);
   const speed = a.speed_ms;
@@ -138,6 +130,27 @@ function computeTimeStr(a, apt) {
     minute: "2-digit",
     timeZone: "Europe/Brussels"
   });
+}
+
+// -------------------------------------------------------------
+// METEO (METAR + Open-Meteo) - /api/meteo
+// -------------------------------------------------------------
+async function fetchMetar(aptCode) {
+  const url = `https://metar.vatsim.net/${aptCode}`;
+  const res = await fetchWithTimeout(url, { headers: { "User-Agent": UA } });
+  if (!res.ok) return "METAR indisponible";
+  return (await res.text()).trim();
+}
+
+async function fetchOpenMeteo(lat, lon) {
+  const url =
+    `https://api.open-meteo.com/v1/forecast` +
+    `?latitude=${lat}&longitude=${lon}` +
+    `&current_weather=true`;
+  const res = await fetchWithTimeout(url);
+  if (!res.ok) return null;
+  const j = await res.json();
+  return j.current_weather || null;
 }
 
 // =================================================================
@@ -155,7 +168,82 @@ export default {
     try {
 
       // -------------------------------------------------------------
-      // FIDS ADS-B PRO v3
+      // 1) ADS-B brut — /api/adsb?airport=EBLG
+      // -------------------------------------------------------------
+      if (path.includes("/api/adsb")) {
+        const airportCode = (url.searchParams.get("airport") || "EBLG").toUpperCase();
+        const aptKey = airportCode.toLowerCase();
+        const apt = AIRPORTS[aptKey];
+
+        if (!apt) {
+          return new Response(JSON.stringify({ airport: airportCode, aircraft: [] }), {
+            status: 200,
+            headers: { ...corsHeaders, "Content-Type": "application/json" }
+          });
+        }
+
+        const base = "https://api.adsb.lol/v2";
+        let aircraft = [];
+
+        try {
+          aircraft = await fetchReadsb(base, apt);
+        } catch (e) {
+          console.error("ADS-B KO:", e);
+        }
+
+        return new Response(JSON.stringify({
+          airport: airportCode,
+          aircraft
+        }), {
+          status: 200,
+          headers: { ...corsHeaders, "Content-Type": "application/json" }
+        });
+      }
+
+      // -------------------------------------------------------------
+      // 2) METEO — /api/meteo?apt=EBLG
+      // -------------------------------------------------------------
+      if (path.includes("/api/meteo")) {
+        const aptCode = (url.searchParams.get("apt") || "EBLG").toUpperCase();
+        const aptKey = aptCode.toLowerCase();
+        const apt = AIRPORTS[aptKey];
+
+        if (!apt) {
+          return new Response(JSON.stringify({
+            apt: aptCode,
+            metar: "Aéroport inconnu",
+            meteo: null
+          }), {
+            status: 200,
+            headers: { ...corsHeaders, "Content-Type": "application/json" }
+          });
+        }
+
+        const metar = await fetchMetar(aptCode);
+        const current = await fetchOpenMeteo(apt.lat, apt.lon);
+
+        const meteo = current
+          ? {
+              main: { temp: current.temperature },
+              wind: {
+                speed: current.windspeed,
+                deg: current.winddirection
+              }
+            }
+          : null;
+
+        return new Response(JSON.stringify({
+          apt: aptCode,
+          metar,
+          meteo
+        }), {
+          status: 200,
+          headers: { ...corsHeaders, "Content-Type": "application/json" }
+        });
+      }
+
+      // -------------------------------------------------------------
+      // 3) FIDS ADS-B PRO v3 — /api/fids-adsb?airport=EBLG
       // -------------------------------------------------------------
       if (path.includes("/api/fids-adsb")) {
         const airportCode = (url.searchParams.get("airport") || "EBLG").toUpperCase();
@@ -182,19 +270,22 @@ export default {
             const predicted = computePredictedRole(a, apt);
             const timeStr = computeTimeStr(a, apt);
 
-            // Réels
-            if (status === "En approche") arrivals.push({ flight: a.callsign, city: "Inconnu", time: timeStr, status, hex: a.hex });
-            if (status === "En montée" || status === "Au sol") departures.push({ flight: a.callsign, city: "Inconnu", time: timeStr, status, hex: a.hex });
+            if (status === "En approche")
+              arrivals.push({ flight: a.callsign, city: "Inconnu", time: timeStr, status, hex: a.hex });
 
-            // Prédictions
-            if (predicted === "Arrivée prévue") arrivals.push({ flight: a.callsign, city: "Inconnu", time: timeStr, status: predicted, hex: a.hex });
-            if (predicted === "Départ probable") departures.push({ flight: a.callsign, city: "Inconnu", time: timeStr, status: predicted, hex: a.hex });
+            if (status === "En montée" || status === "Au sol")
+              departures.push({ flight: a.callsign, city: "Inconnu", time: timeStr, status, hex: a.hex });
+
+            if (predicted === "Arrivée prévue")
+              arrivals.push({ flight: a.callsign, city: "Inconnu", time: timeStr, status: predicted, hex: a.hex });
+
+            if (predicted === "Départ probable")
+              departures.push({ flight: a.callsign, city: "Inconnu", time: timeStr, status: predicted, hex: a.hex });
           });
         } catch (e) {
           console.error("FIDS ADS-B KO:", e);
         }
 
-        // Fallback minimal
         if (arrivals.length === 0 && departures.length === 0) {
           const now = new Date();
           const t = (m) => {
