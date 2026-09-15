@@ -161,7 +161,18 @@ async function fetchWeatherData() {
 
 function updateMetarUI(apt, metarRaw) {
   const el = document.getElementById(`${apt.toLowerCase()}-metar`);
-  if (el) el.textContent = metarRaw || "METAR indisponible";
+  if (!el) return;
+
+  el.textContent = metarRaw;
+
+  // Détection tendance METAR
+  let trend = "";
+  if (metarRaw.includes("BECMG")) trend = "BECMG";
+  if (metarRaw.includes("TEMPO")) trend = "TEMPO";
+  if (metarRaw.includes("NOSIG")) trend = "NOSIG";
+
+  const trendEl = document.getElementById(`${apt.toLowerCase()}-metar-trend`);
+  if (trendEl) trendEl.textContent = trend;
 }
 
 // ===============================================================
