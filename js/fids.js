@@ -83,14 +83,14 @@ function renderFIDS(icao, arrivals, departures) {
 
     const status = f.status || "Programmé";
 
-    let cssClass = "fids-dep";
-    if (/approche/i.test(status)) cssClass = "fids-app";
-    if (/montée/i.test(status)) cssClass = "fids-up";
-    if (/sol/i.test(status)) cssClass = "fids-gnd";
-    if (/annul/i.test(status)) cssClass = "fids-cnl";
-    if (/arrivée prévue/i.test(status)) cssClass = "fids-app";
-    if (/départ probable/i.test(status)) cssClass = "fids-up";
-    if (fidsFilter === "arr") cssClass = "fids-arr";
+    let cssClass = "fids-dep airbus-green";
+    if (/approche/i.test(status)) cssClass = "fids-app airbus-green";
+    if (/montée/i.test(status)) cssClass = "fids-up airbus-green";
+    if (/sol/i.test(status)) cssClass = "fids-gnd airbus-green";
+    if (/annul/i.test(status)) cssClass = "fids-cnl airbus-red";
+    if (/arrivée prévue/i.test(status)) cssClass = "fids-app airbus-amber";
+    if (/départ probable/i.test(status)) cssClass = "fids-up airbus-amber";
+    if (fidsFilter === "arr") cssClass += " airbus-green";
 
     div.className = `fids-row ${cssClass}`;
 
@@ -99,6 +99,10 @@ function renderFIDS(icao, arrivals, departures) {
       <span class="fids-flight">${f.flight || "???"}</span>
       <span class="fids-dest">${f.city || "?"}</span>
       <span class="fids-status">${status}</span>
+      <span class="fids-extra">
+        ${f.distNm ? `${f.distNm} NM` : ""} 
+        ${f.altFt ? ` / ${f.altFt} ft` : ""}
+      </span>
     `;
 
     if (f.hex) {
@@ -112,3 +116,4 @@ function renderFIDS(icao, arrivals, departures) {
     container.appendChild(div);
   });
 }
+
