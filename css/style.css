@@ -459,3 +459,12 @@ h1 {
   color: var(--airbus-amber);
   font-weight: 600;
 }
+
+.airbus-green { color: #00ff5b; }
+.airbus-amber { color: #ffcc33; }
+.airbus-red   { color: #ff3333; }
+
+.fids-row .fids-extra {
+  font-size: 0.8rem;
+  opacity: 0.8;
+}
