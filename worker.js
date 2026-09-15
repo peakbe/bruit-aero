@@ -150,24 +150,42 @@ async function fetchLiveAircraftFailover(airportCode) {
 // -------------------------------------------------------------
 // 4) FIDS logic (statut + prédictions)
 // -------------------------------------------------------------
-function computeStatus(a, apt) {
+function angleDiff(a, b) {
+  let d = Math.abs(a - b) % 360;
+  return d > 180 ? 360 - d : d;
+}
+
+function computeIlsCorridor(a, apt) {
   const d = haversine(a.lat, a.lon, apt.lat, apt.lon);
-  const alt = a.alt_m;
   const speedKt = a.speed_ms / 0.514444;
+
+  // Corridor dynamique : plus l’avion est loin, plus on élargit
+  let baseAngle = 25;
+  if (d > 30000) baseAngle = 40;
+  if (d > 60000) baseAngle = 60;
 
   const diff22 = angleDiff(a.track, apt.ils22);
   const diff04 = angleDiff(a.track, apt.ils04);
 
+  const inIls =
+    (diff22 < baseAngle || diff04 < baseAngle) &&
+    speedKt > 100;
+
+  return { inIls, d, speedKt };
+}
+
+function computeStatus(a, apt) {
+  const alt = a.alt_m;
+  const { inIls, d, speedKt } = computeIlsCorridor(a, apt);
+
   // AU SOL
   if (alt < 100 && speedKt < 60 && d < 5000) return "Au sol";
 
-  // APPROCHE (corridor élargi)
-  if (alt < 5000 && speedKt > 100 && d < 30000) {
-    if (diff22 < 35 || diff04 < 35) return "En approche";
-  }
+  // APPROCHE (dans corridor ILS dynamique)
+  if (alt < 5000 && d < 40000 && inIls) return "En approche";
 
-  // MONTÉE (plus permissif)
-  if (alt > 300 && speedKt > 120 && d < 15000) {
+  // MONTÉE
+  if (alt > 300 && speedKt > 120 && d < 20000) {
     const dirToApt = Math.atan2(apt.lon - a.lon, apt.lat - a.lat) * 180 / Math.PI;
     const diff = angleDiff(a.track, dirToApt);
     if (diff > 100) return "En montée";
@@ -184,10 +202,12 @@ function computePredictedRole(a, apt) {
   const dirToApt = Math.atan2(apt.lon - a.lon, apt.lat - a.lat) * 180 / Math.PI;
   const diffDir = angleDiff(a.track, dirToApt);
 
-  if (alt > 1500 && alt < 10000 && speedKt > 180 && d < 120000 && diffDir < 60)
+  // Arrivée prévue (large)
+  if (alt > 1500 && alt < 10000 && speedKt > 160 && d < 150000 && diffDir < 70)
     return "Arrivée prévue";
 
-  if (alt < 2000 && speedKt > 100 && d < 20000)
+  // Départ probable
+  if (alt < 2500 && speedKt > 100 && d < 25000)
     return "Départ probable";
 
   return null;
@@ -200,11 +220,15 @@ function computeTimeStr(a, apt) {
 
   const tSec = d / speed;
   const eta = new Date(Date.now() + tSec * 1000);
-  return eta.toLocaleTimeString("fr-BE", {
-    hour: "2-digit",
-    minute: "2-digit",
-    timeZone: "Europe/Brussels"
-  });
+  return {
+    etaStr: eta.toLocaleTimeString("fr-BE", {
+      hour: "2-digit",
+      minute: "2-digit",
+      timeZone: "Europe/Brussels"
+    }),
+    distNm: (d / 1852).toFixed(1),
+    altFt: Math.round(a.alt_m / 0.3048)
+  };
 }
 
 // -------------------------------------------------------------
@@ -313,51 +337,61 @@ export default {
       // -------------------------------------------------------------
       // 3) FIDS ADS-B PRO v8 — /api/fids-adsb?airport=EBLG
       // -------------------------------------------------------------
-      if (path.includes("/api/fids-adsb")) {
-        const airportCode = (url.searchParams.get("airport") || "EBLG").toUpperCase();
-        const aptKey = airportCode.toLowerCase();
-        const apt = AIRPORTS[aptKey];
+     if (path.includes("/api/fids-adsb")) {
+  const airportCode = (url.searchParams.get("airport") || "EBLG").toUpperCase();
+  const aptKey = airportCode.toLowerCase();
+  const apt = AIRPORTS[aptKey];
 
-        if (!apt) {
-          return new Response(JSON.stringify({
-            airport: airportCode,
-            arrivals: [],
-            departures: []
-          }), { status: 200, headers: corsHeaders });
-        }
+  if (!apt) {
+    return new Response(JSON.stringify({
+      airport: airportCode,
+      arrivals: [],
+      departures: []
+    }), { status: 200, headers: corsHeaders });
+  }
 
-        const states = await fetchLiveAircraftFailover(airportCode);
+  const states = await fetchLiveAircraftFailover(airportCode);
 
-        let arrivals = [];
-        let departures = [];
+  let arrivals = [];
+  let departures = [];
 
-        states.forEach(a => {
-          const status = computeStatus(a, apt);
-          const predicted = computePredictedRole(a, apt);
-          const timeStr = computeTimeStr(a, apt);
+  states.forEach(a => {
+    const status = computeStatus(a, apt);
+    const predicted = computePredictedRole(a, apt);
+    const t = computeTimeStr(a, apt);
 
-          if (status === "En approche")
-            arrivals.push({ flight: a.callsign, city: "Inconnu", time: timeStr, status, hex: a.hex });
+    const base = {
+      flight: a.callsign,
+      city: "Inconnu",
+      time: t.etaStr,
+      status,
+      hex: a.hex,
+      distNm: t.distNm,
+      altFt: t.altFt
+    };
 
-          if (status === "En montée" || status === "Au sol")
-            departures.push({ flight: a.callsign, city: "Inconnu", time: timeStr, status, hex: a.hex });
+    if (status === "En approche")
+      arrivals.push(base);
 
-          if (predicted === "Arrivée prévue")
-            arrivals.push({ flight: a.callsign, city: "Inconnu", time: timeStr, status: predicted, hex: a.hex });
+    if (status === "En montée" || status === "Au sol")
+      departures.push(base);
 
-          if (predicted === "Départ probable")
-            departures.push({ flight: a.callsign, city: "Inconnu", time: timeStr, status: predicted, hex: a.hex });
-        });
+    if (predicted === "Arrivée prévue")
+      arrivals.push({ ...base, status: predicted });
 
-        return new Response(JSON.stringify({
-          airport: airportCode,
-          arrivals,
-          departures
-        }), {
-          status: 200,
-          headers: { ...corsHeaders, "Content-Type": "application/json" }
-        });
-      }
+    if (predicted === "Départ probable")
+      departures.push({ ...base, status: predicted });
+  });
+
+  return new Response(JSON.stringify({
+    airport: airportCode,
+    arrivals,
+    departures
+  }), {
+    status: 200,
+    headers: { ...corsHeaders, "Content-Type": "application/json" }
+  });
+}
 
       // -------------------------------------------------------------
       // DEFAULT
