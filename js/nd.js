@@ -99,43 +99,33 @@ export function updateFPV(hex) {
 }
 
 // ===============================================================
-// 3. METAR + WX Radar — fetch
+// 3. METEO (METAR + Open-Meteo) — via Worker PRO v4
 // ===============================================================
-async function fetchMetar(station = "EBLG") {
+async function fetchMeteo(apt = "EBLG") {
   try {
     const res = await fetch(
-      `https://bruit-aero-proxy.pnyr682w7f.workers.dev/api/metar?station=${station}`,
+      `https://bruit-aero-proxy.pnyr682w7f.workers.dev/api/meteo?apt=${apt}`,
       { cache: "no-store" }
     );
     if (!res.ok) return;
 
-    const raw = await res.json();
-    metarData = parseMetar(raw.raw);
+    const data = await res.json();
+
+    // METAR brut
+    metarData = parseMetar(data.metar);
+
+    // Open-Meteo
+    wxData = data.meteo;
+
   } catch (e) {
-    console.error("METAR KO:", e);
+    console.error("METEO KO:", e);
   }
 }
 
-async function fetchWx(apt = "EBLG") {
-  try {
-    const res = await fetch(
-      `https://bruit-aero-proxy.pnyr682w7f.workers.dev/api/forecast?apt=${apt}`,
-      { cache: "no-store" }
-    );
-    if (!res.ok) return;
-
-    wxData = await res.json();
-  } catch (e) {
-    console.error("WX KO:", e);
-  }
-}
-
-// Mise à jour METAR + WX toutes les 60 s
+// Mise à jour METEO toutes les 60 s
 setInterval(() => {
-  fetchMetar("EBLG");
-  fetchMetar("EBCI");
-  fetchWx("EBLG");
-  fetchWx("EBCI");
+  fetchMeteo("EBLG");
+  fetchMeteo("EBCI");
 }, 60000);
 
 // ===============================================================
@@ -187,20 +177,20 @@ function updateWindRose() {
 }
 
 // ===============================================================
-// 6. WX Radar — intensité précipitations
+// 6. WX Radar — intensité précipitations Airbus (simulation)
 // ===============================================================
 function updateWxRadar() {
-  if (!wxData?.list?.[0]) return;
+  if (!wxData) return;
 
-  const precip = wxData.list[0].pop * 100;
+  const wind = wxData.wind?.speed || 0;
   const radar = document.getElementById("nd-wx-radar");
-
   if (!radar) return;
 
-  let color = "rgba(0,255,0,0.3)";
-  if (precip > 30) color = "rgba(255,255,0,0.35)";
-  if (precip > 60) color = "rgba(255,128,0,0.4)";
-  if (precip > 80) color = "rgba(255,0,0,0.45)";
+  // Simulation Airbus WX (faute de POP dans Open-Meteo)
+  let color = "rgba(0,255,0,0.25)";   // vert léger
+  if (wind > 20) color = "rgba(255,255,0,0.35)";  // jaune
+  if (wind > 35) color = "rgba(255,128,0,0.4)";   // orange
+  if (wind > 50) color = "rgba(255,0,0,0.45)";     // rouge
 
   radar.style.background = color;
 }
