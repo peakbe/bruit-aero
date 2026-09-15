@@ -207,6 +207,7 @@ function updateNdPanel() {
   const p = plane.options.data;
   if (!p) return;
 
+  // HDG / TRK
   const hdg =
     p.heading ||
     p.true_heading ||
@@ -219,21 +220,63 @@ function updateNdPanel() {
   const hdgNorm = Math.round(((hdg % 360) + 360) % 360);
   const trkNorm = Math.round(((trk % 360) + 360) % 360);
 
+  // GS / TAS
   const gsKt = Math.round(
     p.gs ||
     (p.speed_ms ? p.speed_ms / 0.514444 : 0)
   );
 
-  const tasKt = Math.round(gsKt * 1.05);
+  const tasKt = Math.round(gsKt * 1.05);   // petit biais TAS façon Airbus
 
+  // WIND (depuis wxData si dispo)
+  let windDir = "---";
+  let windSpd = "---";
+
+  if (wxData?.wind) {
+    windDir = Math.round(wxData.wind.deg || 0);
+    windSpd = Math.round(wxData.wind.speed || 0);
+  } else if (metarData) {
+    windDir = metarData.windDir;
+    windSpd = metarData.windSpd;
+  }
+
+  // WIND components (head / cross)
+  let headComp = "---";
+  let crossComp = "---";
+
+  if (typeof windDir === "number" && typeof windSpd === "number") {
+    const diff = ((windDir - trkNorm + 540) % 360) - 180;
+    const rad = diff * Math.PI / 180;
+
+    const head = Math.round(windSpd * Math.cos(rad));
+    const cross = Math.round(windSpd * Math.sin(rad));
+
+    headComp = `${head >= 0 ? "H" : "T"} ${Math.abs(head)} kt`;
+    crossComp = `${cross >= 0 ? "R" : "L"} ${Math.abs(cross)} kt`;
+  }
+
+  // SONO status (simple texte, ND-utils gère déjà le reste)
+  const sonoEl = document.getElementById("nd-sono");
+  if (sonoEl) {
+    sonoEl.innerText = window.activeRunway
+      ? `RWY ${window.activeRunway}`
+      : "---";
+  }
+
+  // Écriture UI
   document.getElementById("nd-hdg").innerText = hdgNorm;
   document.getElementById("nd-trk").innerText = trkNorm;
   document.getElementById("nd-gs").innerText = `${gsKt} kt`;
   document.getElementById("nd-tas").innerText = `${tasKt} kt`;
+  document.getElementById("nd-wind").innerText = `${windDir}° / ${windSpd} kt`;
+  document.getElementById("nd-windcomp").innerText = `${headComp} / ${crossComp}`;
 
   if (metarData) {
-    document.getElementById("nd-qnh").innerText = `${metarData.qnh} hPa`;
-    document.getElementById("nd-trend").innerText = metarData.trend || "";
+    const qnhEl = document.getElementById("nd-qnh");
+    const trendEl = document.getElementById("nd-trend");
+
+    if (qnhEl) qnhEl.innerText = `${metarData.qnh} hPa`;
+    if (trendEl) trendEl.innerText = metarData.trend || "";
   }
 }
 
