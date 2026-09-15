@@ -2,8 +2,7 @@
 // FIDS Unifié — EBCI + EBLG (Worker FIDS ADS-B PRO v3)
 // ===============================================================
 
-import { centerOnAircraft, highlightAircraft } from "./nd.js";
-import { setSelectedAircraft } from "./nd-panel.js";
+import { centerOnAircraft, highlightAircraft, setSelectedAircraft } from "./nd.js";
 
 const API_BASE = "https://bruit-aero-proxy.pnyr682w7f.workers.dev/api/fids-adsb";
 const AIRPORTS = ["EBCI", "EBLG"];
