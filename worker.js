@@ -45,14 +45,14 @@ async function fetchWithTimeout(url, options = {}, timeoutMs = 5000) {
 // ADS-B brut (liste avions) - /api/adsb
 // -------------------------------------------------------------
 async function fetchReadsb(base, ap) {
-  const url = `${base}/lat/${ap.lat}/lon/${ap.lon}/dist/${DIST_NM}`;
+  const url = `${base}/aircraft?lat=${ap.lat}&lon=${ap.lon}&dist=${DIST_NM}`;
   const res = await fetchWithTimeout(url, {
     headers: { "User-Agent": UA, "Accept": "application/json" }
   });
   if (!res.ok) return [];
 
   const j = await res.json();
-  const list = Array.isArray(j) ? j : j.aircraft || j.ac || [];
+  const list = j.aircraft || [];
 
   return list
     .filter(a => typeof a.lat === "number" && typeof a.lon === "number")
