@@ -114,7 +114,7 @@ async function fetchWeatherData() {
 
   await Promise.all(airports.map(async (apt) => {
     try {
-      const res = await fetch(`\({WORKER_BASE_URL}/api/meteo?apt=\){apt}`);
+      const res = await fetch(`${WORKER_BASE_URL}/api/meteo?apt=${apt}`);
       if (!res.ok) return;
 
       const data = await res.json();
