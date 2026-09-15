@@ -11,8 +11,7 @@ import {
   AIRPORT_COORDS
 } from "./config.js";
 
-import { centerOnAircraft, highlightAircraft, updateFPV } from "./nd.js";
-import { setSelectedAircraft } from "./nd-panel.js";
+import { centerOnAircraft, highlightAircraft, updateFPV, setSelectedAircraft } from "./nd.js";
 
 // ===============================================================
 // GLOBALS
