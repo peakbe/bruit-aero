@@ -143,13 +143,13 @@ function extractWindDir(rawMetar) {
 
 export async function renderSonometersALLDynamic() {
 
-  const metarEBLG = await fetch(`${WORKER_BASE_URL}/api/metar?station=EBLG`)
+  const metarEBLG = await fetch(`${WORKER_BASE_URL}/api/meteo?apt=EBLG`)
     .then(r => r.json())
-    .catch(() => ({ raw: "" }));
+    .catch(() => ({ metar: "", meteo: null }));
 
-  const metarEBCI = await fetch(`${WORKER_BASE_URL}/api/metar?station=EBCI`)
+  const metarEBCI = await fetch(`${WORKER_BASE_URL}/api/meteo?apt=EBCI`)
     .then(r => r.json())
-    .catch(() => ({ raw: "" }));
+    .catch(() => ({ metar: "", meteo: null }));
 
   const windDirEBLG = extractWindDir(metarEBLG.raw);
   const windDirEBCI = extractWindDir(metarEBCI.raw);
