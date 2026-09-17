@@ -3,7 +3,7 @@
 // ===============================================================
 import { map, initRadarMap, drawApproachDepartureCones } from "./map.js";
 import { updateFIDS } from "./fids.js";
-import { renderSonometers, renderSonometersALLDynamic, sonoLayer } from "./sono.js";
+import { renderSonometers, renderSonometersALLDynamic, sonoLayer, getAirportWind } from "./sono.js";
 import {
   updateWindTrend,
   updateNdWindComponents,
@@ -69,14 +69,20 @@ window.addEventListener("load", () => {
 // FONCTIONS UTILITAIRES DE SYNCHRONISATION
 // ===============================================================
 function syncNdWindUI() {
-  updateNdWindComponents(
-    state.currentAirport,
-    state.metar.EBLG,
-    state.metar.EBCI,
-    state.metar.EBLG.speedMs,
-    state.metar.EBCI.speedMs,
-    RUNWAY_HEADINGS
-  );
+ const windSono = getAirportWind(state.currentAirport);
+const windMetar = state.metar[state.currentAirport];
+
+const wind = windSono.speed > 0 ? windSono : windMetar;
+
+updateNdWindComponents(
+  state.currentAirport,
+  wind,
+  wind,
+  wind.speedMs ?? (wind.speed / 3.6),
+  wind.speedMs ?? (wind.speed / 3.6),
+  RUNWAY_HEADINGS
+);
+
 }
 
 function updateControlBarButtons(activeAirport) {
@@ -118,34 +124,29 @@ async function fetchWeatherData() {
       if (!res.ok) return;
 
       const data = await res.json();
+
       updateMetarUI(apt, data.metar);
 
       if (!data.meteo) return;
 
       const temp = Math.round(data.meteo.main?.temp ?? 0);
       const windSpeedKmh = data.meteo.wind?.speed ?? 0;
-      const windSpeedMs = windSpeedKmh / 3.6;
       const windDeg = data.meteo.wind?.deg ?? 0;
 
-      // Mise à jour de l'état local
-      state.metar[apt] = { windDeg, speedMs: windSpeedMs };
-      
-      // Rétrocompatibilité globale
-      window[`metar${apt}`] = { windDeg };
-      window[`lastWindSpeed${apt}`] = windSpeedMs;
-
-      // Mise à jour UI
       const prefix = apt.toLowerCase();
-      const elTemp = document.getElementById(`${prefix}-temp`);
-      const elWind = document.getElementById(`${prefix}-wind`);
-      
-      if (elTemp) elTemp.textContent = `${temp}°C`;
-      if (elWind) elWind.textContent = `Vent: \({windSpeedKmh} km/h (\){windDeg}°)`;
+
+      document.getElementById(`${prefix}-temp`).textContent = `${temp}°C`;
+      document.getElementById(`${prefix}-wind`).textContent = `Vent: ${windSpeedKmh} km/h (${windDeg}°)`;
+
+      state.metar[apt] = {
+        windDeg,
+        speedMs: windSpeedKmh / 3.6
+      };
 
       updateWindTrend(prefix, windSpeedKmh, state.windTrend);
       updateCompassUI(prefix, windDeg, windSpeedKmh);
 
-      autoSelectRunway(apt, windDeg, windSpeedMs);
+      autoSelectRunway(apt, windDeg, windSpeedKmh / 3.6);
 
       if (AIRPORT_COORDS[apt]) {
         drawApproachDepartureCones(apt, AIRPORT_COORDS[apt].lat, AIRPORT_COORDS[apt].lon, windDeg);
@@ -187,9 +188,9 @@ function autoSelectRunway(airport, windDeg, windSpeedMs) {
   let bestHeadwind = -999;
 
   RWYS.forEach(rwy => {
-    const diff = Math.abs(windDeg - rwy.heading);
-    const angle = diff > 180 ? 360 - diff : diff;
-    const headwind = windSpeedMs * Math.cos((angle * Math.PI) / 180);
+    const angle = Math.abs(((windDeg - rwy.heading + 540) % 360) - 180);
+const headwind = windSpeedMs * Math.cos(angle * Math.PI / 180);
+
     if (headwind > bestHeadwind) {
       bestHeadwind = headwind;
       best = rwy;
@@ -218,8 +219,8 @@ function updateRunwaySonometers() {
   state.activeRunway = state.currentAirport === "EBLG" ? rwyEBLG : rwyEBCI;
   window.activeRunway = state.activeRunway;
 
-  renderSonometers("EBLG", rwyEBLG, { reset: true });
-  renderSonometers("EBCI", rwyEBCI);
+  renderSonometers("EBLG", rwyEBLG);
+renderSonometers("EBCI", rwyEBCI);
 
   updateNdSonometersStatus(true, sonoLayer);
 }
@@ -244,7 +245,9 @@ window.filterAirportView = function (airport) {
   }
 
   updateNdSonometersStatus(state.sonometersEnabled, sonoLayer);
-  updateControlBarButtons(airport);
+updateControlBarButtons(airport);
+syncNdWindUI();
+
 };
 
 // ===============================================================
