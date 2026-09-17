@@ -1,16 +1,19 @@
 // ===============================================================
-// ND Airbus PRO v6 — ND + Panel + FPV + METAR + WX Radar
+// ND Airbus PRO v7 — Optimisé (FPV + METAR + WX + Panel)
 // ===============================================================
 
 import { map, planeIndex } from "./map.js";
 
+// ===============================================================
+// État ND
+// ===============================================================
 let selectedHex = null;
 let metarData = null;
 let wxData = null;
 let fpvMarker = null;
 
 // ===============================================================
-// 0. FPV Airbus — icône PRO
+// FPV Airbus — icône PRO
 // ===============================================================
 const fpvIcon = L.divIcon({
   className: "fpv-icon",
@@ -27,7 +30,7 @@ const fpvIcon = L.divIcon({
 });
 
 // ===============================================================
-// 1. API publique — utilisée par FIDS.js
+// API publique — utilisée par FIDS.js
 // ===============================================================
 export function setSelectedAircraft(hex) {
   selectedHex = hex;
@@ -45,21 +48,15 @@ export function highlightAircraft(hex) {
   const plane = planeIndex[hex];
   if (!plane) return;
 
-  plane.setStyle({
-    color: "#00ffff",
-    weight: 4
-  });
+  plane.setStyle({ color: "#00ffff", weight: 4 });
 
   setTimeout(() => {
-    plane.setStyle({
-      color: "#38bdf8",
-      weight: 2
-    });
+    plane.setStyle({ color: "#38bdf8", weight: 2 });
   }, 2500);
 }
 
 // ===============================================================
-// 2. FPV Airbus — logique PRO
+// FPV Airbus — logique optimisée
 // ===============================================================
 export function updateFPV(hex) {
   const plane = planeIndex[hex];
@@ -68,40 +65,30 @@ export function updateFPV(hex) {
   const p = plane.options.data;
   if (!p) return;
 
-  const hdg =
-    p.heading ||
-    p.true_heading ||
-    p.mag_heading ||
-    p.track ||
-    0;
-
+  const hdg = p.heading || p.true_heading || p.mag_heading || p.track || 0;
   const trk = p.track || hdg;
 
   const drift = trk - hdg;
-  let fpv = trk - drift;
+  const fpv = ((trk - drift + 360) % 360);
 
-  fpv = ((fpv % 360) + 360) % 360;
+  const { lat, lon } = p;
 
-  const lat = p.lat;
-  const lon = p.lon;
-
-  if (fpvMarker) {
+  if (!fpvMarker) {
+    fpvMarker = L.marker([lat, lon], {
+      icon: fpvIcon,
+      rotationAngle: fpv,
+      rotationOrigin: "center center"
+    }).addTo(map);
+  } else {
     fpvMarker.setLatLng([lat, lon]);
     fpvMarker.setRotationAngle(fpv);
-    return;
   }
-
-  fpvMarker = L.marker([lat, lon], {
-    icon: fpvIcon,
-    rotationAngle: fpv,
-    rotationOrigin: "center center"
-  }).addTo(map);
 }
 
 // ===============================================================
-// 3. METEO (METAR + Open-Meteo) — via Worker PRO v4
+// METEO (METAR + Open-Meteo via Worker)
 // ===============================================================
-async function fetchMeteo(apt = "EBLG") {
+async function fetchMeteo(apt) {
   try {
     const res = await fetch(
       `https://bruit-aero-proxy.pnyr682w7f.workers.dev/api/meteo?apt=${apt}`,
@@ -111,10 +98,7 @@ async function fetchMeteo(apt = "EBLG") {
 
     const data = await res.json();
 
-    // METAR brut
     metarData = parseMetar(data.metar);
-
-    // Open-Meteo
     wxData = data.meteo;
 
   } catch (e) {
@@ -122,14 +106,14 @@ async function fetchMeteo(apt = "EBLG") {
   }
 }
 
-// Mise à jour METEO toutes les 60 s
+// Rafraîchissement METEO
 setInterval(() => {
   fetchMeteo("EBLG");
   fetchMeteo("EBCI");
 }, 60000);
 
 // ===============================================================
-// 4. Parse METAR → vent + QNH + tendance
+// Parse METAR — optimisé
 // ===============================================================
 function parseMetar(raw) {
   if (!raw) return null;
@@ -141,21 +125,22 @@ function parseMetar(raw) {
   let qnh = "---";
   let trend = "";
 
-  parts.forEach(p => {
+  for (const p of parts) {
     if (/^\d{3}\d{2}KT$/.test(p)) {
-      windDir = parseInt(p.substring(0, 3));
-      windSpd = parseInt(p.substring(3, 5));
+      windDir = parseInt(p.slice(0, 3));
+      windSpd = parseInt(p.slice(3, 5));
     }
-    if (p.startsWith("Q")) qnh = p.substring(1);
+    if (p.startsWith("Q")) qnh = p.slice(1);
     if (p.startsWith("BECMG")) trend = "BECMG";
     if (p.startsWith("TEMPO")) trend = "TEMPO";
-  });
+    if (p.startsWith("NOSIG")) trend = "NOSIG";
+  }
 
   return { windDir, windSpd, qnh, trend };
 }
 
 // ===============================================================
-// 5. Rose des vents METAR
+// Rose des vents METAR — optimisée
 // ===============================================================
 function updateWindRose() {
   if (!metarData) return;
@@ -163,21 +148,19 @@ function updateWindRose() {
   const deg = metarData.windDir || 0;
   const spd = metarData.windSpd || 0;
 
-  const rose = document.getElementById("nd-wind-rose");
+  const rose  = document.getElementById("nd-wind-rose");
   const arrow = document.getElementById("nd-wind-arrow");
   const label = document.getElementById("nd-wind-label");
 
   if (!rose || !arrow || !label) return;
 
-  rose.style.transform = `rotate(${deg}deg)`;
+  rose.style.transform  = `rotate(${deg}deg)`;
   arrow.style.transform = `rotate(${deg}deg) translate(0, -12px)`;
-  arrow.style.transition = "transform 0.8s linear";
-
-  label.textContent = `${deg}° / ${spd} kt`;
+  label.textContent     = `${deg}° / ${spd} kt`;
 }
 
 // ===============================================================
-// 6. WX Radar — intensité précipitations Airbus (simulation)
+// WX Radar — simulation Airbus optimisée
 // ===============================================================
 function updateWxRadar() {
   if (!wxData) return;
@@ -186,17 +169,15 @@ function updateWxRadar() {
   const radar = document.getElementById("nd-wx-radar");
   if (!radar) return;
 
-  // Simulation Airbus WX (faute de POP dans Open-Meteo)
-  let color = "rgba(0,255,0,0.25)";   // vert léger
-  if (wind > 20) color = "rgba(255,255,0,0.35)";  // jaune
-  if (wind > 35) color = "rgba(255,128,0,0.4)";   // orange
-  if (wind > 50) color = "rgba(255,0,0,0.45)";     // rouge
-
-  radar.style.background = color;
+  radar.style.background =
+    wind > 50 ? "rgba(255,0,0,0.45)" :
+    wind > 35 ? "rgba(255,128,0,0.4)" :
+    wind > 20 ? "rgba(255,255,0,0.35)" :
+                "rgba(0,255,0,0.25)";
 }
 
 // ===============================================================
-// 7. Panneau ND Airbus (HDG / TRK / GS / TAS / QNH)
+// ND Panel — Optimisé (HDG / TRK / GS / TAS / WIND / QNH)
 // ===============================================================
 function updateNdPanel() {
   if (!selectedHex) return;
@@ -207,28 +188,15 @@ function updateNdPanel() {
   const p = plane.options.data;
   if (!p) return;
 
-  // HDG / TRK
-  const hdg =
-    p.heading ||
-    p.true_heading ||
-    p.mag_heading ||
-    p.track ||
-    0;
-
+  const hdg = p.heading || p.true_heading || p.mag_heading || p.track || 0;
   const trk = p.track || hdg;
 
-  const hdgNorm = Math.round(((hdg % 360) + 360) % 360);
-  const trkNorm = Math.round(((trk % 360) + 360) % 360);
+  const hdgNorm = Math.round((hdg + 360) % 360);
+  const trkNorm = Math.round((trk + 360) % 360);
 
-  // GS / TAS
-  const gsKt = Math.round(
-    p.gs ||
-    (p.speed_ms ? p.speed_ms / 0.514444 : 0)
-  );
+  const gsKt = Math.round(p.gs || (p.speed_ms ? p.speed_ms / 0.514444 : 0));
+  const tasKt = Math.round(gsKt * 1.05);
 
-  const tasKt = Math.round(gsKt * 1.05);   // petit biais TAS façon Airbus
-
-  // WIND (depuis wxData si dispo)
   let windDir = "---";
   let windSpd = "---";
 
@@ -240,7 +208,6 @@ function updateNdPanel() {
     windSpd = metarData.windSpd;
   }
 
-  // WIND components (head / cross)
   let headComp = "---";
   let crossComp = "---";
 
@@ -251,53 +218,41 @@ function updateNdPanel() {
     const head = Math.round(windSpd * Math.cos(rad));
     const cross = Math.round(windSpd * Math.sin(rad));
 
-    headComp = `${head >= 0 ? "H" : "T"} ${Math.abs(head)} kt`;
+    headComp  = `${head >= 0 ? "H" : "T"} ${Math.abs(head)} kt`;
     crossComp = `${cross >= 0 ? "R" : "L"} ${Math.abs(cross)} kt`;
   }
 
-  // SONO status (simple texte, ND-utils gère déjà le reste)
-  const sonoEl = document.getElementById("nd-sono");
-  if (sonoEl) {
-    sonoEl.innerText = window.activeRunway
-      ? `RWY ${window.activeRunway}`
-      : "---";
-  }
-
-  // Écriture UI
   document.getElementById("nd-hdg").innerText = hdgNorm;
   document.getElementById("nd-trk").innerText = trkNorm;
-  document.getElementById("nd-gs").innerText = `${gsKt} kt`;
+  document.getElementById("nd-gs").innerText  = `${gsKt} kt`;
   document.getElementById("nd-tas").innerText = `${tasKt} kt`;
   document.getElementById("nd-wind").innerText = `${windDir}° / ${windSpd} kt`;
   document.getElementById("nd-windcomp").innerText = `${headComp} / ${crossComp}`;
 
   if (metarData) {
-    const qnhEl = document.getElementById("nd-qnh");
-    const trendEl = document.getElementById("nd-trend");
-
-    if (qnhEl) qnhEl.innerText = `${metarData.qnh} hPa`;
-    if (trendEl) trendEl.innerText = metarData.trend || "";
+    document.getElementById("nd-qnh").innerText   = `${metarData.qnh} hPa`;
+    document.getElementById("nd-trend").innerText = metarData.trend || "";
   }
 }
 
 // ===============================================================
-// 8. Boussole vent / LOC / GP (optionnel)
+// Boussole vent / LOC / GP — Optimisée
 // ===============================================================
 export function updateCompassUI(prefix, windDeg, windSpeedKmh) {
-  const needle = document.getElementById(`${prefix}-compass-needle`);
-  const label  = document.getElementById(`${prefix}-compass-label`);
-  const loc    = document.getElementById(`${prefix}-compass-loc`);
-  const gp     = document.getElementById(`${prefix}-compass-gp`);
+  const needle  = document.getElementById(`${prefix}-compass-needle`);
+  const label   = document.getElementById(`${prefix}-compass-label`);
+  const loc     = document.getElementById(`${prefix}-compass-loc`);
+  const gp      = document.getElementById(`${prefix}-compass-gp`);
   const windVec = document.getElementById(`${prefix}-compass-wind`);
 
   if (!needle || !label || !loc || !gp || !windVec) return;
 
-  needle.style.transform = `rotate(${windDeg}deg)`;
+  needle.style.transform  = `rotate(${windDeg}deg)`;
   windVec.style.transform = `rotate(${windDeg}deg) translate(-50%, -50%)`;
 
-  let runwayHeading = 0;
-  if (prefix === "ebci") runwayHeading = windDeg > 180 ? 240 : 60;
-  if (prefix === "eblg") runwayHeading = windDeg > 180 ? 220 : 40;
+  const runwayHeading =
+    prefix === "ebci" ? (windDeg > 180 ? 240 : 60) :
+    prefix === "eblg" ? (windDeg > 180 ? 220 : 40) : 0;
 
   loc.style.transform = `rotate(${runwayHeading}deg)`;
   gp.style.transform  = `rotate(${runwayHeading}deg)`;
@@ -306,13 +261,12 @@ export function updateCompassUI(prefix, windDeg, windSpeedKmh) {
 }
 
 // ===============================================================
-// 9. Boucle de mise à jour ND + FPV + METAR + WX
+// Boucle ND — Optimisée
 // ===============================================================
 setInterval(() => {
-  if (selectedHex) {
-    updateNdPanel();
-    updateFPV(selectedHex);
-    updateWindRose();
-    updateWxRadar();
-  }
+  if (!selectedHex) return;
+  updateNdPanel();
+  updateFPV(selectedHex);
+  updateWindRose();
+  updateWxRadar();
 }, 1000);
