@@ -74,10 +74,9 @@ function syncNdWindUI() {
   // Vent SONO (km/h)
   const windSono = getAirportWind(apt);   // { speed: km/h, deg }
 
-  // Vent METAR (kt)
-  const windMetar = state.metar[apt];     // { windDir, windSpd }
+  // Vent METAR (deg + speedMs)
+  const windMetar = state.metar[apt];     // { windDeg, speedMs }
 
-  // Fusion simple : SONO si dispo, sinon METAR
   let dir = 0;
   let spdKt = 0;
 
@@ -85,21 +84,19 @@ function syncNdWindUI() {
     dir = windSono.deg;
     spdKt = windSono.speed / 1.852;   // km/h → kt
   } else if (windMetar) {
-    dir = windMetar.windDir;
-    spdKt = windMetar.windSpd;        // déjà en kt
+    dir = windMetar.windDeg;
+    spdKt = windMetar.speedMs * 1.94384;  // m/s → kt
   }
 
-  // Appel ND Airbus PRO+++
   updateNdWindComponents(
     apt,
-    { windDeg: dir, windSpdKt: spdKt },   // metarEBLG (mock)
-    { windDeg: dir, windSpdKt: spdKt },   // metarEBCI (mock)
-    spdKt,                                // windEBLG
-    spdKt,                                // windEBCI
+    { windDeg: dir, windSpdKt: spdKt },
+    { windDeg: dir, windSpdKt: spdKt },
+    spdKt,
+    spdKt,
     RUNWAY_HEADINGS
   );
 }
-
 
 // ===============================================================
 // METAR (FALLBACK)
@@ -254,7 +251,6 @@ window.filterAirportView = function (airport) {
 
   updateNdSonometersStatus(state.sonometersEnabled, sonoLayer);
 updateControlBarButtons(airport);
-syncNdWindUI();
 
 };
 
