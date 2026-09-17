@@ -21,13 +21,12 @@ async function fetchMeteo(apt) {
 async function fetchTaf(apt) {
   try {
     const res = await fetch(`${WORKER_BASE_URL}/api/taf?apt=${apt}`);
-    if (!res.ok) return null;
+    if (!res.ok) return { raw: null };   // ✔ évite 404 → null
 
-    // Le Worker renvoie du TEXTE, pas du JSON
     const raw = await res.text();
     return { raw };
   } catch {
-    return null;
+    return { raw: null };
   }
 }
 
@@ -115,8 +114,13 @@ export async function renderNDForAirport(apt) {
   // ============================================================
   // 4.3 TAF décodé
   // ============================================================
-  const tafEl = document.getElementById(`taf-${apt.toLowerCase()}`);
-  if (tafEl) {
-    tafEl.textContent = taf?.raw ? decodeTaf(taf.raw) : "TAF indisponible";
+ const tafEl = document.getElementById(`taf-${apt.toLowerCase()}`);
+
+if (tafEl) {
+  if (taf?.raw) {
+    tafEl.textContent = decodeTaf(taf.raw);
+  } else {
+    tafEl.textContent = "TAF non publié";
   }
 }
+
