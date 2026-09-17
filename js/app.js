@@ -98,6 +98,19 @@ function syncNdWindUI() {
   );
 }
 
+function updateControlBarButtons(activeAirport) {
+  const buttons = document.querySelectorAll(".control-group .airport-icon-btn");
+  buttons.forEach(btn => {
+    if (btn.id === "btn-recenter") return;
+    const onclickAttr = btn.getAttribute("onclick") || "";
+    if (onclickAttr.includes(`'${activeAirport}'`)) {
+      btn.classList.add("active");
+    } else {
+      btn.classList.remove("active");
+    }
+  });
+}
+
 // ===============================================================
 // METAR (FALLBACK)
 // ===============================================================
@@ -194,7 +207,7 @@ function autoSelectRunway(airport, windDeg, windSpeedMs) {
 
   RWYS.forEach(rwy => {
     const angle = Math.abs(((windDeg - rwy.heading + 540) % 360) - 180);
-const headwind = windSpeedMs * Math.cos(angle * Math.PI / 180);
+    const headwind = windSpeedMs * Math.cos(angle * Math.PI / 180);
 
     if (headwind > bestHeadwind) {
       bestHeadwind = headwind;
@@ -225,7 +238,7 @@ function updateRunwaySonometers() {
   window.activeRunway = state.activeRunway;
 
   renderSonometers("EBLG", rwyEBLG);
-renderSonometers("EBCI", rwyEBCI);
+  renderSonometers("EBCI", rwyEBCI);
 
   updateNdSonometersStatus(true, sonoLayer);
 }
@@ -250,9 +263,7 @@ window.filterAirportView = function (airport) {
   }
 
   updateNdSonometersStatus(state.sonometersEnabled, sonoLayer);
-updateControlBarButtons(airport);
-import { updateControlBarButtons } from "./app.js";
-
+  updateControlBarButtons(airport);
 };
 
 // ===============================================================
