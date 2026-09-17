@@ -55,10 +55,11 @@ function fuseWind(apt, meteo) {
 
   const metarDeg = metarWind?.deg ?? null;
   const metarSpdKmh = metarWind?.speed ?? null;
-  const metarSpdKt = metarSpdKmh ? metarSpdKmh / 1.94384 : null;
+  // Conversion km/h vers Nœuds (kt) : km/h / 1.852
+  const metarSpdKt = metarSpdKmh ? metarSpdKmh / 1.852 : null;
 
   const sonoDeg = sono?.deg ?? null;
-  const sonoSpdKt = sono?.speed ? sono.speed / 1.94384 : null;
+  const sonoSpdKt = sono?.speed ? sono.speed / 1.852 : null;
 
   const fusedDeg = Math.round(
     (metarDeg ?? sonoDeg ?? 0) * 0.7 +
@@ -86,6 +87,7 @@ export async function renderNDForAirport(apt) {
 
   const fusedWind = fuseWind(apt, meteo);
 
+  // Envoi du vent fusionné en nœuds (kts) vers le composant boussole
   drawCompass(
     `compass-${apt.toLowerCase()}`,
     fusedWind.deg,
