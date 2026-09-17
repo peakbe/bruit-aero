@@ -357,5 +357,31 @@ Object.values(sonoIndex).forEach(marker => {
     console.error("Erreur météo sonomètre :", err);
   }
 });
+  
+export function getAirportWind(airport) {
+  const list = Object.values(sonoIndex).filter(m => m._airport === airport);
+
+  const winds = list.map(m => {
+    const hist = windHistory[m._id];
+    if (!hist || hist.length === 0) return null;
+    return hist[hist.length - 1]; // dernière valeur
+  }).filter(v => v !== null);
+
+  if (winds.length === 0) return { speed: 0, deg: 0 };
+
+  const avgSpeed = winds.reduce((a,b)=>a+b,0) / winds.length;
+
+  // direction = moyenne des directions des sonomètres
+  const dirs = list.map(m => {
+    const el = document.getElementById(`windtext-${m._id}`);
+    if (!el) return null;
+    const match = el.textContent.match(/(\d+)°/);
+    return match ? parseInt(match[1],10) : null;
+  }).filter(v => v !== null);
+
+  const avgDir = dirs.length ? dirs.reduce((a,b)=>a+b,0) / dirs.length : 0;
+
+  return { speed: avgSpeed, deg: avgDir };
+}
 
 });
