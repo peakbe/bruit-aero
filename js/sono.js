@@ -2,7 +2,6 @@
 // sono.js — Sonomètres EBLG + EBCI — Version PRO+++
 // ===============================================================
 
-import { map } from "./map.js";
 import { WORKER_BASE_URL } from "./config.js";
 
 // Historique vent pour les mini-graphes
