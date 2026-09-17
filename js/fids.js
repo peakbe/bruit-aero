@@ -1,5 +1,5 @@
 // ===============================================================
-// FIDS Unifié — EBCI + EBLG (Worker FIDS ADS-B PRO v3)
+// FIDS Unifié — EBCI + EBLG (Worker FIDS ADS-B PRO v4 optimisé)
 // ===============================================================
 
 import { centerOnAircraft, highlightAircraft, setSelectedAircraft } from "./nd.js";
@@ -9,9 +9,9 @@ const AIRPORTS = ["EBCI", "EBLG"];
 
 let fidsFilter = "all"; // all | arr | dep
 
-// ---------------------------------------------------------------
-// Filtre Arr / Dep / All
-// ---------------------------------------------------------------
+// ===============================================================
+// Filtre Arr / Dep / All — Optimisé
+// ===============================================================
 window.setFidsFilter = function (filter) {
   fidsFilter = filter;
 
@@ -19,23 +19,18 @@ window.setFidsFilter = function (filter) {
     btn.classList.remove("active")
   );
 
-  document
-    .querySelector(`button[onclick="setFidsFilter('${filter}')"]`)
-    ?.classList.add("active");
+  const activeBtn = document.querySelector(`button[onclick="setFidsFilter('${filter}')"]`);
+  if (activeBtn) activeBtn.classList.add("active");
 
   updateFIDS();
 };
 
-// ---------------------------------------------------------------
-// 1. Récupération FIDS via Worker PRO v3
-// ---------------------------------------------------------------
+// ===============================================================
+// 1. Récupération FIDS via Worker — Optimisé
+// ===============================================================
 async function fetchFIDS(icao) {
   try {
-    const params = new URLSearchParams({ airport: icao });
-    const res = await fetch(`${API_BASE}?${params.toString()}`, {
-      cache: "no-store"
-    });
-
+    const res = await fetch(`${API_BASE}?airport=${icao}`, { cache: "no-store" });
     if (!res.ok) {
       console.error("FIDS HTTP error", res.status);
       return { arrivals: [], departures: [] };
@@ -47,53 +42,65 @@ async function fetchFIDS(icao) {
       arrivals: Array.isArray(data.arrivals) ? data.arrivals : [],
       departures: Array.isArray(data.departures) ? data.departures : []
     };
+
   } catch (err) {
     console.error("Erreur FIDS dyn:", err);
     return { arrivals: [], departures: [] };
   }
 }
 
-// ---------------------------------------------------------------
-// 2. Mise à jour globale FIDS
-// ---------------------------------------------------------------
+// ===============================================================
+// 2. Mise à jour globale FIDS — Optimisé
+// ===============================================================
 export async function updateFIDS() {
-  for (const icao of AIRPORTS) {
-    const { arrivals, departures } = await fetchFIDS(icao);
+  const results = await Promise.all(AIRPORTS.map(fetchFIDS));
+
+  AIRPORTS.forEach((icao, i) => {
+    const { arrivals, departures } = results[i];
     renderFIDS(icao, arrivals, departures);
-  }
+  });
 }
 
-// ---------------------------------------------------------------
-// 3. Rendu HTML des vols
-// ---------------------------------------------------------------
+// ===============================================================
+// 3. Rendu HTML des vols — Optimisé PRO+++
+// ===============================================================
 function renderFIDS(icao, arrivals, departures) {
-  const id = icao === "EBCI" ? "fids-ebci" : "fids-eblg";
-  const container = document.getElementById(id);
+  const container = document.getElementById(icao === "EBCI" ? "fids-ebci" : "fids-eblg");
   if (!container) return;
 
   container.innerHTML = "";
 
-  let list = [];
-  if (fidsFilter === "arr") list = arrivals;
-  else if (fidsFilter === "dep") list = departures;
-  else list = [...arrivals, ...departures];
+  // Sélection liste selon filtre
+  const list =
+    fidsFilter === "arr" ? arrivals :
+    fidsFilter === "dep" ? departures :
+    [...arrivals, ...departures];
 
-  list.slice(0, 20).forEach(f => {
+  // Limite 20 lignes
+  const rows = list.slice(0, 20);
+
+  const frag = document.createDocumentFragment();
+
+  for (const f of rows) {
     const div = document.createElement("div");
 
     const status = f.status || "Programmé";
 
+    // Classification Airbus PRO+++
     let cssClass = "fids-dep airbus-green";
+
     if (/approche/i.test(status)) cssClass = "fids-app airbus-green";
-    if (/montée/i.test(status)) cssClass = "fids-up airbus-green";
-    if (/sol/i.test(status)) cssClass = "fids-gnd airbus-green";
-    if (/annul/i.test(status)) cssClass = "fids-cnl airbus-red";
-    if (/arrivée prévue/i.test(status)) cssClass = "fids-app airbus-amber";
-    if (/départ probable/i.test(status)) cssClass = "fids-up airbus-amber";
+    else if (/montée/i.test(status)) cssClass = "fids-up airbus-green";
+    else if (/sol/i.test(status)) cssClass = "fids-gnd airbus-green";
+    else if (/annul/i.test(status)) cssClass = "fids-cnl airbus-red";
+    else if (/arrivée prévue/i.test(status)) cssClass = "fids-app airbus-amber";
+    else if (/départ probable/i.test(status)) cssClass = "fids-up airbus-amber";
+
     if (fidsFilter === "arr") cssClass += " airbus-green";
 
     div.className = `fids-row ${cssClass}`;
 
+    // Construction HTML optimisée
     div.innerHTML = `
       <span class="fids-time">${f.time || "--:--"}</span>
       <span class="fids-flight">${f.flight || "???"}</span>
@@ -105,6 +112,7 @@ function renderFIDS(icao, arrivals, departures) {
       </span>
     `;
 
+    // Intégration ND Airbus (center + highlight + select)
     if (f.hex) {
       div.addEventListener("click", () => {
         centerOnAircraft(f.hex);
@@ -113,7 +121,8 @@ function renderFIDS(icao, arrivals, departures) {
       });
     }
 
-    container.appendChild(div);
-  });
-}
+    frag.appendChild(div);
+  }
 
+  container.appendChild(frag);
+}
