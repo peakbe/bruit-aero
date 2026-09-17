@@ -69,29 +69,37 @@ window.addEventListener("load", () => {
 // FONCTIONS UTILITAIRES DE SYNCHRONISATION
 // ===============================================================
 function syncNdWindUI() {
- const windSono = getAirportWind(state.currentAirport);
-const windMetar = state.metar[state.currentAirport];
+  const apt = state.currentAirport;
 
-const wind = windSono.speed > 0 ? windSono : windMetar;
+  // Vent SONO (km/h)
+  const windSono = getAirportWind(apt);   // { speed: km/h, deg }
 
-updateNdWindComponents(
-  state.currentAirport,
-  wind,
-  wind,
-  wind.speedMs ?? (wind.speed / 3.6),
-  wind.speedMs ?? (wind.speed / 3.6),
-  RUNWAY_HEADINGS
-);
+  // Vent METAR (kt)
+  const windMetar = state.metar[apt];     // { windDir, windSpd }
 
+  // Fusion simple : SONO si dispo, sinon METAR
+  let dir = 0;
+  let spdKt = 0;
+
+  if (windSono && windSono.speed > 0) {
+    dir = windSono.deg;
+    spdKt = windSono.speed / 1.852;   // km/h → kt
+  } else if (windMetar) {
+    dir = windMetar.windDir;
+    spdKt = windMetar.windSpd;        // déjà en kt
+  }
+
+  // Appel ND Airbus PRO+++
+  updateNdWindComponents(
+    apt,
+    { windDeg: dir, windSpdKt: spdKt },   // metarEBLG (mock)
+    { windDeg: dir, windSpdKt: spdKt },   // metarEBCI (mock)
+    spdKt,                                // windEBLG
+    spdKt,                                // windEBCI
+    RUNWAY_HEADINGS
+  );
 }
 
-function updateControlBarButtons(activeAirport) {
-  document.querySelectorAll(".control-bar-inline .airport-icon-btn").forEach(btn => {
-    btn.classList.remove("active");
-  });
-  const activeBtn = document.querySelector(`button[onclick*="'${activeAirport}'"]`);
-  activeBtn?.classList.add("active");
-}
 
 // ===============================================================
 // METAR (FALLBACK)
