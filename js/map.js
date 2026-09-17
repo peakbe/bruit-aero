@@ -11,14 +11,18 @@ import {
   AIRPORT_COORDS
 } from "./config.js";
 
-import { centerOnAircraft, highlightAircraft, updateFPV, setSelectedAircraft } from "./nd.js";
+import {
+  centerOnAircraft,
+  highlightAircraft,
+  updateFPV,
+  setSelectedAircraft
+} from "./nd.js";
 
 // ===============================================================
 // GLOBALS
 // ===============================================================
 export let map = null;
 
-// Lookup avion → O(1)
 export const planesLayer = L.layerGroup();
 export const planeIndex = {};
 
@@ -31,9 +35,9 @@ export function initRadarMap() {
   if (map) return map;
 
   map = L.map("map", {
-    preferCanvas: true,          // ✔ accélère le rendu
-    zoomControl: false,          // ✔ style cockpit
-    worldCopyJump: true          // ✔ évite glitch en pan
+    preferCanvas: true,
+    zoomControl: false,
+    worldCopyJump: true
   }).setView(
     [AIRPORT_COORDS.ALL.lat, AIRPORT_COORDS.ALL.lon],
     8
@@ -47,7 +51,6 @@ export function initRadarMap() {
   planesLayer.addTo(map);
   sonoLayer.addTo(map);
 
-  // Correction affichage Leaflet
   setTimeout(() => map.invalidateSize(), 200);
 
   return map;
@@ -73,9 +76,7 @@ export async function updateRadar() {
 
       let marker = planeIndex[p.hex];
 
-      // -----------------------------------------------------------
-      // Création du marqueur avion — ND Airbus PRO+++
-      // -----------------------------------------------------------
+      // Création du marqueur avion
       if (!marker) {
         marker = L.circleMarker([p.lat, p.lon], {
           radius: 5,
@@ -83,7 +84,7 @@ export async function updateRadar() {
           weight: 2,
           fillColor: "#0ea5e9",
           fillOpacity: 0.8,
-          renderer: map.getRenderer(map) // ✔ accélère Canvas
+          renderer: map.getRenderer(map)
         });
 
         marker._leaflet_id = p.hex;
@@ -105,9 +106,7 @@ export async function updateRadar() {
       marker.options.data = p;
     }
 
-    // -------------------------------------------------------------
-    // Suppression des avions disparus — PRO+++
-    // -------------------------------------------------------------
+    // Suppression des avions disparus
     for (const hex in planeIndex) {
       if (!active.has(hex)) {
         planesLayer.removeLayer(planeIndex[hex]);
@@ -132,9 +131,7 @@ export function drawApproachDepartureCones(airport, lat, lon, windDeg) {
   layers.forEach(layer => map.removeLayer(layer));
   window.ilsLayers[airport] = [];
 
-  // ---------------------------------------------------------------
   // Détermination piste active
-  // ---------------------------------------------------------------
   const runway =
     airport === "EBLG"
       ? (windDeg > 180 ? "22" : "04")
@@ -147,13 +144,13 @@ export function drawApproachDepartureCones(airport, lat, lon, windDeg) {
   const rad = heading * Math.PI / 180;
 
   // ---------------------------------------------------------------
-  // CÔNE ILS — PRO+++
+  // CÔNE ILS — PRO+++ (optimisé)
   // ---------------------------------------------------------------
   const dx = Math.sin(rad) * ILS_CONE_LENGTH / 111320;
   const dy = Math.cos(rad) * ILS_CONE_LENGTH / 111320;
 
   const p2 = [threshold[0] + dy, threshold[1] + dx];
-  const left = [p2[0] + ILS_CONE_SPREAD, p2[1] - ILS_CONE_SPREAD];
+  const left  = [p2[0] + ILS_CONE_SPREAD, p2[1] - ILS_CONE_SPREAD];
   const right = [p2[0] - ILS_CONE_SPREAD, p2[1] + ILS_CONE_SPREAD];
 
   const coneLayers = [
@@ -175,7 +172,7 @@ export function drawApproachDepartureCones(airport, lat, lon, windDeg) {
   }
 
   // ---------------------------------------------------------------
-  // LOCALIZER (LOC) — PRO+++
+  // LOCALIZER (LOC) — PRO+++ (optimisé)
   // ---------------------------------------------------------------
   const loc = ils.loc;
   const locStart = [loc.lat, loc.lon];
@@ -194,7 +191,7 @@ export function drawApproachDepartureCones(airport, lat, lon, windDeg) {
   window.ilsLayers[airport].push(locLine);
 
   // ---------------------------------------------------------------
-  // GLIDEPATH 3° — PRO+++
+  // GLIDEPATH 3° — PRO+++ (optimisé)
   // ---------------------------------------------------------------
   const gp = ils.glidepath;
 
