@@ -292,71 +292,71 @@ Object.values(sonoIndex).forEach(marker => {
   marker.bindPopup(buildPopupHTML(s));
 
   marker.on("popupopen", async () => {
-  try {
-    const res = await fetch(`${WORKER_BASE_URL}/api/weather?lat=${s.lat}&lon=${s.lon}`);
-    if (!res.ok) return;
+    try {
+      const res = await fetch(`${WORKER_BASE_URL}/api/weather?lat=${s.lat}&lon=${s.lon}`);
+      if (!res.ok) return;
 
-    const w = await res.json();
-    const meteo = w.meteo || {};
+      const w = await res.json();
+      const meteo = w.meteo || {};
 
-    const temp = Math.round(meteo.main?.temp ?? 0);
-    const windSpeed = Math.round((meteo.wind?.speed ?? 0) * 3.6);
-    const windDeg = meteo.wind?.deg ?? 0;
-    const desc = "Vent local";
+      const temp = Math.round(meteo.main?.temp ?? 0);
+      const windSpeed = Math.round((meteo.wind?.speed ?? 0) * 3.6);
+      const windDeg = meteo.wind?.deg ?? 0;
+      const desc = "Vent local";
 
-    // Historique vent
-    if (!windHistory[s.id]) windHistory[s.id] = [];
-    windHistory[s.id].push(windSpeed);
-    if (windHistory[s.id].length > 30) windHistory[s.id].shift();
+      // Historique vent
+      if (!windHistory[s.id]) windHistory[s.id] = [];
+      windHistory[s.id].push(windSpeed);
+      if (windHistory[s.id].length > 30) windHistory[s.id].shift();
 
-    // Graphique vent
-    const canvas = document.getElementById(`windchart-${s.id}`);
-    if (canvas) {
-      const ctx = canvas.getContext("2d");
-      const values = windHistory[s.id];
+      // Graphique vent
+      const canvas = document.getElementById(`windchart-${s.id}`);
+      if (canvas) {
+        const ctx = canvas.getContext("2d");
+        const values = windHistory[s.id];
 
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-      ctx.strokeStyle = "#38bdf8";
-      ctx.lineWidth = 2;
-      ctx.beginPath();
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.strokeStyle = "#38bdf8";
+        ctx.lineWidth = 2;
+        ctx.beginPath();
 
-      const max = Math.max(...values);
-      const min = Math.min(...values);
-      const range = max - min || 1;
+        const max = Math.max(...values);
+        const min = Math.min(...values);
+        const range = max - min || 1;
 
-      values.forEach((v, i) => {
-        const x = (i / (values.length - 1)) * canvas.width;
-        const y = canvas.height - ((v - min) / range) * canvas.height;
+        values.forEach((v, i) => {
+          const x = (i / (values.length - 1)) * canvas.width;
+          const y = canvas.height - ((v - min) / range) * canvas.height;
+          i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+        });
 
-        if (i === 0) ctx.moveTo(x, y);
-        else ctx.lineTo(x, y);
-      });
+        ctx.stroke();
+      }
 
-      ctx.stroke();
+      // Rose des vents
+      const arrow = document.getElementById(`windarrow-${s.id}`);
+      const windText = document.getElementById(`windtext-${s.id}`);
+
+      if (arrow) arrow.style.transform = `rotate(${windDeg}deg)`;
+      if (windText) windText.textContent = `${windDeg}° — ${windSpeed} km/h`;
+
+      // Bloc météo
+      document.getElementById(`temp-${s.id}`).textContent = `${temp}°C`;
+      document.getElementById(`wind-${s.id}`).textContent = `${windSpeed} km/h (${windDeg}°)`;
+      document.getElementById(`desc-${s.id}`).textContent = desc;
+
+      const runway = s.airport === "EBLG"
+        ? (windDeg > 180 ? "22" : "04")
+        : (windDeg > 180 ? "24" : "06");
+
+      document.getElementById(`rwy-${s.id}`).textContent = runway;
+
+    } catch (err) {
+      console.error("Erreur météo sonomètre :", err);
     }
-
-    // Rose des vents
-    const arrow = document.getElementById(`windarrow-${s.id}`);
-    const windText = document.getElementById(`windtext-${s.id}`);
-
-    if (arrow) arrow.style.transform = `rotate(${windDeg}deg)`;
-    if (windText) windText.textContent = `${windDeg}° — ${windSpeed} km/h`;
-
-    // Bloc météo
-    document.getElementById(`temp-${s.id}`).textContent = `${temp}°C`;
-    document.getElementById(`wind-${s.id}`).textContent = `${windSpeed} km/h (${windDeg}°)`;
-    document.getElementById(`desc-${s.id}`).textContent = desc;
-
-    const runway = s.airport === "EBLG"
-      ? (windDeg > 180 ? "22" : "04")
-      : (windDeg > 180 ? "24" : "06");
-
-    document.getElementById(`rwy-${s.id}`).textContent = runway;
-
-  } catch (err) {
-    console.error("Erreur météo sonomètre :", err);
-  }
+  });   // <-- FERMETURE CORRECTE
 });
+
   
 export function getAirportWind(airport) {
   const list = Object.values(sonoIndex).filter(m => m._airport === airport);
