@@ -281,6 +281,43 @@ export default {
         });
       }
 
+      // WEATHER — /api/weather?lat=50.60&lon=5.38
+if (path.includes("/api/weather")) {
+  const lat = parseFloat(url.searchParams.get("lat"));
+  const lon = parseFloat(url.searchParams.get("lon"));
+
+  if (!lat || !lon) {
+    return new Response(JSON.stringify({
+      error: "Missing lat/lon"
+    }), {
+      status: 400,
+      headers: { ...corsHeaders, "Content-Type": "application/json" }
+    });
+  }
+
+  // Open-Meteo direct
+  const wx = await fetchOpenMeteo(lat, lon);
+
+  const meteo = wx
+    ? {
+        main: { temp: wx.temperature },
+        wind: {
+          speed: wx.windspeed,
+          deg: wx.winddirection
+        }
+      }
+    : null;
+
+  return new Response(JSON.stringify({
+    lat,
+    lon,
+    meteo
+  }), {
+    status: 200,
+    headers: { ...corsHeaders, "Content-Type": "application/json" }
+  });
+}
+
       // METEO — /api/meteo?apt=EBLG
       if (path.includes("/api/meteo")) {
         const aptCode = (url.searchParams.get("apt") || "EBLG").toUpperCase();
