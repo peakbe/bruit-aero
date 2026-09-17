@@ -21,7 +21,7 @@ async function fetchMeteo(apt) {
 async function fetchTaf(apt) {
   try {
     const res = await fetch(`${WORKER_BASE_URL}/api/taf?apt=${apt}`);
-    if (!res.ok) return { raw: null };   // ✔ évite 404 → null
+    if (!res.ok) return { raw: null };
 
     const raw = await res.text();
     return { raw };
@@ -49,21 +49,17 @@ function decodeTaf(raw) {
 // 3. Fusion vent SONO + METAR PRO+++
 // ===============================================================
 function fuseWind(apt, meteo) {
-  const sono = getAirportWind(apt); // { speed (km/h), deg }
+  const sono = getAirportWind(apt);
 
-  // METAR → vent officiel
   const metarWind = meteo?.meteo?.wind || null;
 
   const metarDeg = metarWind?.deg ?? null;
   const metarSpdKmh = metarWind?.speed ?? null;
-
   const metarSpdKt = metarSpdKmh ? metarSpdKmh / 1.94384 : null;
 
-  // SONO → vent local bruit
   const sonoDeg = sono?.deg ?? null;
   const sonoSpdKt = sono?.speed ? sono.speed / 1.94384 : null;
 
-  // Fusion pondérée : 70% METAR, 30% SONO
   const fusedDeg = Math.round(
     (metarDeg ?? sonoDeg ?? 0) * 0.7 +
     (sonoDeg ?? metarDeg ?? 0) * 0.3
@@ -85,42 +81,26 @@ function fuseWind(apt, meteo) {
 // ===============================================================
 export async function renderNDForAirport(apt) {
 
-  // METAR + météo Open-Meteo
   const meteo = await fetchMeteo(apt);
+  const taf   = await fetchTaf(apt);
 
-  // TAF brut
-  const taf = await fetchTaf(apt);
-
-  // Vent fusionné SONO + METAR
   const fusedWind = fuseWind(apt, meteo);
 
-  // ============================================================
-  // 4.1 Rose des vents ND Airbus
-  // ============================================================
   drawCompass(
     `compass-${apt.toLowerCase()}`,
     fusedWind.deg,
     fusedWind.spdKt
   );
 
-  // ============================================================
-  // 4.2 METAR brut
-  // ============================================================
   const metarEl = document.getElementById(`metar-${apt.toLowerCase()}`);
   if (metarEl) {
     metarEl.textContent = meteo?.metar || "METAR indisponible";
   }
 
-  // ============================================================
-  // 4.3 TAF décodé
-  // ============================================================
- const tafEl = document.getElementById(`taf-${apt.toLowerCase()}`);
-
-if (tafEl) {
-  if (taf?.raw) {
-    tafEl.textContent = decodeTaf(taf.raw);
-  } else {
-    tafEl.textContent = "TAF non publié";
+  const tafEl = document.getElementById(`taf-${apt.toLowerCase()}`);
+  if (tafEl) {
+    tafEl.textContent = taf?.raw
+      ? decodeTaf(taf.raw)
+      : "TAF non publié";
   }
 }
-
