@@ -2,7 +2,10 @@
 // nd-utils.js — ND Airbus PRO+++ (version WINDCOMP unique)
 // ===============================================================
 
-// Sparkline vent ND
+import { map } from "./map.js";
+import { renderSonometers, renderSonometersALLDynamic } from "./sono.js";
+
+// Sparkline de tendance du vent sur le ND
 export function updateWindTrend(prefix, speedKmh, windTrend) {
   const canvas = document.querySelector(
     `.card[data-airport="${prefix.toUpperCase()}"] canvas.windtrend`
@@ -11,11 +14,15 @@ export function updateWindTrend(prefix, speedKmh, windTrend) {
 
   const ctx = canvas.getContext("2d");
 
-  windTrend[prefix.toUpperCase()].push(speedKmh);
-  if (windTrend[prefix.toUpperCase()].length > 30)
-    windTrend[prefix.toUpperCase()].shift();
+  const key = prefix.toUpperCase();
+  if (!windTrend[key]) windTrend[key] = [];
 
-  const values = windTrend[prefix.toUpperCase()];
+  windTrend[key].push(speedKmh);
+  if (windTrend[key].length > 30) {
+    windTrend[key].shift();
+  }
+
+  const values = windTrend[key];
   const max = Math.max(...values);
   const min = Math.min(...values);
   const range = max - min || 1;
@@ -36,11 +43,8 @@ export function updateWindTrend(prefix, speedKmh, windTrend) {
 }
 
 // ===============================================================
-// ND — statut sonomètres
+// ND — Statut des sonomètres
 // ===============================================================
-import { map } from "./map.js";
-import { renderSonometers, renderSonometersALLDynamic } from "./sono.js";
-
 export function updateNdSonometersStatus(enabled, sonoLayer) {
   const el = document.getElementById("nd-sono");
   if (!el) return;
@@ -66,7 +70,7 @@ export function updateNdSonometersStatus(enabled, sonoLayer) {
 }
 
 // ===============================================================
-// ND Airbus — Composantes vent PRO+++
+// ND Airbus — Composantes du vent PRO+++ (Headwind / Crosswind)
 // ===============================================================
 
 let lastNdState = {
@@ -97,8 +101,11 @@ export function updateNdWindComponents(
   const isEBLG = airport === "EBLG";
   const metar = isEBLG ? metarEBLG : metarEBCI;
 
-  const windDir = metar.windDeg ?? 0;
-  const windSpeed = (isEBLG ? windEBLG : windEBCI) * 1.94384;
+  const windDir = metar?.windDeg ?? extractWindDir(metar?.rawMetar) ?? 0;
+  
+  // Vitesse brute (km/h) convertie en Nœuds (kt) -> / 1.852
+  const rawKmh = isEBLG ? windEBLG : windEBCI;
+  const windSpeed = Math.round((rawKmh || 0) / 1.852);
 
   const runway = windDir > 180
     ? (isEBLG ? "22" : "24")
@@ -116,24 +123,29 @@ export function updateNdWindComponents(
   lastNdState = { airport, windDir, windSpeed, runway };
 
   const rwyHeading = RUNWAY_HEADINGS[airport][runway];
-  const angle = windDir - rwyHeading;
+  
+  // Angle relatif Vent / Piste normalisé entre -180° et +180°
+  let angle = ((windDir - rwyHeading + 540) % 360) - 180;
   const rad = angle * Math.PI / 180;
 
   const headwind = Math.round(windSpeed * Math.cos(rad));
   const crosswind = Math.round(windSpeed * Math.sin(rad));
 
   ndSetWindArrow(windDir);
-  ndSetWindText(`${windDir}° / ${Math.round(windSpeed)} kt`);
+  ndSetWindText(`${String(windDir).padStart(3, "0")}° / ${windSpeed} kt`);
   ndSetRunway(runway);
 
+  // Designations Airbus (H = Headwind, T = Tailwind / R = Right, L = Left)
   const headLabel  = headwind >= 0 ? "H" : "T";
   const crossLabel = crosswind >= 0 ? "R" : "L";
 
-  ndSetWindCompText(`${headLabel} ${Math.abs(headwind)} kt / ${crossLabel} ${Math.abs(crosswind)} kt / ${angle}°`);
+  ndSetWindCompText(
+    `${headLabel} ${Math.abs(headwind)} kt / ${crossLabel} ${Math.abs(crosswind)} kt / ${Math.abs(angle)}°`
+  );
 }
 
 // ===============================================================
-// ND Airbus — helpers DOM PRO+++
+// ND Airbus — Helpers DOM
 // ===============================================================
 
 const ndRefs = {
@@ -150,9 +162,6 @@ function initNdRefs() {
   if (!ndRefs.windCompText) ndRefs.windCompText = document.getElementById("nd-windcomp");
 }
 
-// ---------------------------------------------------------------
-// Flèche vent
-// ---------------------------------------------------------------
 export function ndSetWindArrow(dirDeg) {
   initNdRefs();
   if (!ndRefs.windArrow) return;
@@ -167,34 +176,24 @@ export function ndSetWindArrow(dirDeg) {
   ndRefs.windArrow.style.opacity = "1";
 }
 
-// ---------------------------------------------------------------
-// Texte vent
-// ---------------------------------------------------------------
 export function ndSetWindText(text) {
   initNdRefs();
   if (!ndRefs.windText) return;
   ndRefs.windText.textContent = text || "—";
 }
 
-// ---------------------------------------------------------------
-// Piste active
-// ---------------------------------------------------------------
 export function ndSetRunway(runway) {
   initNdRefs();
   if (!ndRefs.runwayText) return;
   ndRefs.runwayText.textContent = runway ? `RWY ${runway}` : "RWY —";
 }
 
-// ---------------------------------------------------------------
-// WINDCOMP unique (headwind + crosswind + angle)
-// ---------------------------------------------------------------
 export function ndSetWindCompText(text) {
   initNdRefs();
   if (!ndRefs.windCompText) return;
   ndRefs.windCompText.textContent = text || "—";
 }
 
-// Extraction direction vent METAR
 function extractWindDir(rawMetar) {
   if (!rawMetar) return 0;
   const match = rawMetar.match(/(\d{3})\d{2}KT/);
