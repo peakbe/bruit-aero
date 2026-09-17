@@ -8,7 +8,8 @@ import {
   ILS_CONE_LENGTH,
   ILS_CONE_SPREAD,
   RADAR_REFRESH_MS,
-  AIRPORT_COORDS
+  AIRPORT_COORDS,
+  WORKER_BASE_URL
 } from "./config.js";
 
 import {
@@ -29,7 +30,7 @@ export const planeIndex = {};
 if (!window.ilsLayers) window.ilsLayers = {};
 
 // ===============================================================
-// 1. INITIALISATION DE LA CARTE — PRO+++
+// 1. INITIALISATION DE LA CARTE
 // ===============================================================
 export function initRadarMap() {
   if (map) return map;
@@ -57,12 +58,12 @@ export function initRadarMap() {
 }
 
 // ===============================================================
-// 2. RADAR ADS‑B — Mise à jour PRO+++
+// 2. RADAR ADS‑B
 // ===============================================================
 export async function updateRadar() {
   try {
     const res = await fetch(
-      "https://bruit-aero-proxy.pnyr682w7f.workers.dev/api/adsb",
+      `${WORKER_BASE_URL}/api/adsb`,
       { cache: "no-store" }
     );
     const data = await res.json();
@@ -122,7 +123,7 @@ export async function updateRadar() {
 setInterval(updateRadar, RADAR_REFRESH_MS);
 
 // ===============================================================
-// 3. ILS — Cône + LOC + Glidepath 3° — PRO+++
+// 3. ILS — Cône + LOC + Glidepath 3°
 // ===============================================================
 export function drawApproachDepartureCones(airport, lat, lon, windDeg) {
 
@@ -137,14 +138,17 @@ export function drawApproachDepartureCones(airport, lat, lon, windDeg) {
       ? (windDeg > 180 ? "22" : "04")
       : (windDeg > 180 ? "24" : "06");
 
-  const ils = ILS_CONFIG[airport].runways[runway];
-  const heading = ils.heading;
+  const ils = ILS_CONFIG[airport]?.runways[runway];
+  if (!ils) return;
+
   const threshold = [ils.threshold.lat, ils.threshold.lon];
 
-  const rad = heading * Math.PI / 180;
+  // Calcul du cap inverse pour l'axe d'approche (en amont de la piste)
+  const approachHeading = (ils.heading + 180) % 360;
+  const rad = approachHeading * Math.PI / 180;
 
   // ---------------------------------------------------------------
-  // CÔNE ILS — PRO+++ (optimisé)
+  // CÔNE ILS
   // ---------------------------------------------------------------
   const dx = Math.sin(rad) * ILS_CONE_LENGTH / 111320;
   const dy = Math.cos(rad) * ILS_CONE_LENGTH / 111320;
@@ -172,30 +176,30 @@ export function drawApproachDepartureCones(airport, lat, lon, windDeg) {
   }
 
   // ---------------------------------------------------------------
-  // LOCALIZER (LOC) — PRO+++ (optimisé)
+  // LOCALIZER (LOC)
   // ---------------------------------------------------------------
   const loc = ils.loc;
   const locStart = [loc.lat, loc.lon];
 
-  const locDx = Math.sin(rad) * 10 / 111320;
-  const locDy = Math.cos(rad) * 10 / 111320;
+  const locDx = Math.sin(rad) * (ILS_CONE_LENGTH / 111320);
+  const locDy = Math.cos(rad) * (ILS_CONE_LENGTH / 111320);
 
   const locEnd = [loc.lat + locDy, loc.lon + locDx];
 
   const locLine = L.polyline([locStart, locEnd], {
     color: "#f87171",
-    weight: 4,
+    weight: 3,
     opacity: 0.9
   }).addTo(map);
 
   window.ilsLayers[airport].push(locLine);
 
   // ---------------------------------------------------------------
-  // GLIDEPATH 3° — PRO+++ (optimisé)
+  // GLIDEPATH 3° (FAF -> Seuil)
   // ---------------------------------------------------------------
   const gp = ils.glidepath;
 
-  const fafDistDeg = gp.fafDistanceNm * 1852 / 111320;
+  const fafDistDeg = (gp.fafDistanceNm * 1852) / 111320;
   const gpDx = Math.sin(rad) * fafDistDeg;
   const gpDy = Math.cos(rad) * fafDistDeg;
 
