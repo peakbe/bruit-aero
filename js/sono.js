@@ -383,5 +383,3 @@ export function getAirportWind(airport) {
 
   return { speed: avgSpeed, deg: avgDir };
 }
-
-});
