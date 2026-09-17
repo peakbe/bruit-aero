@@ -251,6 +251,7 @@ window.filterAirportView = function (airport) {
 
   updateNdSonometersStatus(state.sonometersEnabled, sonoLayer);
 updateControlBarButtons(airport);
+import { updateControlBarButtons } from "./app.js";
 
 };
 
@@ -305,5 +306,6 @@ export {
   fetchWeatherData,
   fetchMetarData,
   autoSelectRunway,
-  state
+  state,
+  updateControlBarButtons
 };
