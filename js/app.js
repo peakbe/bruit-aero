@@ -4,6 +4,7 @@
 import { map, initRadarMap, drawApproachDepartureCones } from "./map.js";
 import { updateFIDS } from "./fids.js";
 import { renderSonometers, renderSonometersALLDynamic, sonoLayer, getAirportWind } from "./sono.js";
+import { fetchRealFlights, renderFlightTable } from "./flights.js"; // <-- Import du service de vols réels
 import {
   updateWindTrend,
   updateNdWindComponents,
@@ -30,6 +31,10 @@ const state = {
   metar: {
     EBLG: { windDeg: 0, speedMs: 0 },
     EBCI: { windDeg: 0, speedMs: 0 }
+  },
+  flights: {
+    EBLG: { arrivals: [], departures: [] },
+    EBCI: { arrivals: [], departures: [] }
   }
 };
 
@@ -37,6 +42,37 @@ const state = {
 window.appState = state;
 window.currentAirport = state.currentAirport;
 window.activeRunway = state.activeRunway;
+
+// ===============================================================
+// FONCTION DE MISE À JOUR DES VOLS RÉELS
+// ===============================================================
+export async function refreshFlightsData(airport = state.currentAirport) {
+  if (airport === "ALL") {
+    await Promise.all([
+      refreshFlightsData("EBLG"),
+      refreshFlightsData("EBCI")
+    ]);
+    return;
+  }
+
+  // Récupération en parallèle des départs et arrivées réels
+  const [arrivals, departures] = await Promise.all([
+    fetchRealFlights(airport, "arrival"),
+    fetchRealFlights(airport, "departure")
+  ]);
+
+  // Stockage dans l'état global
+  state.flights[airport] = { arrivals, departures };
+
+  // Affichage dans le DOM si des conteneurs existent (ex: 'fids-arrivals', 'fids-departures')
+  renderFlightTable(`${airport.toLowerCase()}-arrivals-list`, arrivals);
+  renderFlightTable(`${airport.toLowerCase()}-departures-list`, departures);
+
+  // Synchronisation optionnelle avec votre module FIDS si présent
+  if (typeof updateFIDS === "function") {
+    updateFIDS(airport, { arrivals, departures });
+  }
+}
 
 // ===============================================================
 // INITIALISATION
