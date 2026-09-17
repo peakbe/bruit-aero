@@ -6,59 +6,61 @@ import { map } from "./map.js";
 import { WORKER_BASE_URL } from "./config.js";
 
 // Historique vent pour les mini-graphes
-const windHistory = {};   // { "F017": [12, 14, 11, ...] }
+const windHistory = {};          // { "F017": [12, 14, 11, ...] }
+export const sonoLayer = L.layerGroup();
+const sonoIndex = {};            // { id: marker }
 
 // ===============================================================
 // 1. Conversion DMS → décimal (optimisée)
 // ===============================================================
 function dmsToDecimal(dms) {
   const [deg, min, sec, dir] = dms.split(" ");
-  let dec = +deg + (+min / 60) + (+sec / 3600);
+  const dec = +deg + (+min / 60) + (+sec / 3600);
   return (dir === "S" || dir === "W") ? -dec : dec;
 }
 
-// ---------------------------------------------------------------
-// 2. Sonomètres EBCI / EBLG
-// ---------------------------------------------------------------
-const rawEBCI = [ 
-   { id: "F101", address: "Rue Bruhaute 46, Jumet", latDMS: "50 26 52.37 N", lonDMS: "4 24 57.02 E" },
-{ id: "F102", address: "Rue du Vigneron 5, Jumet", latDMS: "50 26 45.73 N", lonDMS: "4 25 22.56 E" },
-{ id: "F103", address: "Rue Docteur Pircard 61, Jumet", latDMS: "50 27 8.59 N", lonDMS: "4 24 56.68 E" },
-{ id: "F104", address: "Rue du Chiffon Rouge 12, Roux", latDMS: "50 26 32.42 N", lonDMS: "4 23 33.2 E" },
-{ id: "F105", address: "Rue Sous le Bois 59, Roux", latDMS: "50 26 49.22 N", lonDMS: "4 24 1.86 E" },
-{ id: "F106", address: "Rue Beaurin et Jonet 17, Wangenies", latDMS: "50 28 47.51 N", lonDMS: "4 31 10.46 E" },
-{ id: "F107", address: "Rue Maximilien Wattelar 155, Jumet", latDMS: "50 26 38.66 N", lonDMS: "4 24 40.18 E" },
-{ id: "F108", address: "Avenue Brunard 83, Fleurus", latDMS: "50 29 11.97 N", lonDMS: "4 32 46.61 E" },
-{ id: "F109", address: "Chaussée de Charleroi 265, Sombreffe", latDMS: "50 29 25.27 N", lonDMS: "4 33 44.6 E" },
-{ id: "F110", address: "Rue Émile Vandervelde 396, Forchies", latDMS: "50 25 24.85 N", lonDMS: "4 19 38.57 E" },
-{ id: "F111", address: "Rue de la Baille 42, Courcelles", latDMS: "50 26 18.68 N", lonDMS: "4 21 7.47 E" },
-{ id: "F112", address: "Rue des Liserons 44, Goutroux", latDMS: "50 25 28.75 N", lonDMS: "4 21 27.75 E" },
-{ id: "F114", address: "Rue des Ruelles / Rue de la source, Anderlues", latDMS: "50 24 35.39 N", lonDMS: "4 16 37.8 E" },
-{ id: "F116", address: "Rue de l'Enseignement 144, Fontaine-l'Evêque", latDMS: "50 24 38.28 N", lonDMS: "4 18 54.19 E" },
-{ id: "F117", address: "Rue du Terril 1, Forchies", latDMS: "50 25 53.4 N", lonDMS: "4 18 53.71 E" },
-{ id: "F118", address: "Rue Piconette 1, Sombreffe", latDMS: "50 30 18.96 N", lonDMS: "4 36 40.25 E" },
-{ id: "F119", address: "Rue René Delhaize 39, Ransart", latDMS: "50 27 47.57 N", lonDMS: "4 28 44.73 E" }
-];   // (tes données)
+// ===============================================================
+// 2. Sonomètres EBCI / EBLG — données brutes
+// ===============================================================
+const rawEBCI = [
+  { id: "F101", address: "Rue Bruhaute 46, Jumet", latDMS: "50 26 52.37 N", lonDMS: "4 24 57.02 E" },
+  { id: "F102", address: "Rue du Vigneron 5, Jumet", latDMS: "50 26 45.73 N", lonDMS: "4 25 22.56 E" },
+  { id: "F103", address: "Rue Docteur Pircard 61, Jumet", latDMS: "50 27 8.59 N", lonDMS: "4 24 56.68 E" },
+  { id: "F104", address: "Rue du Chiffon Rouge 12, Roux", latDMS: "50 26 32.42 N", lonDMS: "4 23 33.2 E" },
+  { id: "F105", address: "Rue Sous le Bois 59, Roux", latDMS: "50 26 49.22 N", lonDMS: "4 24 1.86 E" },
+  { id: "F106", address: "Rue Beaurin et Jonet 17, Wangenies", latDMS: "50 28 47.51 N", lonDMS: "4 31 10.46 E" },
+  { id: "F107", address: "Rue Maximilien Wattelar 155, Jumet", latDMS: "50 26 38.66 N", lonDMS: "4 24 40.18 E" },
+  { id: "F108", address: "Avenue Brunard 83, Fleurus", latDMS: "50 29 11.97 N", lonDMS: "4 32 46.61 E" },
+  { id: "F109", address: "Chaussée de Charleroi 265, Sombreffe", latDMS: "50 29 25.27 N", lonDMS: "4 33 44.6 E" },
+  { id: "F110", address: "Rue Émile Vandervelde 396, Forchies", latDMS: "50 25 24.85 N", lonDMS: "4 19 38.57 E" },
+  { id: "F111", address: "Rue de la Baille 42, Courcelles", latDMS: "50 26 18.68 N", lonDMS: "4 21 7.47 E" },
+  { id: "F112", address: "Rue des Liserons 44, Goutroux", latDMS: "50 25 28.75 N", lonDMS: "4 21 27.75 E" },
+  { id: "F114", address: "Rue des Ruelles / Rue de la source, Anderlues", latDMS: "50 24 35.39 N", lonDMS: "4 16 37.8 E" },
+  { id: "F116", address: "Rue de l'Enseignement 144, Fontaine-l'Evêque", latDMS: "50 24 38.28 N", lonDMS: "4 18 54.19 E" },
+  { id: "F117", address: "Rue du Terril 1, Forchies", latDMS: "50 25 53.4 N", lonDMS: "4 18 53.71 E" },
+  { id: "F118", address: "Rue Piconette 1, Sombreffe", latDMS: "50 30 18.96 N", lonDMS: "4 36 40.25 E" },
+  { id: "F119", address: "Rue René Delhaize 39, Ransart", latDMS: "50 27 47.57 N", lonDMS: "4 28 44.73 E" }
+];
 
 const rawEBLG = [
-{ id: "F001", address: "Rue Franquet 15, Houtain", latDMS: "50 44 16.96 N", lonDMS: "5 36 31.8 E" },
-{ id: "F002", address: "Rue Noiset 23, St Georges", latDMS: "50 35 18.29 N", lonDMS: "5 22 13.88 E" },
-{ id: "F003", address: "Rue Fond Méan 7, St Georges", latDMS: "50 36 4.2 N", lonDMS: "5 22 53.04 E" },
-{ id: "F004", address: "Vinâve des Stréats 32, Verlaine", latDMS: "50 36 19.49 N", lonDMS: "5 19 17.06 E" },
-{ id: "F005", address: "Rue Caquin 4, Haneffe", latDMS: "50 38 21.59 N", lonDMS: "5 19 24.67 E" },
-{ id: "F006", address: "Rue Bolly Chapon 11, Seraing", latDMS: "50 36 34.54 N", lonDMS: "5 16 17.05 E" },
-{ id: "F007", address: "Rue Yernawe 13, St Georges", latDMS: "50 35 26.72 N", lonDMS: "5 20 42.81 E" },
-{ id: "F008", address: "Rue Warfusée 5, St Georges", latDMS: "50 35 41.56 N", lonDMS: "5 21 32.22 E" },
-{ id: "F009", address: "Bibliothèque Communale, Place Verte, 4470 Stockay", latDMS: "50 34 50.99 N", lonDMS: "5 21 19.5 E" },
-{ id: "F010", address: "Rue Haute Voie 23, Verlaine", latDMS: "50 35 57.81 N", lonDMS: "5 18 48.57 E" },
-{ id: "F011", address: "Rue Albert 1er 18, St Georges", latDMS: "50 36 4.11 N", lonDMS: "5 21 21.62 E" },
-{ id: "F012", address: "Rue Barbe d'Or 13, 4317 Aineffe", latDMS: "50 37 18.9 N", lonDMS: "5 15 17.09 E" },
-{ id: "F013", address: "Rue Bois Léon 31, Verlaine", latDMS: "50 35 12.89 N", lonDMS: "5 18 31.24 E" },
-{ id: "F014", address: "Rue Léon Labye 12, Juprelle", latDMS: "50 43 8.02 N", lonDMS: "5 34 23.39 E" },
-{ id: "F015", address: "Rue du Brouck 5, Juprelle", latDMS: "50 41 19.82 N", lonDMS: "5 31 34.38 E" },
-{ id: "F016", address: "Rue de Chapon-Seraing 14, Verlaine", latDMS: "50 37 10.62 N", lonDMS: "5 17 43.24 E" },
-{ id: "F017", address: "Rue de la Pommeraie, 4690 Wonck", latDMS: "50 45 53.58 N", lonDMS: "5 37 50.18 E" }
-];   // (tes données)
+  { id: "F001", address: "Rue Franquet 15, Houtain", latDMS: "50 44 16.96 N", lonDMS: "5 36 31.8 E" },
+  { id: "F002", address: "Rue Noiset 23, St Georges", latDMS: "50 35 18.29 N", lonDMS: "5 22 13.88 E" },
+  { id: "F003", address: "Rue Fond Méan 7, St Georges", latDMS: "50 36 4.2 N", lonDMS: "5 22 53.04 E" },
+  { id: "F004", address: "Vinâve des Stréats 32, Verlaine", latDMS: "50 36 19.49 N", lonDMS: "5 19 17.06 E" },
+  { id: "F005", address: "Rue Caquin 4, Haneffe", latDMS: "50 38 21.59 N", lonDMS: "5 19 24.67 E" },
+  { id: "F006", address: "Rue Bolly Chapon 11, Seraing", latDMS: "50 36 34.54 N", lonDMS: "5 16 17.05 E" },
+  { id: "F007", address: "Rue Yernawe 13, St Georges", latDMS: "50 35 26.72 N", lonDMS: "5 20 42.81 E" },
+  { id: "F008", address: "Rue Warfusée 5, St Georges", latDMS: "50 35 41.56 N", lonDMS: "5 21 32.22 E" },
+  { id: "F009", address: "Bibliothèque Communale, Place Verte, 4470 Stockay", latDMS: "50 34 50.99 N", lonDMS: "5 21 19.5 E" },
+  { id: "F010", address: "Rue Haute Voie 23, Verlaine", latDMS: "50 35 57.81 N", lonDMS: "5 18 48.57 E" },
+  { id: "F011", address: "Rue Albert 1er 18, St Georges", latDMS: "50 36 4.11 N", lonDMS: "5 21 21.62 E" },
+  { id: "F012", address: "Rue Barbe d'Or 13, 4317 Aineffe", latDMS: "50 37 18.9 N", lonDMS: "5 15 17.09 E" },
+  { id: "F013", address: "Rue Bois Léon 31, Verlaine", latDMS: "50 35 12.89 N", lonDMS: "5 18 31.24 E" },
+  { id: "F014", address: "Rue Léon Labye 12, Juprelle", latDMS: "50 43 8.02 N", lonDMS: "5 34 23.39 E" },
+  { id: "F015", address: "Rue du Brouck 5, Juprelle", latDMS: "50 41 19.82 N", lonDMS: "5 31 34.38 E" },
+  { id: "F016", address: "Rue de Chapon-Seraing 14, Verlaine", latDMS: "50 37 10.62 N", lonDMS: "5 17 43.24 E" },
+  { id: "F017", address: "Rue de la Pommeraie, 4690 Wonck", latDMS: "50 45 53.58 N", lonDMS: "5 37 50.18 E" }
+];
 
 // ===============================================================
 // 3. Pré‑calcul lat/lon + création dictionnaire
@@ -102,121 +104,8 @@ const rules = {
 };
 
 // ===============================================================
-// 5. Layer + dictionnaire markers
+// 5. Création des markers (une seule fois)
 // ===============================================================
-export const sonoLayer = L.layerGroup();
-const sonoIndex = {}; // { id: marker }
-
-// ===============================================================
-// 6. Création des markers (une seule fois)
-// ===============================================================
-function createMarkers(list) {
-  list.forEach(s => {
-    const marker = L.circleMarker([s.lat, s.lon], {
-      radius: 7,
-      color: "gray",
-      weight: 2,
-      fillOpacity: 0.8
-    });
-
-    marker._id = s.id;
-    marker._airport = s.airport;
-
-    marker.bindPopup(buildPopupHTML(s));
-
-    sonoLayer.addLayer(marker);
-    sonoIndex[s.id] = marker;
-  });
-}
-
-createMarkers(sonometersEBCI);
-createMarkers(sonometersEBLG);
-
-// ===============================================================
-// MODE ALL DYNAMIQUE — ND Airbus PRO+++
-// ===============================================================
-export async function renderSonometersALLDynamic() {
-
-  const metarEBLG = await fetch(`${WORKER_BASE_URL}/api/meteo?apt=EBLG`)
-    .then(r => r.json())
-    .catch(() => ({ raw: "", meteo: null }));
-
-  const metarEBCI = await fetch(`${WORKER_BASE_URL}/api/meteo?apt=EBCI`)
-    .then(r => r.json())
-    .catch(() => ({ raw: "", meteo: null }));
-
-  const windDirEBLG = extractWindDir(metarEBLG.raw);
-  const windDirEBCI = extractWindDir(metarEBCI.raw);
-
-  const runwayEBLG = windDirEBLG > 180 ? "22" : "04";
-  const runwayEBCI = windDirEBCI > 180 ? "24" : "06";
-
-  const ruleEBLG = rules.EBLG[runwayEBLG];
-  const ruleEBCI = rules.EBCI[runwayEBCI];
-
-  Object.values(sonoIndex).forEach(marker => {
-    if (marker._airport !== "EBLG") return;
-
-    const id = marker._id;
-    let color = "gray";
-
-    if (ruleEBLG.green.has(id)) color = "lime";
-    if (ruleEBLG.red.has(id))   color = "red";
-
-    marker.setStyle({ color, fillColor: color });
-  });
-
-  Object.values(sonoIndex).forEach(marker => {
-    if (marker._airport !== "EBCI") return;
-
-    const id = marker._id;
-    let color = "gray";
-
-    if (ruleEBCI.green.has(id)) color = "lime";
-    if (ruleEBCI.red.has(id))   color = "red";
-
-    marker.setStyle({ color, fillColor: color });
-  });
-}
-
-// ===============================================================
-// RENDER SONOMETERS — cockpit Airbus PRO+++
-// ===============================================================
-export function renderSonometers(airport, runway) {
-
-  // 🟦 MODE ALL → dynamique
-  if (airport === "ALL") {
-    renderSonometersALLDynamic();
-    return;
-  }
-
-  // 🟦 MODE NORMAL (EBLG / EBCI)
-  const airportRules = rules[airport];
-  if (!airportRules) return;
-
-  const rule = airportRules[runway];
-  if (!rule) return;
-
-  Object.values(sonoIndex).forEach(marker => {
-    if (marker._airport !== airport) return;
-
-    const id = marker._id;
-
-    let color = "gray";
-    if (rule.green.has(id)) color = "lime";
-    if (rule.red.has(id))   color = "red";
-
-    marker.setStyle({
-      color,
-      fillColor: color
-    });
-  });
-}
-
-// ===============================================================
-// Popup météo + graphique vent — PRO+++
-// ===============================================================
-
 function buildPopupHTML(s) {
   return `
     <div style="font-family:'Segoe UI'; font-size:13px; color:#e2e8f0;">
@@ -275,21 +164,111 @@ function buildPopupHTML(s) {
         <b style="color:#f59e0b;">🌡️ Température :</b> <span id="temp-${s.id}">...</span><br>
         <b style="color:#38bdf8;">💨 Vent :</b> <span id="wind-${s.id}">...</span><br>
         <b style="color:#cbd5e1;">☁️ Météo :</b> <span id="desc-${s.id}">...</span><br>
-        <b style="color:#22c55e;">🛬 Piste active :</b> <span id="rwy-${s.id}">...</span>
+        <b style="color:#22c55e;">🛬 Piste active :</b> <span id="rwy-${s.id}">...</span><br>
+        <b style="color:#38bdf8;">📡 METAR :</b> <span id="metar-${s.id}">...</span><br>
+        <b style="color:#38bdf8;">📝 TAF :</b> <span id="taf-${s.id}">...</span>
       </div>
     </div>
   `;
 }
 
+function createMarkers(list) {
+  list.forEach(s => {
+    const marker = L.circleMarker([s.lat, s.lon], {
+      radius: 7,
+      color: "gray",
+      weight: 2,
+      fillOpacity: 0.8
+    });
+
+    marker._id = s.id;
+    marker._airport = s.airport;
+
+    marker.bindPopup(buildPopupHTML(s));
+    sonoLayer.addLayer(marker);
+    sonoIndex[s.id] = marker;
+  });
+}
+
+createMarkers(sonometersEBCI);
+createMarkers(sonometersEBLG);
+sonoLayer.addTo(map);
+
 // ===============================================================
-// Attacher popup + mise à jour dynamique — PRO+++
+// 6. Mode ALL dynamique — ND Airbus PRO+++
+// ===============================================================
+function extractWindDir(rawMetar) {
+  if (!rawMetar) return 0;
+  const match = rawMetar.match(/(\d{3})\d{2}KT/);
+  return match ? parseInt(match[1], 10) : 0;
+}
+
+export async function renderSonometersALLDynamic() {
+  const [metarEBLG, metarEBCI] = await Promise.all([
+    fetch(`${WORKER_BASE_URL}/api/meteo?apt=EBLG`).then(r => r.json()).catch(() => ({ raw: "" })),
+    fetch(`${WORKER_BASE_URL}/api/meteo?apt=EBCI`).then(r => r.json()).catch(() => ({ raw: "" }))
+  ]);
+
+  const windDirEBLG = extractWindDir(metarEBLG.raw);
+  const windDirEBCI = extractWindDir(metarEBCI.raw);
+
+  const runwayEBLG = windDirEBLG > 180 ? "22" : "04";
+  const runwayEBCI = windDirEBCI > 180 ? "24" : "06";
+
+  const ruleEBLG = rules.EBLG[runwayEBLG];
+  const ruleEBCI = rules.EBCI[runwayEBCI];
+
+  Object.values(sonoIndex).forEach(marker => {
+    const id = marker._id;
+    let color = "gray";
+
+    if (marker._airport === "EBLG") {
+      if (ruleEBLG.green.has(id)) color = "lime";
+      if (ruleEBLG.red.has(id))   color = "red";
+    } else if (marker._airport === "EBCI") {
+      if (ruleEBCI.green.has(id)) color = "lime";
+      if (ruleEBCI.red.has(id))   color = "red";
+    }
+
+    marker.setStyle({ color, fillColor: color });
+  });
+}
+
+// ===============================================================
+// 7. Render sonomètres — cockpit Airbus PRO+++
+// ===============================================================
+export function renderSonometers(airport, runway) {
+  if (airport === "ALL") {
+    renderSonometersALLDynamic();
+    return;
+  }
+
+  const airportRules = rules[airport];
+  if (!airportRules) return;
+
+  const rule = airportRules[runway];
+  if (!rule) return;
+
+  Object.values(sonoIndex).forEach(marker => {
+    if (marker._airport !== airport) return;
+
+    const id = marker._id;
+    let color = "gray";
+
+    if (rule.green.has(id)) color = "lime";
+    if (rule.red.has(id))   color = "red";
+
+    marker.setStyle({ color, fillColor: color });
+  });
+}
+
+// ===============================================================
+// 8. Popup dynamique — météo locale + METAR + TAF
 // ===============================================================
 Object.values(sonoIndex).forEach(marker => {
   const s = marker._airport === "EBLG"
     ? sonometersEBLG.find(x => x.id === marker._id)
     : sonometersEBCI.find(x => x.id === marker._id);
-
-  marker.bindPopup(buildPopupHTML(s));
 
   marker.on("popupopen", async () => {
     try {
@@ -298,7 +277,6 @@ Object.values(sonoIndex).forEach(marker => {
 
       const w = await res.json();
       const meteo = w.meteo || {};
-
       const temp = Math.round(meteo.main?.temp ?? 0);
       const windSpeed = Math.round((meteo.wind?.speed ?? 0) * 3.6);
       const windDeg = meteo.wind?.deg ?? 0;
@@ -351,35 +329,63 @@ Object.values(sonoIndex).forEach(marker => {
 
       document.getElementById(`rwy-${s.id}`).textContent = runway;
 
+      // Mini METAR / TAF (proxy ND Airbus)
+      const apt = s.airport;
+      const metarEl = document.getElementById(`metar-${s.id}`);
+      const tafEl   = document.getElementById(`taf-${s.id}`);
+
+      try {
+        const metarRes = await fetch(`${WORKER_BASE_URL}/api/meteo?apt=${apt}`);
+        if (metarRes.ok) {
+          const metarData = await metarRes.json();
+          if (metarEl) metarEl.textContent = metarData.metar || "METAR --";
+        }
+      } catch {
+        if (metarEl) metarEl.textContent = "METAR --";
+      }
+
+      try {
+        const tafRes = await fetch(`${WORKER_BASE_URL}/api/taf?apt=${apt}`);
+        if (tafRes.ok) {
+          const tafData = await tafRes.text();
+          if (tafEl) tafEl.textContent = tafData.trim() || "TAF --";
+        }
+      } catch {
+        if (tafEl) tafEl.textContent = "TAF --";
+      }
+
     } catch (err) {
       console.error("Erreur météo sonomètre :", err);
     }
-  });   // <-- FERMETURE CORRECTE
+  });
 });
 
-  
+// ===============================================================
+// 9. Vent moyen sonomètres → ND Airbus PRO+++
+// ===============================================================
 export function getAirportWind(airport) {
   const list = Object.values(sonoIndex).filter(m => m._airport === airport);
 
   const winds = list.map(m => {
     const hist = windHistory[m._id];
     if (!hist || hist.length === 0) return null;
-    return hist[hist.length - 1]; // dernière valeur
+    return hist[hist.length - 1];
   }).filter(v => v !== null);
 
   if (winds.length === 0) return { speed: 0, deg: 0 };
 
-  const avgSpeed = winds.reduce((a,b)=>a+b,0) / winds.length;
+  const avgSpeed = winds.reduce((a, b) => a + b, 0) / winds.length;
 
-  // direction = moyenne des directions des sonomètres
   const dirs = list.map(m => {
     const el = document.getElementById(`windtext-${m._id}`);
     if (!el) return null;
     const match = el.textContent.match(/(\d+)°/);
-    return match ? parseInt(match[1],10) : null;
+    return match ? parseInt(match[1], 10) : null;
   }).filter(v => v !== null);
 
-  const avgDir = dirs.length ? dirs.reduce((a,b)=>a+b,0) / dirs.length : 0;
+  const avgDir = dirs.length
+    ? dirs.reduce((a, b) => a + b, 0) / dirs.length
+    : 0;
 
   return { speed: avgSpeed, deg: avgDir };
 }
