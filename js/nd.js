@@ -1,5 +1,5 @@
 // ===============================================================
-// ND Airbus PRO v8 — ND + Panel + FPV + METAR + WX Radar
+// nd.js — ND Airbus PRO v8 (ND + Panel + FPV + METAR + WX Radar)
 // ===============================================================
 
 import { map, planeIndex } from "./map.js";
@@ -14,16 +14,16 @@ let wxData = null;      // Météo Open-Meteo (vent, rafales, etc.)
 let fpvMarker = null;
 
 // ===============================================================
-// FPV Airbus — icône PRO
+// FPV Airbus — Icône Cyan Style Cockpit
 // ===============================================================
 const fpvIcon = L.divIcon({
   className: "fpv-icon",
   html: `
     <svg width="42" height="42" viewBox="0 0 42 42">
-      <circle cx="21" cy="21" r="10" stroke="#00ffff" stroke-width="2" fill="none"/>
-      <line x1="11" y1="21" x2="31" y2="21" stroke="#00ffff" stroke-width="2"/>
-      <line x1="16" y1="26" x2="21" y2="32" stroke="#00ffff" stroke-width="2"/>
-      <line x1="26" y1="26" x2="21" y2="32" stroke="#00ffff" stroke-width="2"/>
+      <circle cx="21" cy="21" r="9" stroke="#00ffff" stroke-width="2" fill="none"/>
+      <line x1="10" y1="21" x2="32" y2="21" stroke="#00ffff" stroke-width="2"/>
+      <line x1="15" y1="26" x2="21" y2="32" stroke="#00ffff" stroke-width="2"/>
+      <line x1="27" y1="26" x2="21" y2="32" stroke="#00ffff" stroke-width="2"/>
     </svg>
   `,
   iconSize: [42, 42],
@@ -31,7 +31,7 @@ const fpvIcon = L.divIcon({
 });
 
 // ===============================================================
-// API publique — utilisée par FIDS.js / radar
+// API Publique (FIDS & Radar Interaction)
 // ===============================================================
 export function setSelectedAircraft(hex) {
   selectedHex = hex;
@@ -57,7 +57,7 @@ export function highlightAircraft(hex) {
 }
 
 // ===============================================================
-// FPV Airbus — logique optimisée
+// FPV Airbus (Flight Path Vector)
 // ===============================================================
 export function updateFPV(hex) {
   const plane = planeIndex[hex];
@@ -66,23 +66,24 @@ export function updateFPV(hex) {
   const p = plane.options.data;
   if (!p) return;
 
+  // Track sol réel (TRK) servant d'orientation au vecteur FPV
   const hdg = p.heading || p.true_heading || p.mag_heading || p.track || 0;
-  const trk = p.track || hdg;
-
-  const drift = trk - hdg;
-  const fpv = ((trk - drift) % 360 + 360) % 360;
+  const trk = p.track ?? hdg;
+  const fpvHeading = ((trk % 360) + 360) % 360;
 
   const { lat, lon } = p;
 
   if (!fpvMarker) {
     fpvMarker = L.marker([lat, lon], {
       icon: fpvIcon,
-      rotationAngle: fpv,
+      rotationAngle: fpvHeading,
       rotationOrigin: "center center"
     }).addTo(map);
   } else {
     fpvMarker.setLatLng([lat, lon]);
-    fpvMarker.setRotationAngle(fpv);
+    if (typeof fpvMarker.setRotationAngle === "function") {
+      fpvMarker.setRotationAngle(fpvHeading);
+    }
   }
 }
 
@@ -98,11 +99,7 @@ async function fetchMeteo(apt) {
     if (!res.ok) return;
 
     const data = await res.json();
-
-    // METAR brut → décodé
     metarData = parseMetar(data.metar);
-
-    // Open-Meteo brut
     wxData = data.meteo;
 
   } catch (e) {
@@ -110,14 +107,13 @@ async function fetchMeteo(apt) {
   }
 }
 
-// Rafraîchissement METEO
 setInterval(() => {
   fetchMeteo("EBLG");
   fetchMeteo("EBCI");
 }, 60000);
 
 // ===============================================================
-// Parse METAR — optimisé
+// Décodage METAR
 // ===============================================================
 function parseMetar(raw) {
   if (!raw) return null;
@@ -144,7 +140,7 @@ function parseMetar(raw) {
 }
 
 // ===============================================================
-// Rose des vents METAR — optimisée
+// Rose des vents METAR
 // ===============================================================
 function updateWindRose() {
   if (!metarData) return;
@@ -158,13 +154,15 @@ function updateWindRose() {
 
   if (!rose || !arrow || !label) return;
 
+  const degStr = String(deg).padStart(3, "0");
+
   rose.style.transform  = `rotate(${deg}deg)`;
   arrow.style.transform = `rotate(${deg}deg) translate(0, -12px)`;
-  label.textContent     = `${deg}° / ${spd} kt`;
+  label.textContent     = `${degStr}° / ${spd} kt`;
 }
 
 // ===============================================================
-// WX Radar — simulation Airbus optimisée
+// WX Radar Simulation
 // ===============================================================
 function updateWxRadar() {
   if (!wxData) return;
@@ -174,10 +172,10 @@ function updateWxRadar() {
   if (!radar) return;
 
   radar.style.background =
-    wind > 50 ? "rgba(255,0,0,0.45)" :
-    wind > 35 ? "rgba(255,128,0,0.4)" :
-    wind > 20 ? "rgba(255,255,0,0.35)" :
-                "rgba(0,255,0,0.25)";
+    wind > 50 ? "rgba(239,68,68,0.45)" :
+    wind > 35 ? "rgba(249,115,22,0.4)" :
+    wind > 20 ? "rgba(234,179,8,0.35)" :
+                "rgba(34,197,94,0.2)";
 }
 
 // ===============================================================
@@ -192,38 +190,37 @@ function updateNdPanel() {
   const p = plane.options.data;
   if (!p) return;
 
-  // HDG / TRK
+  // Cap et Trajectoire
   const hdg = p.heading || p.true_heading || p.mag_heading || p.track || 0;
-  const trk = p.track || hdg;
+  const trk = p.track ?? hdg;
 
-  const hdgNorm = Math.round(((hdg % 360) + 360) % 360);
-  const trkNorm = Math.round(((trk % 360) + 360) % 360);
+  const hdgNorm = String(Math.round(((hdg % 360) + 360) % 360)).padStart(3, "0");
+  const trkNorm = String(Math.round(((trk % 360) + 360) % 360)).padStart(3, "0");
 
-  // GS / TAS
+  // GS / TAS en Nœuds
   const gsKt = Math.round(
-    p.gs ||
-    (p.speed_ms ? p.speed_ms / 0.514444 : 0)
+    p.gs || (p.speed_ms ? p.speed_ms * 1.94384 : 0)
   );
   const tasKt = Math.round(gsKt * 1.05);
 
-  // WIND (priorité Open-Meteo, fallback METAR)
+  // Météo vent
   let windDir = "---";
   let windSpd = "---";
 
   if (wxData?.wind) {
     windDir = Math.round(wxData.wind.deg || 0);
-    windSpd = Math.round(wxData.wind.speed || 0);
+    windSpd = Math.round((wxData.wind.speed || 0) / 1.852); // km/h -> kts
   } else if (metarData) {
     windDir = metarData.windDir;
     windSpd = metarData.windSpd;
   }
 
-  // Composante vent unique WINDCOMP (head + cross)
+  // WINDCOMP Airbus
   let windCompText = "---";
 
   if (typeof windDir === "number" && typeof windSpd === "number") {
-    const diff = ((windDir - trkNorm + 540) % 360) - 180;
-    const rad = diff * Math.PI / 180;
+    const angle = ((windDir - Number(trkNorm) + 540) % 360) - 180;
+    const rad = angle * Math.PI / 180;
 
     const head = Math.round(windSpd * Math.cos(rad));
     const cross = Math.round(windSpd * Math.sin(rad));
@@ -234,7 +231,7 @@ function updateNdPanel() {
     windCompText = `${headLabel} ${Math.abs(head)} / ${crossLabel} ${Math.abs(cross)} kt`;
   }
 
-  // Écriture UI ND
+  // Écriture UI
   const elHdg      = document.getElementById("nd-hdg");
   const elTrk      = document.getElementById("nd-trk");
   const elGs       = document.getElementById("nd-gs");
@@ -248,7 +245,7 @@ function updateNdPanel() {
   if (elTrk)      elTrk.innerText      = trkNorm;
   if (elGs)       elGs.innerText       = `${gsKt} kt`;
   if (elTas)      elTas.innerText      = `${tasKt} kt`;
-  if (elWind)     elWind.innerText     = `${windDir}° / ${windSpd} kt`;
+  if (elWind)     elWind.innerText     = `${String(windDir).padStart(3, "0")}° / ${windSpd} kt`;
   if (elWindComp) elWindComp.innerText = windCompText;
 
   if (metarData) {
@@ -258,7 +255,7 @@ function updateNdPanel() {
 }
 
 // ===============================================================
-// Boussole vent / LOC / GP — Optimisée
+// Synchronisation Boussole UI
 // ===============================================================
 export function updateCompassUI(prefix, windDeg, windSpeedKmh) {
   const needle  = document.getElementById(`${prefix}-compass-needle`);
@@ -279,11 +276,12 @@ export function updateCompassUI(prefix, windDeg, windSpeedKmh) {
   loc.style.transform = `rotate(${runwayHeading}deg)`;
   gp.style.transform  = `rotate(${runwayHeading}deg)`;
 
-  label.textContent = `${windDeg}° / ${windSpeedKmh} km/h`;
+  const degStr = String(Math.round(windDeg)).padStart(3, "0");
+  label.textContent = `${degStr}° / ${Math.round(windSpeedKmh)} km/h`;
 }
 
 // ===============================================================
-// Boucle ND — Optimisée
+// Boucle de rafraîchissement ND (1 Hz)
 // ===============================================================
 setInterval(() => {
   if (!selectedHex) return;
