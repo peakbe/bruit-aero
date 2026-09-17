@@ -1,44 +1,42 @@
 // ===============================================================
-// nd-utils.js — Fonctions ND Airbus PRO+++
+// nd-utils.js — Fonctions ND Airbus PRO+++ (optimisées)
 // ===============================================================
 
-// Sparkline vent ND
+// ===============================================================
+// 1) Sparkline vent ND — Optimisé
+// ===============================================================
 export function updateWindTrend(prefix, speedKmh, windTrend) {
-  const canvas = document.querySelector(
-    `.card[data-airport="${prefix.toUpperCase()}"] canvas.windtrend`
-  );
+  const apt = prefix.toUpperCase();
+  const canvas = document.querySelector(`.card[data-airport="${apt}"] canvas.windtrend`);
   if (!canvas) return;
 
   const ctx = canvas.getContext("2d");
+  const arr = windTrend[apt];
 
-  windTrend[prefix.toUpperCase()].push(speedKmh);
+  arr.push(speedKmh);
+  if (arr.length > 30) arr.shift();
 
-  if (windTrend[prefix.toUpperCase()].length > 30)
-    windTrend[prefix.toUpperCase()].shift();
-
-  const values = windTrend[prefix.toUpperCase()];
-  const max = Math.max(...values);
-  const min = Math.min(...values);
+  const max = Math.max(...arr);
+  const min = Math.min(...arr);
   const range = max - min || 1;
 
   ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-  ctx.strokeStyle = "#38bdf8"; // cyan Airbus
+  ctx.strokeStyle = "#38bdf8";
   ctx.lineWidth = 2;
   ctx.beginPath();
 
-  values.forEach((v, i) => {
-    const x = (i / (values.length - 1)) * canvas.width;
+  arr.forEach((v, i) => {
+    const x = (i / (arr.length - 1)) * canvas.width;
     const y = canvas.height - ((v - min) / range) * canvas.height;
-
-    if (i === 0) ctx.moveTo(x, y);
-    else ctx.lineTo(x, y);
+    i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
   });
 
   ctx.stroke();
 }
 
-// ND — statut sonomètres
+// ===============================================================
+// 2) Statut sonomètres ND — Optimisé
+// ===============================================================
 import { map } from "./map.js";
 import { renderSonometers, renderSonometersALLDynamic } from "./sono.js";
 
@@ -47,40 +45,25 @@ export function updateNdSonometersStatus(enabled, sonoLayer) {
   if (!el) return;
 
   if (!enabled) {
-    // ND Airbus → OFF
     el.textContent = "OFF";
-    el.style.color = "#fbbf24"; // amber Airbus
-
-    // Désactive l'affichage mais NE PAS supprimer les markers
-    if (map.hasLayer(sonoLayer)) {
-      map.removeLayer(sonoLayer);
-    }
+    el.style.color = "#fbbf24";
+    if (map.hasLayer(sonoLayer)) map.removeLayer(sonoLayer);
     return;
   }
 
-  // Ré‑ajoute le layer si absent
-  if (!map.hasLayer(sonoLayer)) {
-    map.addLayer(sonoLayer);
-  }
+  if (!map.hasLayer(sonoLayer)) map.addLayer(sonoLayer);
 
-  // Recoloration dynamique selon l’aéroport actif
-  if (window.currentAirport === "ALL") {
-    renderSonometersALLDynamic();
-  } else {
-    renderSonometers(window.currentAirport, window.activeRunway);
-  }
+  window.currentAirport === "ALL"
+    ? renderSonometersALLDynamic()
+    : renderSonometers(window.currentAirport, window.activeRunway);
 
-  // Mise à jour ND Airbus
-  const count = sonoLayer.getLayers().length;
-  el.textContent = `${count}`;
-  el.style.color = "#38bdf8"; // cyan Airbus
+  el.textContent = `${sonoLayer.getLayers().length}`;
+  el.style.color = "#38bdf8";
 }
 
-
 // ===============================================================
-// ND Airbus — Composantes vent PRO+++
+// 3) ND Airbus — Composantes vent PRO+++ (optimisé)
 // ===============================================================
-// Cache ND pour éviter recalculs inutiles
 let lastNdState = {
   airport: null,
   windDir: null,
@@ -96,7 +79,6 @@ export function updateNdWindComponents(
   windEBCI,
   RUNWAY_HEADINGS
 ) {
-
   if (airport === "ALL") {
     ndSetWindArrow(null);
     ndSetWindText("—");
@@ -109,30 +91,26 @@ export function updateNdWindComponents(
   const isEBLG = airport === "EBLG";
   const metar = isEBLG ? metarEBLG : metarEBCI;
 
-  // ✔ windDeg correct
   const windDir = metar.windDeg ?? 0;
-
-  // ✔ conversion m/s → kt
   const windSpeed = (isEBLG ? windEBLG : windEBCI) * 1.94384;
 
   const runway = windDir > 180
     ? (isEBLG ? "22" : "24")
     : (isEBLG ? "04" : "06");
 
-  // Cache ND
   if (
     lastNdState.airport === airport &&
     lastNdState.windDir === windDir &&
     lastNdState.windSpeed === windSpeed &&
     lastNdState.runway === runway
-  ) {
-    return;
-  }
+  ) return;
 
   lastNdState = { airport, windDir, windSpeed, runway };
 
   const rwyHeading = RUNWAY_HEADINGS[airport][runway];
-  const angle = windDir - rwyHeading;
+
+  // Formule Airbus optimisée
+  const angle = ((windDir - rwyHeading + 540) % 360) - 180;
   const rad = angle * Math.PI / 180;
 
   const headwind = Math.round(windSpeed * Math.cos(rad));
@@ -145,9 +123,8 @@ export function updateNdWindComponents(
 }
 
 // ===============================================================
-// ND Airbus — helpers DOM PRO
+// 4) ND Airbus — Références DOM optimisées
 // ===============================================================
-
 const ndRefs = {
   windArrow: null,
   windText: null,
@@ -158,79 +135,54 @@ const ndRefs = {
 };
 
 function initNdRefs() {
-  if (!ndRefs.windArrow)   ndRefs.windArrow   = document.getElementById("nd-wind-arrow");
-  if (!ndRefs.windText)    ndRefs.windText    = document.getElementById("nd-wind-text");
-  if (!ndRefs.runwayText)  ndRefs.runwayText  = document.getElementById("nd-runway-text");
-  if (!ndRefs.headwindText) ndRefs.headwindText = document.getElementById("nd-headwind");
-  if (!ndRefs.crosswindText) ndRefs.crosswindText = document.getElementById("nd-crosswind");
-  if (!ndRefs.angleText)   ndRefs.angleText   = document.getElementById("nd-angle");
+  ndRefs.windArrow     ||= document.getElementById("nd-wind-arrow");
+  ndRefs.windText      ||= document.getElementById("nd-wind-text");
+  ndRefs.runwayText    ||= document.getElementById("nd-runway-text");
+  ndRefs.headwindText  ||= document.getElementById("nd-headwind");
+  ndRefs.crosswindText ||= document.getElementById("nd-crosswind");
+  ndRefs.angleText     ||= document.getElementById("nd-angle");
 }
 
-// ---------------------------------------------------------------
-// Flèche vent
-// ---------------------------------------------------------------
+// ===============================================================
+// 5) Setters ND — Optimisés
+// ===============================================================
 export function ndSetWindArrow(dirDeg) {
   initNdRefs();
   if (!ndRefs.windArrow) return;
 
-  if (dirDeg == null) {
-    ndRefs.windArrow.style.transform = "rotate(0deg)";
-    ndRefs.windArrow.style.opacity = "0.2";
-    return;
-  }
-
-  ndRefs.windArrow.style.transform = `rotate(${dirDeg}deg)`;
-  ndRefs.windArrow.style.opacity = "1";
+  ndRefs.windArrow.style.transform = `rotate(${dirDeg ?? 0}deg)`;
+  ndRefs.windArrow.style.opacity = dirDeg == null ? "0.2" : "1";
 }
 
-// ---------------------------------------------------------------
-// Texte vent (ex: "220° / 18 kt")
-// ---------------------------------------------------------------
 export function ndSetWindText(text) {
   initNdRefs();
-  if (!ndRefs.windText) return;
-
-  ndRefs.windText.textContent = text || "—";
+  if (ndRefs.windText) ndRefs.windText.textContent = text || "—";
 }
 
-// ---------------------------------------------------------------
-// Piste active (ex: "RWY 22")
-// ---------------------------------------------------------------
 export function ndSetRunway(runway) {
   initNdRefs();
-  if (!ndRefs.runwayText) return;
-
-  ndRefs.runwayText.textContent = runway ? `RWY ${runway}` : "RWY —";
+  if (ndRefs.runwayText) ndRefs.runwayText.textContent = runway ? `RWY ${runway}` : "RWY —";
 }
 
-// ---------------------------------------------------------------
-// Composantes vent (headwind / crosswind / angle)
-// ---------------------------------------------------------------
-export function ndSetWindComponents(components) {
+export function ndSetWindComponents(c) {
   initNdRefs();
-  if (!ndRefs.headwindText || !ndRefs.crosswindText || !ndRefs.angleText) return;
-
-  if (!components) {
+  if (!c) {
     ndRefs.headwindText.textContent = "—";
     ndRefs.crosswindText.textContent = "—";
     ndRefs.angleText.textContent = "—";
     return;
   }
 
-  const { headwind, crosswind, angle } = components;
-
-  ndRefs.headwindText.textContent  = `${headwind} kt`;
-  ndRefs.crosswindText.textContent = `${crosswind} kt`;
-  ndRefs.angleText.textContent     = `${angle}°`;
+  ndRefs.headwindText.textContent  = `${c.headwind} kt`;
+  ndRefs.crosswindText.textContent = `${c.crosswind} kt`;
+  ndRefs.angleText.textContent     = `${c.angle}°`;
 }
 
-// Extraction direction vent METAR (ex: "22012KT")
-function extractWindDir(rawMetar) {
+// ===============================================================
+// 6) Extraction direction vent METAR
+// ===============================================================
+export function extractWindDir(rawMetar) {
   if (!rawMetar) return 0;
-
   const match = rawMetar.match(/(\d{3})\d{2}KT/);
-  if (!match) return 0;
-
-  return parseInt(match[1], 10);
+  return match ? parseInt(match[1], 10) : 0;
 }
-
