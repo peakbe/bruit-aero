@@ -3,41 +3,33 @@
 // Cockpit Airbus PRO+++
 // ===============================================================
 
-// Chaque aéroport contient :
-// - pistes avec seuils (lat/lon)
-// - heading magnétique
-// - LOC (position + course)
-// - Glidepath 3° (altitude au FAF/FAP, distance)
-
-// Coordonnées approximatives — à affiner avec tes données réelles
-
 export const ILS_CONFIG = {
   EBLG: {
     runways: {
       "22": {
-        heading: 220,
-        threshold: { lat: 50.6374, lon: 5.4432 },
+        heading: 222,
+        threshold: { lat: 50.6433, lon: 5.4526 },
         loc: {
-          lat: 50.6400,
-          lon: 5.4300,
-          course: 220
+          lat: 50.6300,
+          lon: 5.4260,
+          course: 222
         },
         glidepath: {
-          angleDeg: 3,
+          angleDeg: 3.0,
           fafDistanceNm: 5.0,
           fafAltitudeFt: 2000
         }
       },
       "04": {
-        heading: 40,
-        threshold: { lat: 50.6450, lon: 5.4600 },
+        heading: 42,
+        threshold: { lat: 50.6300, lon: 5.4260 },
         loc: {
-          lat: 50.6400,
-          lon: 5.4700,
-          course: 40
+          lat: 50.6433,
+          lon: 5.4526,
+          course: 42
         },
         glidepath: {
-          angleDeg: 3,
+          angleDeg: 3.0,
           fafDistanceNm: 5.0,
           fafAltitudeFt: 2000
         }
@@ -48,29 +40,29 @@ export const ILS_CONFIG = {
   EBCI: {
     runways: {
       "24": {
-        heading: 240,
-        threshold: { lat: 50.4592, lon: 4.4538 },
+        heading: 241,
+        threshold: { lat: 50.4636, lon: 4.4690 },
         loc: {
-          lat: 50.4620,
-          lon: 4.4400,
-          course: 240
+          lat: 50.4533,
+          lon: 4.4360,
+          course: 241
         },
         glidepath: {
-          angleDeg: 3,
+          angleDeg: 3.0,
           fafDistanceNm: 5.0,
           fafAltitudeFt: 2000
         }
       },
       "06": {
-        heading: 60,
-        threshold: { lat: 50.4650, lon: 4.4700 },
+        heading: 61,
+        threshold: { lat: 50.4533, lon: 4.4360 },
         loc: {
-          lat: 50.4620,
-          lon: 4.4800,
-          course: 60
+          lat: 50.4636,
+          lon: 4.4690,
+          course: 61
         },
         glidepath: {
-          angleDeg: 3,
+          angleDeg: 3.0,
           fafDistanceNm: 5.0,
           fafAltitudeFt: 2000
         }
