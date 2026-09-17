@@ -3,14 +3,15 @@
 // ===============================================================
 
 import { centerOnAircraft, highlightAircraft, setSelectedAircraft } from "./nd.js";
+import { WORKER_BASE_URL } from "./config.js";
 
-const API_BASE = "https://bruit-aero-proxy.pnyr682w7f.workers.dev/api/fids-adsb";
+const API_BASE = `${WORKER_BASE_URL}/api/fids-adsb`;
 const AIRPORTS = ["EBCI", "EBLG"];
 
 let fidsFilter = "all"; // all | arr | dep
 
 // ===============================================================
-// Filtre Arr / Dep / All — Optimisé
+// Filtre Arr / Dep / All
 // ===============================================================
 window.setFidsFilter = function (filter) {
   fidsFilter = filter;
@@ -26,7 +27,7 @@ window.setFidsFilter = function (filter) {
 };
 
 // ===============================================================
-// 1. Récupération FIDS via Worker — Optimisé
+// 1. Récupération FIDS via Worker
 // ===============================================================
 async function fetchFIDS(icao) {
   try {
@@ -50,7 +51,7 @@ async function fetchFIDS(icao) {
 }
 
 // ===============================================================
-// 2. Mise à jour globale FIDS — Optimisé
+// 2. Mise à jour globale FIDS
 // ===============================================================
 export async function updateFIDS() {
   const results = await Promise.all(AIRPORTS.map(fetchFIDS));
@@ -71,22 +72,23 @@ function renderFIDS(icao, arrivals, departures) {
   container.innerHTML = "";
 
   // Sélection liste selon filtre
-  const list =
+  let list =
     fidsFilter === "arr" ? arrivals :
     fidsFilter === "dep" ? departures :
     [...arrivals, ...departures];
 
-  // Limite 20 lignes
-  const rows = list.slice(0, 20);
+  // Tri par distance croissante (les plus proches en premier)
+  list.sort((a, b) => parseFloat(a.distNm || 999) - parseFloat(b.distNm || 999));
 
+  // Limite aux 20 premiers résultats
+  const rows = list.slice(0, 20);
   const frag = document.createDocumentFragment();
 
   for (const f of rows) {
     const div = document.createElement("div");
-
     const status = f.status || "Programmé";
 
-    // Classification Airbus PRO+++
+    // Classification des styles Airbus PRO+++
     let cssClass = "fids-dep airbus-green";
 
     if (/approche/i.test(status)) cssClass = "fids-app airbus-green";
@@ -96,23 +98,21 @@ function renderFIDS(icao, arrivals, departures) {
     else if (/arrivée prévue/i.test(status)) cssClass = "fids-app airbus-amber";
     else if (/départ probable/i.test(status)) cssClass = "fids-up airbus-amber";
 
-    if (fidsFilter === "arr") cssClass += " airbus-green";
-
     div.className = `fids-row ${cssClass}`;
 
-    // Construction HTML optimisée
+    // Structure HTML du rangée
     div.innerHTML = `
       <span class="fids-time">${f.time || "--:--"}</span>
       <span class="fids-flight">${f.flight || "???"}</span>
       <span class="fids-dest">${f.city || "?"}</span>
       <span class="fids-status">${status}</span>
       <span class="fids-extra">
-        ${f.distNm ? `${f.distNm} NM` : ""} 
+        ${f.distNm ? `${f.distNm} NM` : ""}
         ${f.altFt ? ` / ${f.altFt} ft` : ""}
       </span>
     `;
 
-    // Intégration ND Airbus (center + highlight + select)
+    // Interaction au clic avec le ND Airbus
     if (f.hex) {
       div.addEventListener("click", () => {
         centerOnAircraft(f.hex);
