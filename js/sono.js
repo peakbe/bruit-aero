@@ -191,7 +191,7 @@ function createMarkers(list) {
 
 createMarkers(sonometersEBCI);
 createMarkers(sonometersEBLG);
-sonoLayer.addTo(map);
+
 
 // ===============================================================
 // 6. Mode ALL dynamique — ND Airbus PRO+++
