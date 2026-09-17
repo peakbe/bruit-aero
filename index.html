@@ -120,11 +120,13 @@
 
   <!-- PANNEAU ND AIRBUS -->
   <div class="card" id="nd-panel">
-    <div class="card-header">
-      <span class="card-title">ND Airbus – Données avion</span>
-    </div>
+  <div class="card-header">
+    <span class="card-title">ND Airbus – Données avion & météo</span>
+  </div>
 
-    <div class="nd-grid">
+  <div class="nd-layout">
+    <!-- Colonne gauche : avion / trajectoire -->
+    <div class="nd-column nd-column-left">
       <div class="nd-item">
         <span class="nd-label">HDG</span>
         <span class="nd-value" id="nd-hdg">---</span>
@@ -137,56 +139,77 @@
 
       <div class="nd-item">
         <span class="nd-label">GS</span>
-        <span class="nd-value" id="nd-gs">---</span>
+        <span class="nd-value" id="nd-gs">--- kt</span>
       </div>
 
       <div class="nd-item">
         <span class="nd-label">TAS</span>
-        <span class="nd-value" id="nd-tas">---</span>
+        <span class="nd-value" id="nd-tas">--- kt</span>
       </div>
 
       <div class="nd-item">
-        <span class="nd-label">WIND</span>
-        <span class="nd-value" id="nd-wind">---</span>
+        <span class="nd-label">RWY</span>
+        <span class="nd-value" id="nd-runway-text">RWY ---</span>
       </div>
 
       <div class="nd-item">
         <span class="nd-label">SONO</span>
-        <span class="nd-value" id="nd-sono">---</span>
+        <span class="nd-value" id="nd-sono">OFF</span>
+      </div>
+    </div>
+
+    <!-- Colonne centrale : rose des vents ND -->
+    <div class="nd-column nd-column-center">
+      <div class="nd-wind-rose-wrapper">
+        <div id="nd-wind-rose" class="nd-wind-rose">
+          <div class="nd-wind-rose-ring"></div>
+          <div id="nd-wind-arrow" class="nd-wind-arrow"></div>
+        </div>
+        <div id="nd-wind-text" class="nd-wind-text">---° / -- kt</div>
+        <div id="nd-windcomp" class="nd-windcomp">H -- kt / R -- kt / --°</div>
       </div>
 
-      <div class="nd-item">
-        <span class="nd-label">WINDCOMP</span>
-        <span class="nd-value" id="nd-windcomp">---</span>
-      </div>
-
-      <div class="nd-item">
+      <div class="nd-item nd-qnh-trend">
         <span class="nd-label">QNH</span>
-        <span class="nd-value" id="nd-qnh">----</span>
+        <span class="nd-value" id="nd-qnh">---- hPa</span>
       </div>
 
-      <div class="nd-item">
+      <div class="nd-item nd-qnh-trend">
         <span class="nd-label">TREND</span>
         <span class="nd-value" id="nd-trend">----</span>
       </div>
+    </div>
+
+    <!-- Colonne droite : météo avancée -->
+    <div class="nd-column nd-column-right">
+      <div class="nd-item">
+        <span class="nd-label">WX RADAR</span>
+        <span class="nd-value" id="nd-wx-intensity">---</span>
+      </div>
 
       <div class="nd-item">
-  <span class="nd-label">HEAD</span>
-  <span class="nd-value" id="nd-headwind">---</span>
-</div>
+        <span class="nd-label">GUST</span>
+        <span class="nd-value" id="nd-gust">-- kt</span>
+      </div>
 
-<div class="nd-item">
-  <span class="nd-label">CROSS</span>
-  <span class="nd-value" id="nd-crosswind">---</span>
-</div>
+      <div class="nd-item">
+        <span class="nd-label">SHEAR</span>
+        <span class="nd-value" id="nd-shear">---</span>
+      </div>
 
-<div class="nd-item">
-  <span class="nd-label">ANGLE</span>
-  <span class="nd-value" id="nd-angle">---</span>
-</div>
+      <div class="nd-item">
+        <span class="nd-label">TURB</span>
+        <span class="nd-value" id="nd-turb">---</span>
+      </div>
 
+      <div class="nd-item">
+        <span class="nd-label">STAB</span>
+        <span class="nd-value" id="nd-stability">---</span>
+      </div>
     </div>
   </div>
+</div>
+
 
   <!-- FIDS FILTER -->
   <div class="fids-filter">
