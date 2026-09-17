@@ -17,14 +17,15 @@ const AIRPORTS = {
 };
 
 function deg2rad(d) { return d * Math.PI / 180; }
+
 function haversine(lat1, lon1, lat2, lon2) {
   const R = 6371e3;
   const dLat = deg2rad(lat2 - lat1);
   const dLon = deg2rad(lon2 - lon1);
-  const a = Math.sin(dLat/2)**2 +
+  const a = Math.sin(dLat / 2) ** 2 +
             Math.cos(deg2rad(lat1)) * Math.cos(deg2rad(lat2)) *
-            Math.sin(dLon/2)**2;
-  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+            Math.sin(dLon / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
 async function fetchWithTimeout(url, options = {}, timeoutMs = 5000) {
@@ -66,7 +67,7 @@ function normalizeAircraft(list) {
 }
 
 // -------------------------------------------------------------
-// Sources ADS-B (3 + ghost)
+// Sources ADS-B
 // -------------------------------------------------------------
 async function srcAdsbLol(apt) {
   const url = `https://api.adsb.lol/v2/aircraft?lat=${apt.lat}&lon=${apt.lon}&dist=${DIST_NM}`;
@@ -85,7 +86,7 @@ async function srcAirplanesLive(apt) {
 }
 
 async function srcOpenSky(apt) {
-  const url = `https://opensky-network.org/api/states/all?lamin=${apt.lat-0.5}&lamax=${apt.lat+0.5}&lomin=${apt.lon-0.5}&lomax=${apt.lon+0.5}`;
+  const url = `https://opensky-network.org/api/states/all?lamin=${apt.lat - 0.5}&lamax=${apt.lat + 0.5}&lomin=${apt.lon - 0.5}&lomax=${apt.lon + 0.5}`;
   const res = await fetchWithTimeout(url, { headers: { "User-Agent": UA } }, 4000);
   if (!res.ok) throw new Error("OpenSky KO");
   const j = await res.json();
@@ -104,7 +105,7 @@ async function srcOpenSky(apt) {
   return normalizeAircraft(list);
 }
 
-// Ghost traffic si aucune source ne renvoie rien
+// Traffic fictif si aucune source ne répond
 function ghostTraffic(apt) {
   return normalizeAircraft([
     {
@@ -140,15 +141,17 @@ async function fetchLiveAircraftFailover(airportCode) {
   for (const src of sources) {
     try {
       const ac = await src(apt);
-      if (ac.length > 0) return ac;
-    } catch (e) {}
+      if (ac && ac.length > 0) return ac;
+    } catch (e) {
+      // Échec de la source, passage à la suivante
+    }
   }
 
   return ghostTraffic(apt);
 }
 
 // -------------------------------------------------------------
-// FIDS PRO9 (corridors ILS dynamiques + ETA + distance + altitude)
+// Algorithmes FIDS PRO9
 // -------------------------------------------------------------
 function angleDiff(a, b) {
   let d = Math.abs(a - b) % 360;
@@ -176,7 +179,6 @@ function computeStatus(a, apt) {
   const { inIls, d, speedKt } = computeIlsCorridor(a, apt);
 
   if (alt < 100 && speedKt < 60 && d < 5000) return "Au sol";
-
   if (alt < 5000 && d < 40000 && inIls) return "En approche";
 
   if (alt > 300 && speedKt > 120 && d < 20000) {
@@ -196,11 +198,13 @@ function computePredictedRole(a, apt) {
   const dirToApt = Math.atan2(apt.lon - a.lon, apt.lat - a.lat) * 180 / Math.PI;
   const diffDir = angleDiff(a.track, dirToApt);
 
-  if (alt > 1500 && alt < 10000 && speedKt > 160 && d < 150000 && diffDir < 70)
+  if (alt > 1500 && alt < 10000 && speedKt > 160 && d < 150000 && diffDir < 70) {
     return "Arrivée prévue";
+  }
 
-  if (alt < 2500 && speedKt > 100 && d < 25000)
+  if (alt < 2500 && speedKt > 100 && d < 25000) {
     return "Départ probable";
+  }
 
   return null;
 }
@@ -208,7 +212,7 @@ function computePredictedRole(a, apt) {
 function computeTimeStr(a, apt) {
   const d = haversine(a.lat, a.lon, apt.lat, apt.lon);
   const speed = a.speed_ms;
-  if (speed < 30) return { etaStr: "--:--", distNm: "", altFt: 0 };
+  if (speed < 30) return { etaStr: "--:--", distNm: "0.0", altFt: 0 };
 
   const tSec = d / speed;
   const eta = new Date(Date.now() + tSec * 1000);
@@ -224,7 +228,7 @@ function computeTimeStr(a, apt) {
 }
 
 // -------------------------------------------------------------
-// METEO (METAR + Open-Meteo)
+// METEO
 // -------------------------------------------------------------
 async function fetchMetar(aptCode) {
   const url = `https://metar.vatsim.net/${aptCode}`;
@@ -234,10 +238,7 @@ async function fetchMetar(aptCode) {
 }
 
 async function fetchOpenMeteo(lat, lon) {
-  const url =
-    `https://api.open-meteo.com/v1/forecast` +
-    `?latitude=${lat}&longitude=${lon}` +
-    `&current_weather=true`;
+  const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current_weather=true`;
   const res = await fetchWithTimeout(url);
   if (!res.ok) return null;
   const j = await res.json();
@@ -245,7 +246,7 @@ async function fetchOpenMeteo(lat, lon) {
 }
 
 // =================================================================
-// HANDLER
+// HANDLER CLOUDFLARE WORKER
 // =================================================================
 export default {
   async fetch(request) {
@@ -258,7 +259,7 @@ export default {
 
     try {
 
-      // ADS-B brut — /api/adsb?airport=EBLG
+      // ADS-B BRUT — /api/adsb?airport=EBLG
       if (path.includes("/api/adsb")) {
         const airportCode = (url.searchParams.get("airport") || "EBLG").toUpperCase();
         const apt = AIRPORTS[airportCode.toLowerCase()];
@@ -272,53 +273,37 @@ export default {
 
         const aircraft = await fetchLiveAircraftFailover(airportCode);
 
-        return new Response(JSON.stringify({
-          airport: airportCode,
-          aircraft
-        }), {
+        return new Response(JSON.stringify({ airport: airportCode, aircraft }), {
           status: 200,
           headers: { ...corsHeaders, "Content-Type": "application/json" }
         });
       }
 
-      // WEATHER — /api/weather?lat=50.60&lon=5.38
-if (path.includes("/api/weather")) {
-  const lat = parseFloat(url.searchParams.get("lat"));
-  const lon = parseFloat(url.searchParams.get("lon"));
+      // WEATHER LAT/LON — /api/weather?lat=50.60&lon=5.38
+      if (path.includes("/api/weather")) {
+        const lat = parseFloat(url.searchParams.get("lat"));
+        const lon = parseFloat(url.searchParams.get("lon"));
 
-  if (!lat || !lon) {
-    return new Response(JSON.stringify({
-      error: "Missing lat/lon"
-    }), {
-      status: 400,
-      headers: { ...corsHeaders, "Content-Type": "application/json" }
-    });
-  }
-
-  // Open-Meteo direct
-  const wx = await fetchOpenMeteo(lat, lon);
-
-  const meteo = wx
-    ? {
-        main: { temp: wx.temperature },
-        wind: {
-          speed: wx.windspeed,
-          deg: wx.winddirection
+        if (isNaN(lat) || isNaN(lon)) {
+          return new Response(JSON.stringify({ error: "Latitude ou Longitude invalide" }), {
+            status: 400,
+            headers: { ...corsHeaders, "Content-Type": "application/json" }
+          });
         }
+
+        const wx = await fetchOpenMeteo(lat, lon);
+        const meteo = wx ? {
+          main: { temp: wx.temperature },
+          wind: { speed: wx.windspeed, deg: wx.winddirection }
+        } : null;
+
+        return new Response(JSON.stringify({ lat, lon, meteo }), {
+          status: 200,
+          headers: { ...corsHeaders, "Content-Type": "application/json" }
+        });
       }
-    : null;
 
-  return new Response(JSON.stringify({
-    lat,
-    lon,
-    meteo
-  }), {
-    status: 200,
-    headers: { ...corsHeaders, "Content-Type": "application/json" }
-  });
-}
-
-      // METEO — /api/meteo?apt=EBLG
+      // METEO AÉROPORT — /api/meteo?apt=EBLG
       if (path.includes("/api/meteo")) {
         const aptCode = (url.searchParams.get("apt") || "EBLG").toUpperCase();
         const apt = AIRPORTS[aptCode.toLowerCase()];
@@ -337,21 +322,12 @@ if (path.includes("/api/weather")) {
         const metar = await fetchMetar(aptCode);
         const current = await fetchOpenMeteo(apt.lat, apt.lon);
 
-        const meteo = current
-          ? {
-              main: { temp: current.temperature },
-              wind: {
-                speed: current.windspeed,
-                deg: current.winddirection
-              }
-            }
-          : null;
+        const meteo = current ? {
+          main: { temp: current.temperature },
+          wind: { speed: current.windspeed, deg: current.winddirection }
+        } : null;
 
-        return new Response(JSON.stringify({
-          apt: aptCode,
-          metar,
-          meteo
-        }), {
+        return new Response(JSON.stringify({ apt: aptCode, metar, meteo }), {
           status: 200,
           headers: { ...corsHeaders, "Content-Type": "application/json" }
         });
@@ -367,13 +343,17 @@ if (path.includes("/api/weather")) {
             airport: airportCode,
             arrivals: [],
             departures: []
-          }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+          }), {
+            status: 200,
+            headers: { ...corsHeaders, "Content-Type": "application/json" }
+          });
         }
 
         const states = await fetchLiveAircraftFailover(airportCode);
 
-        let arrivals = [];
-        let departures = [];
+        // Cartes pour éviter les doublons
+        const arrivalsMap = new Map();
+        const departuresMap = new Map();
 
         states.forEach(a => {
           const status = computeStatus(a, apt);
@@ -390,23 +370,25 @@ if (path.includes("/api/weather")) {
             altFt: t.altFt
           };
 
-          if (status === "En approche")
-            arrivals.push(base);
+          // Qualification Arrivées
+          if (status === "En approche") {
+            arrivalsMap.set(a.hex, base);
+          } else if (predicted === "Arrivée prévue") {
+            arrivalsMap.set(a.hex, { ...base, status: predicted });
+          }
 
-          if (status === "En montée" || status === "Au sol")
-            departures.push(base);
-
-          if (predicted === "Arrivée prévue")
-            arrivals.push({ ...base, status: predicted });
-
-          if (predicted === "Départ probable")
-            departures.push({ ...base, status: predicted });
+          // Qualification Départs
+          if (status === "En montée" || status === "Au sol") {
+            departuresMap.set(a.hex, base);
+          } else if (predicted === "Départ probable") {
+            departuresMap.set(a.hex, { ...base, status: predicted });
+          }
         });
 
         return new Response(JSON.stringify({
           airport: airportCode,
-          arrivals,
-          departures
+          arrivals: Array.from(arrivalsMap.values()),
+          departures: Array.from(departuresMap.values())
         }), {
           status: 200,
           headers: { ...corsHeaders, "Content-Type": "application/json" }
