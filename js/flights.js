@@ -63,10 +63,58 @@ export function renderFlightTable(containerId, flights) {
   const container = document.getElementById(containerId);
   if (!container) return;
 
-  if (!flights || flights.length === 0) {
-    container.innerHTML = 'Aucun vol trouvé';
-return;
-}
+  container.innerHTML = "";
 
-const rowsHtml = flights.map(f => {
-return 
+  if (!flights || flights.length === 0) {
+    const emptyDiv = document.createElement("div");
+    emptyDiv.style.cssText = "color:#64748b; padding:10px; text-align:center;";
+    emptyDiv.textContent = "Aucun vol trouvé";
+    container.appendChild(emptyDiv);
+    return;
+  }
+
+  const table = document.createElement("table");
+  table.style.cssText = "width:100%; text-align:left; font-size:12px; border-collapse:collapse;";
+
+  const thead = document.createElement("thead");
+  const headerRow = document.createElement("tr");
+  headerRow.style.cssText = "color:#94a3b8; border-bottom:1px solid #475569;";
+
+  const headers = ["VOL", "PROVENANCE/DEST.", "HEURE"];
+  headers.forEach(text => {
+    const th = document.createElement("th");
+    th.style.padding = "4px";
+    th.textContent = text;
+    headerRow.appendChild(th);
+  });
+  thead.appendChild(headerRow);
+  table.appendChild(thead);
+
+  const tbody = document.createElement("tbody");
+
+  flights.forEach(f => {
+    const tr = document.createElement("tr");
+    tr.style.borderBottom = "1px solid #334155";
+
+    const tdCallsign = document.createElement("td");
+    tdCallsign.style.cssText = "color:#00ffff; font-weight:bold; padding:6px;";
+    tdCallsign.textContent = f.callsign;
+
+    const tdLoc = document.createElement("td");
+    tdLoc.style.cssText = "color:#cbd5e1; padding:6px;";
+    tdLoc.textContent = f.type === "arrival" ? f.origin : f.destination;
+
+    const tdTime = document.createElement("td");
+    tdTime.style.cssText = "color:#f59e0b; padding:6px;";
+    tdTime.textContent = f.time;
+
+    tr.appendChild(tdCallsign);
+    tr.appendChild(tdLoc);
+    tr.appendChild(tdTime);
+
+    tbody.appendChild(tr);
+  });
+
+  table.appendChild(tbody);
+  container.appendChild(table);
+}
