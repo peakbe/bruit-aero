@@ -12,7 +12,6 @@ import { WORKER_BASE_URL } from "./config.js";
  */
 export async function fetchRealFlights(airport, type = 'arrival') {
   try {
-    // Appel au Worker backend (Syntaxe littérale corrigée)
     const response = await fetch(`\({WORKER_BASE_URL}/api/flights?apt=\){airport}&type=${type}`, {
       cache: "no-store"
     });
@@ -37,10 +36,8 @@ function formatFlightData(rawFlights, airport, type) {
   if (!Array.isArray(rawFlights)) return [];
 
   return rawFlights.map(f => {
-    // Calcul de l'heure Unix
     const timestamp = type === 'arrival' ? (f.firstSeen || f.estArrivalAirportTime) : (f.lastSeen || f.estDepartureAirportTime);
     
-    // Formatage HH:MM
     const timeFormatted = timestamp 
       ? new Date(timestamp * 1000).toLocaleTimeString('fr-BE', { hour: '2-digit', minute: '2-digit' }) 
       : '--:--';
@@ -67,4 +64,4 @@ export function renderFlightTable(containerId, flights) {
   if (!container) return;
 
   if (!flights || flights.length === 0) {
-    container.innerHTML = `
+    container.innerHTML = '
