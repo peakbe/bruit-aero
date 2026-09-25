@@ -13,9 +13,7 @@ import { WORKER_BASE_URL } from "./config.js";
 export async function fetchRealFlights(airport, type = 'arrival') {
   try {
     // Appel au Worker backend
-    const response = await fetch(`${WORKER_BASE_URL}/api/flights?apt=${airport}&type=${type}`, {
-      cache: "no-store"
-    });
+    const response = await fetch(`\({WORKER_BASE_URL}/api/flights?apt=\){airport}&type=${type}`);
 
     if (!response.ok) {
       throw new Error(`Erreur réseau HTTP: ${response.status}`);
