@@ -410,7 +410,6 @@ export {
   fetchWeatherData,
   fetchMetarData,
   autoSelectRunway,
-  refreshFlightsData,
   state,
   updateControlBarButtons
 };
