@@ -191,6 +191,7 @@ async function fetchWeatherData() {
 
   await Promise.all(airports.map(async (apt) => {
     try {
+      // Utilisation stricte de `\({WORKER_BASE_URL}/api/meteo?apt=\){apt}`
       const res = await fetch(`\({WORKER_BASE_URL}/api/meteo?apt=\){apt}`);
       if (!res.ok) return;
 
@@ -208,11 +209,9 @@ async function fetchWeatherData() {
 
         const prefix = apt.toLowerCase();
 
-        // Mise à jour de la température dans le DOM
         const tempEl = document.getElementById(`\({prefix}-temp`) || document.getElementById(`temp-\){prefix}`);
         if (tempEl) tempEl.textContent = `${temp}°C`;
 
-        // Mise à jour du vent dans le DOM
         const windEl = document.getElementById(`\({prefix}-wind`) || document.getElementById(`wind-\){prefix}`);
         if (windEl) windEl.textContent = `Vent: \({windSpeedKmh} km/h (\){windDeg}°)`;
 
