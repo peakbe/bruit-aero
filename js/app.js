@@ -65,7 +65,7 @@ export async function refreshFlightsData(airport = state.currentAirport) {
     // Stockage dans l'état global
     state.flights[airport] = { arrivals, departures };
 
-    // Injection dans le DOM (recherche de plusieurs formats d'IDs possibles)
+    // Injection dans le DOM
     const prefix = airport.toLowerCase();
     
     renderFlightTable(`${prefix}-arrivals-list`, arrivals);
@@ -96,7 +96,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   // 2. Charger les données météo initiales
   await fetchWeatherData();
 
-  // 3. CHARGER LES VOLS RÉELS (ÉTAIT MANQUANT !)
+  // 3. Charger les vols réels
   await refreshFlightsData("ALL");
 
   // 4. Initialiser la sélection des pistes et les sonomètres
@@ -191,7 +191,6 @@ async function fetchWeatherData() {
 
   await Promise.all(airports.map(async (apt) => {
     try {
-      // Utilisation stricte de `\({WORKER_BASE_URL}/api/meteo?apt=\){apt}`
       const res = await fetch(`\({WORKER_BASE_URL}/api/meteo?apt=\){apt}`);
       if (!res.ok) return;
 
