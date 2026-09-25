@@ -64,4 +64,11 @@ export function renderFlightTable(containerId, flights) {
   if (!container) return;
 
   if (!flights || flights.length === 0) {
-    container.innerHTML = '
+    container.innerHTML = 'Aucun vol trouvé
+
+';
+return;
+}
+
+const rowsHtml = flights.map(f => {
+return '
