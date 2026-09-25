@@ -4,7 +4,7 @@
 import { map, initRadarMap, drawApproachDepartureCones } from "./map.js";
 import { updateFIDS } from "./fids.js";
 import { renderSonometers, renderSonometersALLDynamic, sonoLayer, getAirportWind } from "./sono.js";
-import { fetchRealFlights, renderFlightTable } from "./flights.js"; // <-- Import du service de vols réels
+import { fetchRealFlights, renderFlightTable } from "./flights.js";
 import {
   updateWindTrend,
   updateNdWindComponents,
@@ -55,22 +55,32 @@ export async function refreshFlightsData(airport = state.currentAirport) {
     return;
   }
 
-  // Récupération en parallèle des départs et arrivées réels
-  const [arrivals, departures] = await Promise.all([
-    fetchRealFlights(airport, "arrival"),
-    fetchRealFlights(airport, "departure")
-  ]);
+  try {
+    // Récupération en parallèle des départs et arrivées réels
+    const [arrivals, departures] = await Promise.all([
+      fetchRealFlights(airport, "arrival"),
+      fetchRealFlights(airport, "departure")
+    ]);
 
-  // Stockage dans l'état global
-  state.flights[airport] = { arrivals, departures };
+    // Stockage dans l'état global
+    state.flights[airport] = { arrivals, departures };
 
-  // Affichage dans le DOM si des conteneurs existent (ex: 'fids-arrivals', 'fids-departures')
-  renderFlightTable(`${airport.toLowerCase()}-arrivals-list`, arrivals);
-  renderFlightTable(`${airport.toLowerCase()}-departures-list`, departures);
+    // Injection dans le DOM (recherche de plusieurs formats d'IDs possibles)
+    const prefix = airport.toLowerCase();
+    
+    renderFlightTable(`${prefix}-arrivals-list`, arrivals);
+    renderFlightTable(`${prefix}-departures-list`, departures);
+    
+    // IDs alternatifs si présents dans votre HTML
+    renderFlightTable(`fids-${prefix}-arrivals`, arrivals);
+    renderFlightTable(`fids-${prefix}-departures`, departures);
 
-  // Synchronisation optionnelle avec votre module FIDS si présent
-  if (typeof updateFIDS === "function") {
-    updateFIDS(airport, { arrivals, departures });
+    // Synchronisation optionnelle avec votre module FIDS
+    if (typeof updateFIDS === "function") {
+      updateFIDS(airport, { arrivals, departures });
+    }
+  } catch (err) {
+    console.error(`Erreur lors du rafraîchissement des vols pour ${airport}:`, err);
   }
 }
 
@@ -78,21 +88,27 @@ export async function refreshFlightsData(airport = state.currentAirport) {
 // INITIALISATION
 // ===============================================================
 document.addEventListener("DOMContentLoaded", async () => {
+  console.log("🚀 Initialisation de l'application Bruit Aéro...");
+
+  // 1. Initialiser la carte radar
   initRadarMap();
 
-  // Démarrage des rafraîchissements FIDS
-  updateFIDS();
-  setInterval(updateFIDS, RADAR_REFRESH_MS);
-
-  // Charger les données initiales
+  // 2. Charger les données météo initiales
   await fetchWeatherData();
+
+  // 3. CHARGER LES VOLS RÉELS (ÉTAIT MANQUANT !)
+  await refreshFlightsData("ALL");
+
+  // 4. Initialiser la sélection des pistes et les sonomètres
   updateRunwaySonometers();
   syncNdWindUI();
 
-  // Planification des tâches récurrentes
-  setInterval(fetchWeatherData, WEATHER_REFRESH_MS);
-  setInterval(fetchMetarData, METAR_REFRESH_MS);
+  // 5. Planification des rafraîchissements récurrents
+  setInterval(() => fetchWeatherData(), WEATHER_REFRESH_MS || 30000);
+  setInterval(() => fetchMetarData(), METAR_REFRESH_MS || 60000);
+  setInterval(() => refreshFlightsData("ALL"), 60000); // Mise à jour des vols toutes les 60s
 
+  // 6. Configuration des boutons
   setupSonometersToggle();
   setupRecenterButton();
 });
@@ -105,23 +121,23 @@ window.addEventListener("load", () => {
 // FONCTIONS UTILITAIRES DE SYNCHRONISATION
 // ===============================================================
 function syncNdWindUI() {
-  const apt = state.currentAirport;
+  const apt = state.currentAirport === "ALL" ? "EBLG" : state.currentAirport;
 
   // Vent SONO (km/h)
-  const windSono = getAirportWind(apt);   // { speed: km/h, deg }
+  const windSono = getAirportWind(apt);
 
-  // Vent METAR (deg + speedMs)
-  const windMetar = state.metar[apt];     // { windDeg, speedMs }
+  // Vent METAR
+  const windMetar = state.metar[apt];
 
   let dir = 0;
   let spdKt = 0;
 
   if (windSono && windSono.speed > 0) {
     dir = windSono.deg;
-    spdKt = windSono.speed / 1.852;   // km/h → kt
+    spdKt = windSono.speed / 1.852; // km/h -> kt
   } else if (windMetar) {
     dir = windMetar.windDeg;
-    spdKt = windMetar.speedMs * 1.94384;  // m/s → kt
+    spdKt = windMetar.speedMs * 1.94384; // m/s -> kt
   }
 
   updateNdWindComponents(
@@ -148,20 +164,21 @@ function updateControlBarButtons(activeAirport) {
 }
 
 // ===============================================================
-// METAR (FALLBACK)
+// METAR (FALLBACK DIRECT)
 // ===============================================================
 async function fetchMetarData() {
   const airports = ["EBCI", "EBLG"];
   
   await Promise.all(airports.map(async (apt) => {
-    const el = document.getElementById(`${apt.toLowerCase()}-metar`);
-    if (!el) return;
-
     try {
       const res = await fetch(`https://metar.vatsim.net/${apt}`);
-      el.innerText = res.ok ? (await res.text()).trim() : "METAR indisponible";
-    } catch {
-      el.innerText = "METAR indisponible";
+      if (res.ok) {
+        const text = (await res.text()).trim();
+        updateMetarUI(apt, text);
+        parseAndApplyMetar(apt, text);
+      }
+    } catch (e) {
+      console.warn(`Fallback METAR Vatsim échoué pour ${apt}`, e);
     }
   }));
 }
@@ -174,36 +191,44 @@ async function fetchWeatherData() {
 
   await Promise.all(airports.map(async (apt) => {
     try {
-      const res = await fetch(`${WORKER_BASE_URL}/api/meteo?apt=${apt}`);
+      const res = await fetch(`\({WORKER_BASE_URL}/api/meteo?apt=\){apt}`);
       if (!res.ok) return;
 
       const data = await res.json();
 
-      updateMetarUI(apt, data.metar);
+      if (data.metar) {
+        updateMetarUI(apt, data.metar);
+        parseAndApplyMetar(apt, data.metar);
+      }
 
-      if (!data.meteo) return;
+      if (data.meteo) {
+        const temp = Math.round(data.meteo.main?.temp ?? 15);
+        const windSpeedKmh = Math.round((data.meteo.wind?.speed ?? 0) * 3.6);
+        const windDeg = data.meteo.wind?.deg ?? 0;
 
-      const temp = Math.round(data.meteo.main?.temp ?? 0);
-      const windSpeedKmh = data.meteo.wind?.speed ?? 0;
-      const windDeg = data.meteo.wind?.deg ?? 0;
+        const prefix = apt.toLowerCase();
 
-      const prefix = apt.toLowerCase();
+        // Mise à jour de la température dans le DOM
+        const tempEl = document.getElementById(`\({prefix}-temp`) || document.getElementById(`temp-\){prefix}`);
+        if (tempEl) tempEl.textContent = `${temp}°C`;
 
-      document.getElementById(`${prefix}-temp`).textContent = `${temp}°C`;
-      document.getElementById(`${prefix}-wind`).textContent = `Vent: ${windSpeedKmh} km/h (${windDeg}°)`;
+        // Mise à jour du vent dans le DOM
+        const windEl = document.getElementById(`\({prefix}-wind`) || document.getElementById(`wind-\){prefix}`);
+        if (windEl) windEl.textContent = `Vent: \({windSpeedKmh} km/h (\){windDeg}°)`;
 
-      state.metar[apt] = {
-        windDeg,
-        speedMs: windSpeedKmh / 3.6
-      };
+        state.metar[apt] = {
+          windDeg,
+          speedMs: windSpeedKmh / 3.6
+        };
 
-      updateWindTrend(prefix, windSpeedKmh, state.windTrend);
-      updateCompassUI(prefix, windDeg, windSpeedKmh);
+        updateWindTrend(prefix, windSpeedKmh, state.windTrend);
+        updateCompassUI(prefix, windDeg, windSpeedKmh);
 
-      autoSelectRunway(apt, windDeg, windSpeedKmh / 3.6);
+        autoSelectRunway(apt, windDeg, windSpeedKmh / 3.6);
 
-      if (AIRPORT_COORDS[apt]) {
-        drawApproachDepartureCones(apt, AIRPORT_COORDS[apt].lat, AIRPORT_COORDS[apt].lon, windDeg);
+        if (AIRPORT_COORDS[apt]) {
+          drawApproachDepartureCones(apt, AIRPORT_COORDS[apt].lat, AIRPORT_COORDS[apt].lon, windDeg);
+        }
       }
     } catch (e) {
       console.error(`Erreur météo ${apt} :`, e);
@@ -214,19 +239,49 @@ async function fetchWeatherData() {
   updateRunwaySonometers();
 }
 
+/**
+ * Analyse le texte METAR brut pour extraire la température, le vent et la piste si besoin
+ */
+function parseAndApplyMetar(apt, metarRaw) {
+  if (!metarRaw) return;
+
+  const prefix = apt.toLowerCase();
+
+  // Extraction Température (ex: 17/07 -> 17°C)
+  const tempMatch = metarRaw.match(/\s(M?\d{2})\/(M?\d{2})\s/);
+  if (tempMatch) {
+    const tempVal = tempMatch[1].replace("M", "-");
+    const tempEl = document.getElementById(`\({prefix}-temp`) || document.getElementById(`temp-\){prefix}`);
+    if (tempEl && tempEl.textContent.includes("--")) {
+      tempEl.textContent = `${tempVal}°C`;
+    }
+  }
+
+  // Extraction Vent (ex: 19006KT -> 190°, 6kt)
+  const windMatch = metarRaw.match(/(\d{3})(\d{2})KT/);
+  if (windMatch) {
+    const windDeg = parseInt(windMatch[1], 10);
+    const windSpdKt = parseInt(windMatch[2], 10);
+    const windSpeedMs = windSpdKt * 0.514444;
+
+    state.metar[apt] = { windDeg, speedMs: windSpeedMs };
+    autoSelectRunway(apt, windDeg, windSpeedMs);
+  }
+}
+
 function updateMetarUI(apt, metarRaw) {
-  const el = document.getElementById(`${apt.toLowerCase()}-metar`);
+  const prefix = apt.toLowerCase();
+  const el = document.getElementById(`\({prefix}-metar`) || document.getElementById(`metar-\){prefix}`);
   if (!el) return;
 
   el.textContent = metarRaw;
 
   // Détection tendance METAR
-  let trend = "";
+  let trend = "NOSIG";
   if (metarRaw.includes("BECMG")) trend = "BECMG";
   if (metarRaw.includes("TEMPO")) trend = "TEMPO";
-  if (metarRaw.includes("NOSIG")) trend = "NOSIG";
 
-  const trendEl = document.getElementById(`${apt.toLowerCase()}-metar-trend`);
+  const trendEl = document.getElementById(`\({prefix}-metar-trend`) || document.getElementById(`trend-\){prefix}`);
   if (trendEl) trendEl.textContent = trend;
 }
 
@@ -251,7 +306,8 @@ function autoSelectRunway(airport, windDeg, windSpeedMs) {
     }
   });
 
-  const el = document.getElementById(`${airport.toLowerCase()}-runway`);
+  const prefix = airport.toLowerCase();
+  const el = document.getElementById(`\({prefix}-runway`) || document.getElementById(`rwy-\){prefix}`);
   if (el) el.textContent = `Piste ${best.num}`;
 }
 
@@ -267,8 +323,8 @@ function updateRunwaySonometers() {
 
   if (!map.hasLayer(sonoLayer)) map.addLayer(sonoLayer);
 
-  const rwyEBLG = state.metar.EBLG.windDeg > 180 ? "22" : "04";
-  const rwyEBCI = state.metar.EBCI.windDeg > 180 ? "24" : "06";
+  const rwyEBLG = state.metar.EBLG.windDeg > 130 && state.metar.EBLG.windDeg < 310 ? "22" : "04";
+  const rwyEBCI = state.metar.EBCI.windDeg > 150 && state.metar.EBCI.windDeg < 330 ? "24" : "06";
 
   state.activeRunway = state.currentAirport === "EBLG" ? rwyEBLG : rwyEBCI;
   window.activeRunway = state.activeRunway;
@@ -298,6 +354,7 @@ window.filterAirportView = function (airport) {
     if (target) map.setView([target.lat, target.lon], 11, { animate: true });
   }
 
+  refreshFlightsData(airport);
   updateNdSonometersStatus(state.sonometersEnabled, sonoLayer);
   updateControlBarButtons(airport);
 };
@@ -353,6 +410,7 @@ export {
   fetchWeatherData,
   fetchMetarData,
   autoSelectRunway,
+  refreshFlightsData,
   state,
   updateControlBarButtons
 };
